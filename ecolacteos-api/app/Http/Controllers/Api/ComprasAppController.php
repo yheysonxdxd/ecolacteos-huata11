@@ -107,7 +107,7 @@ class ComprasAppController extends Controller
         return response()->json([
             'productos' => $this->productos(),
             'clientes' => DB::table('clientes')->where('activo', true)->orderBy('tipo')->orderBy('nombre')
-                ->get(['id', 'nombre', 'tipo']),
+                ->get(['id', 'nombre', 'tipo', 'email']),
         ]);
     }
 
@@ -118,7 +118,8 @@ class ComprasAppController extends Controller
             'cliente_id' => ['required', 'exists:clientes,id'],
             'producto_id' => ['required', 'exists:productos,id'],
             'cantidad' => ['required', 'numeric', 'min:0.01'],
-        ]);
+            'correo' => ['nullable', 'email', 'max:120'], // opcional: mandar la nota de venta
+        ], ['correo.email' => 'Ese correo no es válido.']);
         $cliente = DB::table('clientes')->find($data['cliente_id']);
         $precio = DB::table('precios_venta')->where('producto_id', $data['producto_id'])
             ->where('tipo_cliente', $cliente->tipo)->whereNull('vigente_hasta')->value('precio');
@@ -132,13 +133,23 @@ class ComprasAppController extends Controller
             ->where('vence_el', '>=', now()->toDateString())->orderBy('iniciado_en')->value('id');
         $total = round($precio * $data['cantidad'], 2);
 
-        DB::table('ventas')->insert([
+        $id = DB::table('ventas')->insertGetId([
             'uuid' => (string) Str::uuid(), 'cliente_id' => $cliente->id, 'producto_id' => $data['producto_id'],
             'lote_id' => $lote, 'cantidad' => $data['cantidad'], 'precio_unitario' => $precio, 'total' => $total,
             'registrada_por' => $r->user()->id, 'vendida_en' => now(), 'created_at' => now(), 'updated_at' => now(),
         ]);
 
-        return response()->json(['total' => $total, 'precio_unitario' => (float) $precio], 201);
+        // si pidieron correo, se manda la nota; si falla, la venta igual queda hecha
+        $errorCorreo = ! empty($data['correo'])
+            ? NotaVentaController::mandar(app(\App\Services\NotaVentaPdf::class), $id, $data['correo'])
+            : null;
+
+        // id y número de la nota de venta, para imprimirla (NotaVentaController)
+        return response()->json(['total' => $total, 'precio_unitario' => (float) $precio,
+            'id' => $id, 'numero' => NotaVentaController::numero($id),
+            'correo' => $data['correo'] ?? null,
+            'correo_enviado' => ! empty($data['correo']) && ! $errorCorreo,
+            'correo_error' => $errorCorreo], 201);
     }
 
     /** GET /api/v1/compras/movimientos — insumos y ventas, lo más reciente primero. */
@@ -154,8 +165,9 @@ class ComprasAppController extends Controller
         $ventas = DB::table('ventas as v')->join('productos as p', 'p.id', '=', 'v.producto_id')
             ->join('clientes as c', 'c.id', '=', 'v.cliente_id')
             ->orderByDesc('v.vendida_en')->limit(40)
-            ->get(['p.nombre as que', 'c.nombre as cliente', 'v.total', 'v.cantidad', 'v.vendida_en as fecha'])
+            ->get(['v.id', 'p.nombre as que', 'c.nombre as cliente', 'v.total', 'v.cantidad', 'v.vendida_en as fecha'])
             ->map(fn ($v) => [
+                'venta_id' => $v->id, 'numero' => NotaVentaController::numero($v->id),
                 'que' => $v->que, 'ref' => "Venta · {$v->cliente} · S/ ".number_format($v->total, 2),
                 'fecha' => $v->fecha, 'entrada' => false,
                 'delta' => '−'.rtrim(rtrim(number_format($v->cantidad, 2, '.', ''), '0'), '.'),

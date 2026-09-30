@@ -77,7 +77,7 @@ class AdminNegocioController extends Controller
             ->join('productos as p', 'p.id', '=', 'v.producto_id')
             ->leftJoin('users as u', 'u.id', '=', 'v.registrada_por')
             ->orderByDesc('v.vendida_en')->limit(10)
-            ->get(['v.vendida_en', 'c.nombre as cliente', 'p.nombre as producto', 'v.cantidad', 'v.total', 'u.name as vendedor']);
+            ->get(['v.id', 'v.vendida_en', 'c.nombre as cliente', 'p.nombre as producto', 'v.cantidad', 'v.total', 'u.name as vendedor']);
 
         return [
             'total'        => round((float) $base()->sum('v.total'), 2),

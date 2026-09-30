@@ -12,6 +12,10 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1')->group(function () {
     Route::post('login', [Api\AuthController::class, 'login']);
 
+    // PDF de la nota de venta: sin sesión pero con enlace firmado (ver NotaVentaController)
+    Route::get('notas-venta/{id}.pdf', [Api\NotaVentaController::class, 'pdf'])
+        ->whereNumber('id')->middleware('signed:relative')->name('nota-venta.pdf');
+
     Route::middleware('auth:sanctum')->group(function () {
 
         Route::post('logout', [Api\AuthController::class, 'logout']);
@@ -63,6 +67,8 @@ Route::prefix('v1')->group(function () {
         Route::get('compras/ventas-datos',        [Api\ComprasAppController::class, 'datosVenta']);
         Route::post('compras/ventas',             [Api\ComprasAppController::class, 'vender']);
         Route::get('compras/movimientos',         [Api\ComprasAppController::class, 'movimientos']);
+        Route::get('compras/ventas/{id}/nota',    [Api\NotaVentaController::class, 'enlace'])->whereNumber('id');
+        Route::post('compras/ventas/{id}/enviar-nota', [Api\NotaVentaController::class, 'enviar'])->whereNumber('id');
 
         // --- Calidad ---
         Route::get('calidad/cola',        [Api\CalidadController::class, 'cola']);

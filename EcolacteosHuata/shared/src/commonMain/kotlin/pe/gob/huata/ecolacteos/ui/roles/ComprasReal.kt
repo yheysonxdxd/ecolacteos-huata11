@@ -172,6 +172,7 @@ private fun VentaReal(irA: (Int) -> Unit) {
                 StepperGrande(cant, { ComprasReal.cantidadVenta = it ?: 1.0 }, paso = 1.0, minimo = 1.0, decimales = 0, unidad = p.txt("unidad"), fueraDeRango = sinStock, compacto = true)
             }
             if (sinStock) AvisoCampo("No hay suficiente stock para esa cantidad.", esAlerta = true)
+            CampoCorreoVenta(c)
             error?.let { AvisoCampo("No se pudo registrar: $it", esAlerta = true) }
             BotonPrimario(if (enviando) "Registrando…" else "Registrar venta", c != null && !sinStock && !enviando) {
                 val cli = c ?: return@BotonPrimario
@@ -182,8 +183,10 @@ private fun VentaReal(irA: (Int) -> Unit) {
                             put("cliente_id", cli.num("id").toLong())
                             put("producto_id", p.num("id").toLong())
                             put("cantidad", cant)
+                            correoParaVenta()?.let { put("correo", it) } // opcional: mandar la nota
                         })
-                        ComprasReal.mensaje = "✓ Venta registrada: ${soles(r.num("total"))} a ${cli.txt("nombre")}"
+                        ComprasReal.mensaje = "✓ Venta registrada: ${soles(r.num("total"))} a ${cli.txt("nombre")}" + textoCorreo(r)
+                        NotaVenta.ultima = UltimaNota(r.num("id").toLong(), r.txt("numero"), r.num("total"), cli.txt("nombre"), r.txt("correo"))
                         ComprasReal.version++
                         irA(3)
                     } catch (t: Throwable) { error = t.message }
@@ -196,11 +199,16 @@ private fun VentaReal(irA: (Int) -> Unit) {
 
 @Composable
 private fun MovimientosReal() {
+    val abrirNota = rememberAbrirNota()
     CargaServidor("/api/v1/compras/movimientos", clave = ComprasReal.version) { d, _ ->
         PantallaScroll {
             ComprasReal.mensaje?.let { AvisoCampo(it) }
+            TarjetaUltimaNota()
             d.lista("movimientos").forEach { m ->
-                FilaLista(m.txt("que"), "${m.txt("ref")} · ${fechaCorta(m.txt("fecha"))}") {
+                // las ventas se tocan para ver/imprimir su nota
+                val venta = m.txt("venta_id").toLongOrNull()
+                FilaLista(m.txt("que"), "${m.txt("ref")} · ${fechaCorta(m.txt("fecha"))}" + (venta?.let { " · ${m.txt("numero")} (tocar para ver)" } ?: ""),
+                    onClick = venta?.let { id -> { abrirNota(id) } }) {
                     Text(m.txt("delta"), style = Texto.Fila, color = if (m.txt("entrada") == "true") Altiplano.Exito else Altiplano.TextoSecundario)
                 }
             }

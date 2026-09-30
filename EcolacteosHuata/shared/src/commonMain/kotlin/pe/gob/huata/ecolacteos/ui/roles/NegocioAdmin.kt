@@ -18,6 +18,7 @@ import pe.gob.huata.ecolacteos.ui.componentes.*
 @Composable
 fun NegocioReal(e: EstadoAdmin) {
     val periodo = listOf("dia", "semana", "mes")[e.periodo]
+    val abrirNota = rememberAbrirNota()
     CargaServidor("/api/v1/admin/negocio?periodo=$periodo") { d, _ ->
         val v = d.obj("ventas") ?: JsonObject(emptyMap())
         val prod = d.obj("produccion") ?: JsonObject(emptyMap())
@@ -77,12 +78,13 @@ fun NegocioReal(e: EstadoAdmin) {
 
             val ultimas = v.lista("ultimas")
             if (ultimas.isNotEmpty()) {
-                Seccion("Últimas ventas")
+                Seccion("Últimas ventas · toca para ver su nota")
                 ultimas.forEach { u ->
                     FilaLista(
                         "${u.txt("cliente")} · ${formatear(u.num("cantidad"), 0)} ${u.txt("producto").lowercase()}",
                         "${fechaCorta(u.txt("vendida_en"))} ${u.txt("vendida_en").drop(11).take(5)}" +
                             (u.txt("vendedor").takeIf { it.isNotEmpty() }?.let { " · $it" } ?: ""),
+                        onClick = u.txt("id").toLongOrNull()?.let { id -> { abrirNota(id) } },
                     ) { Text(soles(u.num("total")), style = Texto.Fila, color = Altiplano.Texto) }
                 }
             }
