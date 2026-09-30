@@ -220,6 +220,29 @@
             </table>
         </section>
 
+        {{-- ---------------------------------------------------- ADULTERACIONES --}}
+        <section x-show="seccion === 'adulteraciones' && !cargando && !error">
+            <h1>Adulteraciones</h1>
+            <p class="sub">Proveedores a quienes Calidad les detectó agua añadida. La 1.ª vez se paga esa entrega a precio reducido; la 2.ª vez se les da de baja.</p>
+            <div class="tarjetas" style="margin-bottom: 14px">
+                <div class="tarjeta"><div class="eti">Dados de baja</div><div class="valor" x-text="d.de_baja ?? 0"></div><div class="apoyo">2.ª adulteración</div></div>
+                <div class="tarjeta"><div class="eti">Con advertencia</div><div class="valor" x-text="d.advertidos ?? 0"></div><div class="apoyo">1.ª adulteración, siguen entregando</div></div>
+            </div>
+            <div class="pestanas">
+                <button :class="{ activo: adulteracion === 'todos' }" @click="adulteracion = 'todos'">Todos</button>
+                <button :class="{ activo: adulteracion === 'baja' }" @click="adulteracion = 'baja'">Dados de baja</button>
+                <button :class="{ activo: adulteracion === 'advertidos' }" @click="adulteracion = 'advertidos'">Con advertencia</button>
+            </div>
+            <input x-model="buscar" placeholder="Buscar por nombre, DNI, comunidad o vehículo" style="margin-bottom: 12px">
+            <table class="lista"><tr><th>Nombre</th><th>DNI</th><th>Comunidad</th><th class="num">Veces</th><th>Última</th><th>Estado</th></tr>
+                <template x-for="p in adulteradosFiltrados()" :key="p.id"><tr class="clic" @click="verAdulterado(p)">
+                    <td x-text="p.nombre"></td><td x-text="p.dni"></td><td x-text="p.comunidad + ' · ' + p.vehiculo"></td>
+                    <td class="num" x-text="p.veces.length"></td><td x-text="fechaCorta(p.ultima)"></td>
+                    <td><span class="chip" :class="p.de_baja ? 'mal' : 'ojo'" x-text="p.de_baja ? 'Dado de baja' : 'Advertencia'"></span></td></tr></template>
+                <tr x-show="!adulteradosFiltrados().length"><td colspan="6" x-text="(d.proveedores || []).length ? 'Nadie coincide con la búsqueda.' : 'No hay proveedores sancionados por adulteración.'"></td></tr>
+            </table>
+        </section>
+
         {{-- ---------------------------------------------------- CAMBIOS DE ZONA --}}
         <section x-show="seccion === 'solicitudes' && !cargando && !error">
             <h1>Cambios de zona</h1>
@@ -316,7 +339,7 @@
                         <label>Enviar la nota al correo (opcional)</label>
                         <input type="email" x-model="f.correo" placeholder="cliente@gmail.com">
                         <div class="aviso error" x-show="f.error" x-text="f.error"></div>
-                        <button class="btn ancho" @click="registrarVenta()" :disabled="f.enviando" x-text="f.enviando ? 'Registrando…' : 'Registrar venta'"></button>
+                        <button class="btn ancho" @click="registrarVenta()" :disabled="!!f.enviando" x-text="f.enviando ? 'Registrando…' : 'Registrar venta'"></button>
                     </div>
                 </div>
             </div>
@@ -389,7 +412,7 @@
         <div x-show="f.con_acceso"><label>Clave inicial (mínimo 6)</label><input x-model="f.clave"></div>
         <div class="aviso error" x-show="f.error" x-text="f.error"></div>
         <div class="pie"><button class="btn gris" @click="ventana = null">Cancelar</button>
-            <button class="btn" @click="guardarProveedor()" :disabled="f.enviando" x-text="f.enviando ? 'Guardando…' : 'Agregar proveedor'"></button></div>
+            <button class="btn" @click="guardarProveedor()" :disabled="!!f.enviando" x-text="f.enviando ? 'Guardando…' : 'Agregar proveedor'"></button></div>
     </div>
 
     {{-- nuevo trabajador --}}
@@ -407,7 +430,24 @@
         <p class="sub" style="margin-top: 10px">Los productores se agregan desde Proveedores, con "acceso a la app".</p>
         <div class="aviso error" x-show="f.error" x-text="f.error"></div>
         <div class="pie"><button class="btn gris" @click="ventana = null">Cancelar</button>
-            <button class="btn" @click="guardarTrabajador()" :disabled="f.enviando" x-text="f.enviando ? 'Guardando…' : 'Agregar trabajador'"></button></div>
+            <button class="btn" @click="guardarTrabajador()" :disabled="!!f.enviando" x-text="f.enviando ? 'Guardando…' : 'Agregar trabajador'"></button></div>
+    </div>
+
+    {{-- detalle de adulteraciones de un proveedor --}}
+    <div class="ventana" x-show="ventana === 'adulterado'">
+        <h3 x-text="f.adulterado?.nombre"></h3>
+        <p class="sub" x-text="'DNI ' + (f.adulterado?.dni || '') + ' · ' + (f.adulterado?.comunidad || '') + ' · ' + (f.adulterado?.vehiculo || '')"></p>
+        <div class="aviso error" x-show="f.adulterado?.de_baja" x-text="'Dado de baja: ' + (f.adulterado?.motivo_baja || 'segunda adulteración')"></div>
+        <table class="lista"><tr><th>Vez</th><th>Día</th><th class="num">Agua añadida</th><th>Medida</th></tr>
+            <template x-for="v in f.adulterado?.veces || []"><tr>
+                <td x-text="v.nivel + '.ª'"></td>
+                <td x-text="fechaCorta(v.fecha) + (v.litros != null ? ' · ' + num(v.litros) + ' L' : '')"></td>
+                <td class="num" x-text="v.agua_anadida != null ? num(v.agua_anadida) + ' %' : '—'"></td>
+                <td><span class="chip" :class="v.medida === 'BAJA_DEFINITIVA' ? 'mal' : 'ojo'"
+                          x-text="v.medida === 'BAJA_DEFINITIVA' ? 'Baja definitiva' : 'Precio reducido' + (v.precio_aplicado ? ' (' + soles(v.precio_aplicado) + '/L)' : '')"></span>
+                    <div class="apoyo" style="color: var(--texto-3); font-size: 12px; margin-top: 3px" x-show="v.analista" x-text="'Analizó: ' + v.analista + (v.muestra ? ' · muestra de ' + v.muestra.toLowerCase() : '')"></div></td></tr></template>
+        </table>
+        <div class="pie"><button class="btn gris" @click="ventana = null">Cerrar</button></div>
     </div>
 
     {{-- detalle de boleta --}}
@@ -429,8 +469,8 @@
     <div class="ventana" x-show="ventana === 'pagar'">
         <h3 x-text="f.titulo"></h3>
         <p class="sub">¿Cómo se pagó?</p>
-        <div class="dos"><button class="btn" :disabled="f.enviando" @click="confirmarPago('EFECTIVO')">Efectivo</button>
-            <button class="btn" :disabled="f.enviando" @click="confirmarPago('YAPE')">Yape</button></div>
+        <div class="dos"><button class="btn" :disabled="!!f.enviando" @click="confirmarPago('EFECTIVO')">Efectivo</button>
+            <button class="btn" :disabled="!!f.enviando" @click="confirmarPago('YAPE')">Yape</button></div>
         <div class="aviso error" x-show="f.error" x-text="f.error"></div>
         <div class="pie"><button class="btn gris" @click="ventana = null">Cancelar</button></div>
     </div>
@@ -441,7 +481,7 @@
         <label>Correo del cliente</label><input type="email" x-model="f.correo" placeholder="cliente@gmail.com">
         <div class="aviso error" x-show="f.error" x-text="f.error"></div>
         <div class="pie"><button class="btn gris" @click="ventana = null">Cancelar</button>
-            <button class="btn" @click="enviarCorreo()" :disabled="f.enviando" x-text="f.enviando ? 'Enviando…' : 'Enviar'"></button></div>
+            <button class="btn" @click="enviarCorreo()" :disabled="!!f.enviando" x-text="f.enviando ? 'Enviando…' : 'Enviar'"></button></div>
     </div>
 
     {{-- nueva orden de compra --}}
@@ -457,7 +497,7 @@
         <datalist id="proveedores-comerciales"><template x-for="p in d.proveedores || []"><option :value="p"></option></template></datalist>
         <div class="aviso error" x-show="f.error" x-text="f.error"></div>
         <div class="pie"><button class="btn gris" @click="ventana = null">Cancelar</button>
-            <button class="btn" @click="emitirOrden()" :disabled="f.enviando" x-text="f.enviando ? 'Emitiendo…' : 'Emitir orden'"></button></div>
+            <button class="btn" @click="emitirOrden()" :disabled="!!f.enviando" x-text="f.enviando ? 'Emitiendo…' : 'Emitir orden'"></button></div>
     </div>
 </div>
 

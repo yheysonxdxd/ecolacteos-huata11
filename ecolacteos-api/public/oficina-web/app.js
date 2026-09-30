@@ -44,6 +44,7 @@ function oficina() {
     semana: null,
     dinero: 'ventas',
     padron: 'proveedores',
+    adulteracion: 'todos',
     buscar: '',
 
     soles, num, fechaCorta, hora, TIPO_CLIENTE, ROLES, esCorreo,
@@ -66,6 +67,7 @@ function oficina() {
         { id: 'dinero', nombre: 'Dinero · ventas y pagos', grupo: 'Administración' },
         { id: 'padron', nombre: 'Padrón', grupo: 'Administración' },
         { id: 'calidad', nombre: 'Calidad por vehículo', grupo: 'Administración' },
+        { id: 'adulteraciones', nombre: 'Adulteraciones', grupo: 'Administración' },
         { id: 'solicitudes', nombre: 'Cambios de zona', grupo: 'Administración' },
         { id: 'conciliacion', nombre: 'Conciliación', grupo: 'Administración' },
         { id: 'costos', nombre: 'Costos y rendimiento', grupo: 'Administración' },
@@ -139,7 +141,7 @@ function oficina() {
               : await this.api('/admin/pagos' + (this.semana ? '?semana=' + this.semana : ''));
             break;
           case 'padron': this.d = await this.api('/admin/padron'); break;
-          case 'calidad': case 'solicitudes': case 'conciliacion': case 'costos': case 'sesiones':
+          case 'calidad': case 'adulteraciones': case 'solicitudes': case 'conciliacion': case 'costos': case 'sesiones':
             this.d = await this.api('/admin/' + this.seccion); break;
           case 'vender': this.d = await this.api('/compras/ventas-datos'); this.nuevaVenta(); break;
           case 'inventario': this.d = await this.api('/compras/inventario'); break;
@@ -166,7 +168,7 @@ function oficina() {
     },
 
     async abrirNuevoProveedor() {
-      this.f = { nombre: '', dni: '', comunidad_id: null, vehiculo_id: null, promedio: '', vacas: '', con_acceso: false, clave: '', error: null };
+      this.f = { nombre: '', dni: '', comunidad_id: null, vehiculo_id: null, promedio: '', vacas: '', con_acceso: false, clave: '', error: null, enviando: false };
       try {
         const b = await this.api('/sync/bootstrap');
         this.f.comunidades = b.comunidades || [];
@@ -192,8 +194,20 @@ function oficina() {
       }, `✓ ${f.nombre.trim()} agregado al padrón` + (f.con_acceso ? ' · entra a la app con su DNI' : ''));
     },
 
+    // -------------------------------------------------------- adulteraciones
+    adulteradosFiltrados() {
+      const b = this.buscar.trim().toLowerCase();
+      return (this.d.proveedores || [])
+        .filter((p) => this.adulteracion === 'todos' || (this.adulteracion === 'baja') === p.de_baja)
+        .filter((p) => !b || [p.nombre, p.dni, p.comunidad, p.vehiculo].join(' ').toLowerCase().includes(b));
+    },
+    verAdulterado(p) {
+      this.f = { adulterado: p };
+      this.ventana = 'adulterado';
+    },
+
     abrirNuevoTrabajador() {
-      this.f = { nombre: '', dni: '', rol: null, clave: '', telefono: '', ver: false, error: null };
+      this.f = { nombre: '', dni: '', rol: null, clave: '', telefono: '', ver: false, error: null, enviando: false };
       this.ventana = 'trabajador';
     },
     async guardarTrabajador() {
@@ -323,7 +337,7 @@ function oficina() {
 
     // --------------------------------------------------------------- órdenes
     abrirOrden() {
-      this.f = { insumo_id: null, cantidad: '', proveedor: '', error: null };
+      this.f = { insumo_id: null, cantidad: '', proveedor: '', error: null, enviando: false };
       this.ventana = 'orden';
     },
     async emitirOrden() {

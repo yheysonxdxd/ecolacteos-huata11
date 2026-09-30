@@ -43,6 +43,7 @@ Route::prefix('v1')->group(function () {
         Route::get('admin/pagos/{id}',   [Api\AdminPagosController::class, 'detalle'])->whereNumber('id');
         Route::get('admin/padron',       [Api\AdminAppController::class, 'padron']);
         Route::get('admin/calidad',      [Api\AdminAppController::class, 'calidad']);
+        Route::get('admin/adulteraciones', [Api\AdminAppController::class, 'adulteraciones']);
         Route::get('admin/solicitudes',  [Api\AdminAppController::class, 'solicitudes']);
         Route::post('admin/solicitudes/{id}/resolver', [Api\AdminAppController::class, 'resolverSolicitud']);
         Route::get('admin/conciliacion', [Api\AdminAppController::class, 'conciliacion']);

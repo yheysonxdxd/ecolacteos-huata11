@@ -123,6 +123,59 @@ class AdminAppController extends Controller
         return response()->json(['vehiculos' => $filas]);
     }
 
+    /**
+     * GET /api/v1/admin/adulteraciones — proveedores sancionados por adulteración:
+     * los dados de baja (2.ª vez) primero y luego los que tienen su 1.ª advertencia,
+     * cada uno con el detalle de cada vez que se le detectó.
+     */
+    public function adulteraciones()
+    {
+        $sanciones = DB::table('sanciones as s')
+            ->join('proveedores as p', 'p.id', '=', 's.proveedor_id')
+            ->join('comunidades as c', 'c.id', '=', 'p.comunidad_id')
+            ->join('vehiculos as v', 'v.id', '=', 'p.vehiculo_id')
+            ->leftJoin('analisis_calidad as a', 'a.id', '=', 's.analisis_id')
+            ->leftJoin('entregas as e', 'e.id', '=', 'a.entrega_id')
+            ->leftJoin('users as u', 'u.id', '=', 's.resuelta_por')
+            ->where('s.tipo', 'ADULTERACION')
+            ->orderBy('s.created_at')->orderBy('s.id')
+            ->get(['s.proveedor_id', 's.nivel', 's.medida', 's.precio_aplicado', 's.detalle', 's.created_at',
+                'p.nombre', 'p.dni', 'p.estado', 'p.motivo_baja', 'c.nombre as comunidad', 'v.codigo as vehiculo',
+                'a.agua_anadida', 'a.muestra', 'e.fecha', 'e.litros', 'u.name as analista']);
+
+        $proveedores = $sanciones->groupBy('proveedor_id')->map(function ($filas) {
+            $p = $filas->first();
+            $veces = $filas->map(fn ($s) => [
+                'nivel' => (int) $s->nivel,
+                'fecha' => $s->fecha ?? substr((string) $s->created_at, 0, 10),
+                'litros' => $s->litros !== null ? (float) $s->litros : null,
+                'agua_anadida' => $s->agua_anadida !== null ? (float) $s->agua_anadida : null,
+                'muestra' => $s->muestra,
+                'medida' => $s->medida,
+                'precio_aplicado' => $s->precio_aplicado !== null ? (float) $s->precio_aplicado : null,
+                'detalle' => $s->detalle,
+                'analista' => $s->analista,
+            ])->values();
+
+            return [
+                'id' => (int) $p->proveedor_id, 'nombre' => $p->nombre, 'dni' => $p->dni,
+                'comunidad' => $p->comunidad, 'vehiculo' => $p->vehiculo,
+                'estado' => $p->estado, 'motivo_baja' => $p->motivo_baja,
+                'de_baja' => $p->estado === 'BAJA',
+                'ultima' => $veces->last()['fecha'],
+                'veces' => $veces,
+            ];
+        })
+            ->sortBy([['de_baja', 'desc'], ['ultima', 'desc']])
+            ->values();
+
+        return response()->json([
+            'de_baja' => $proveedores->where('de_baja', true)->count(),
+            'advertidos' => $proveedores->where('de_baja', false)->count(),
+            'proveedores' => $proveedores,
+        ]);
+    }
+
     /** GET /api/v1/admin/solicitudes — cambios de zona, pendientes primero. */
     public function solicitudes()
     {
