@@ -17,6 +17,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->redirectGuestsTo(fn ($request) => $request->is('api/*') ? null : '/');
         $middleware->appendToGroup('api', [
             \App\Http\Middleware\LimitarLogin::class,
+            \App\Http\Middleware\UsuarioActivo::class,
             \App\Http\Middleware\VerificarRol::class,
         ]);
     })

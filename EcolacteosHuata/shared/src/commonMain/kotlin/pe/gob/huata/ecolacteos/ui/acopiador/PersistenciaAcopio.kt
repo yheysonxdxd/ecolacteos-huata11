@@ -39,7 +39,17 @@ private data class CopiaAcopio(
 
 private val json = Json { ignoreUnknownKeys = true }
 
-private fun claveAlmacen() = "acopio_" + if (Sesion.desdeServidor) "real" else "demo"
+// una por acopiador: en un celular compartido cada uno ve y envía solo lo suyo
+private fun claveAlmacen() = "acopio_" + if (Sesion.desdeServidor) "real_${Sesion.usuarioId}" else "demo"
+
+/** Clave con la que se llenó EstadoAcopio en memoria (para vaciarlo si entra otro). */
+private var claveEnMemoria: String? = null
+
+/** Antes se guardaba todo en "acopio_real": pasa al primer acopiador que entre. */
+private fun migrarClaveVieja(clave: String) {
+    if (!clave.startsWith("acopio_real_") || AlmacenLocal.leer(clave) != null) return
+    AlmacenLocal.leer("acopio_real")?.let { AlmacenLocal.guardar(clave, it); AlmacenLocal.borrar("acopio_real") }
+}
 
 @OptIn(ExperimentalTime::class)
 private fun ahoraPeruLocal(): String =
@@ -51,6 +61,14 @@ fun RecordarAcopio(estado: EstadoAcopio) {
     val scope = rememberCoroutineScope()
     val clave = claveAlmacen()
     LaunchedEffect(clave) {
+        // entró otro acopiador (u otro modo): lo del anterior ya está guardado con su clave
+        if (claveEnMemoria != null && claveEnMemoria != clave) {
+            estado.entregas.clear()
+            estado.enviados.clear()
+            ResultadoSync.mensaje = null
+        }
+        claveEnMemoria = clave
+        migrarClaveVieja(clave)
         val atrasadas = restaurar(estado, clave)
         if (atrasadas > 0) sincronizarAcopio(estado, scope)
         snapshotFlow { estado.entregas.toMap() to estado.enviados.toList() }
@@ -59,7 +77,7 @@ fun RecordarAcopio(estado: EstadoAcopio) {
 }
 
 /** Devuelve cuántas entregas sin enviar de días anteriores se recuperaron. */
-private fun restaurar(estado: EstadoAcopio, clave: String): Int {
+internal fun restaurar(estado: EstadoAcopio, clave: String): Int {
     // primero los proveedores nuevos sin subir, para que sus entregas no se descarten
     if (Sesion.desdeServidor) ProveedoresNuevos.restaurar()
     val texto = AlmacenLocal.leer(clave) ?: return 0
@@ -90,7 +108,7 @@ private fun restaurar(estado: EstadoAcopio, clave: String): Int {
     return atrasadas
 }
 
-private fun guardar(clave: String, entregas: Map<Long, Entrega>, enviados: List<Long>) {
+internal fun guardar(clave: String, entregas: Map<Long, Entrega>, enviados: List<Long>) {
     val existen = Demo.proveedores.map { it.id }.toSet()
     val copia = CopiaAcopio(
         entregas = entregas.values.filter { it.proveedorId in existen }.map { e ->

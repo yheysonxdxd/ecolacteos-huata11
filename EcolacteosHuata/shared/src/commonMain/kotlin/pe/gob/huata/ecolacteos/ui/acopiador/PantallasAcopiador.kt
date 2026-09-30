@@ -57,7 +57,8 @@ class EstadoAcopio {
 
     fun guardar(p: Proveedor, litros: Double, ausente: Boolean = false) {
         entregas[p.id] = Entrega(
-            uuid = "e-${p.id}-${n++}", proveedorId = p.id, fecha = "hoy",
+            // único de verdad: "e-{id}-{n}" se repetía si se recreaba el estado (girar el celular)
+            uuid = nuevoUuid(), proveedorId = p.id, fecha = "hoy",
             litros = if (ausente) 0.0 else litros, ausente = ausente, registradoEn = "ahora",
         )
         enviados.remove(p.id)

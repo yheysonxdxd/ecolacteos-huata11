@@ -97,6 +97,7 @@ private fun PadronReal() {
                         ChipEstado(if (u.txt("activo") == "true") Estado.ACEPTADO else Estado.RECHAZADO)
                     }
                 }
+                SesionesAbiertas()
             }
         }
     }

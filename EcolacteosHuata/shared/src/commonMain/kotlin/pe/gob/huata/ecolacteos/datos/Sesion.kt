@@ -18,9 +18,6 @@ import pe.gob.huata.ecolacteos.ui.acopiador.VehiculoElegido
  */
 object ConfigServidor {
     var baseUrl = "http://10.0.2.2:8000"
-    // usuario de prueba del DatabaseSeeder, usado solo en el modo demo
-    var dni = "40000001"
-    var password = "huata2026"
 }
 
 /** Sesión del usuario contra el servidor: token, rol y datos reales. */
@@ -161,9 +158,9 @@ object Sesion {
         this.token = token; this.usuarioId = usuarioId; this.nombre = nombre
     }
 
-    /** Solo el token para sincronizar en modo demo (no cambia los datos). */
+    /** Para enviar hace falta haber iniciado sesión (el demo ya no usa usuario fijo). */
     suspend fun asegurarToken() {
-        if (token == null) login(ConfigServidor.dni, ConfigServidor.password)
+        if (token == null) error("Inicia sesión para enviar a la base de datos")
     }
 
     fun cerrar() {

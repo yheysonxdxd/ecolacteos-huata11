@@ -36,7 +36,15 @@ import kotlin.time.ExperimentalTime
  * proveedores en el servidor.
  */
 object ProveedoresNuevos {
-    private const val CLAVE = "proveedores_nuevos"
+    private const val CLAVE_VIEJA = "proveedores_nuevos"
+    // una por acopiador (celular compartido); la vieja pasa al primero que entre
+    private val CLAVE: String get() {
+        val clave = "proveedores_nuevos_${Sesion.usuarioId}"
+        if (AlmacenLocal.leer(clave) == null) AlmacenLocal.leer(CLAVE_VIEJA)?.let {
+            AlmacenLocal.guardar(clave, it); AlmacenLocal.borrar(CLAVE_VIEJA)
+        }
+        return clave
+    }
     private val json = Json { ignoreUnknownKeys = true }
 
     /** Cambia cuando se agrega o se sube un proveedor (para refrescar la lista). */

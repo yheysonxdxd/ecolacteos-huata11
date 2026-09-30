@@ -39,6 +39,8 @@ Route::prefix('v1')->group(function () {
         Route::post('admin/solicitudes/{id}/resolver', [Api\AdminAppController::class, 'resolverSolicitud']);
         Route::get('admin/conciliacion', [Api\AdminAppController::class, 'conciliacion']);
         Route::get('admin/costos',       [Api\AdminAppController::class, 'costos']);
+        Route::get('admin/sesiones',     [Api\SesionesController::class, 'index']);
+        Route::post('admin/usuarios/{id}/cerrar-sesiones', [Api\SesionesController::class, 'cerrar']);
 
         // --- Planta (operario) en la app ---
         Route::get('planta/recetas',              [Api\PlantaAppController::class, 'recetasYTanque']);

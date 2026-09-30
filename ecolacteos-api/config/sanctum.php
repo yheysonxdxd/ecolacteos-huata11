@@ -50,7 +50,8 @@ return [
     |
     */
 
-    'expiration' => null,
+    // minutos; 30 días por defecto (la app de campo puede pasar días sin señal)
+    'expiration' => env('SANCTUM_EXPIRATION', 60 * 24 * 30),
 
     /*
     |--------------------------------------------------------------------------

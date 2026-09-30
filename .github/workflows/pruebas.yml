@@ -1,0 +1,57 @@
+# Corre las pruebas cada vez que se sube código a GitHub.
+# Si algo se rompe, GitHub marca el commit con una ✗ roja y avisa por correo.
+name: Pruebas
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend (Laravel)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ecolacteos-api
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: pdo_sqlite, sqlite3, mbstring, bcmath
+          coverage: none
+
+      - name: Dependencias
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Configuración de prueba
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      # phpunit.xml usa SQLite en memoria: no necesita MySQL
+      - name: Pruebas
+        run: php artisan test
+
+  app:
+    name: App (Kotlin Multiplatform)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: EcolacteosHuata
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Pruebas de la app
+        run: ./gradlew :shared:testAndroidHostTest --console=plain
+
+      - name: Compilar APK
+        run: ./gradlew :androidApp:assembleDebug --console=plain

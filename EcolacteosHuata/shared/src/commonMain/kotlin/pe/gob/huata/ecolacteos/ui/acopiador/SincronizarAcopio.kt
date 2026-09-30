@@ -30,6 +30,7 @@ private val cliente get() = ClienteSync(ConfigServidor.baseUrl) { Sesion.token }
 /** Lanza el envío de las entregas pendientes a la base de datos. */
 fun sincronizarAcopio(estado: EstadoAcopio, scope: CoroutineScope) {
     if (ResultadoSync.enviando) return
+    if (!Sesion.desdeServidor) { simularEnvioDemo(estado); return } // demo: nunca al servidor
     scope.launch {
         ResultadoSync.enviando = true
         ResultadoSync.mensaje = "Enviando a la base de datos…"
