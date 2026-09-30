@@ -30,7 +30,8 @@ class PagoService
         $monto  = 0.0;
 
         for ($d = $inicio->copy(); $d->lte($fin); $d->addDay()) {
-            $e = $entregas->firstWhere('fecha', $d->toDateString());
+            // fecha viene como Carbon (cast 'date'): se compara como texto Y-m-d
+            $e = $entregas->first(fn ($x) => $x->fecha->toDateString() === $d->toDateString());
             $aceptada = $e && ! $e->ausente && $e->estado_calidad === 'ACEPTADO';
 
             $detalle[] = [

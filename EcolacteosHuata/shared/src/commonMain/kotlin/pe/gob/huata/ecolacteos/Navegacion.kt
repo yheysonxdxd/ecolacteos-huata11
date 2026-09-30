@@ -37,7 +37,7 @@ fun destinosDe(rol: Rol): List<Destino> = when (rol) {
         Destino("acopiador/semana", "Semana", "Acumulado total y por proveedor", Icons.Outlined.BarChart),
     )
     Rol.CALIDAD -> listOf(
-        Destino("calidad/cola", "Cola", "Entregas por diagnosticar", Icons.Outlined.Checklist),
+        Destino("calidad/cola", "Muestreo", "Elige a cualquier proveedor para analizar", Icons.Outlined.Checklist),
         Destino("calidad/diagnostico", "Diagnóstico", "Lactoscan y veredicto en vivo", Icons.Outlined.Science),
         Destino("calidad/infractores", "Infractores", "Adulteración y leche significada", Icons.Outlined.ReportProblem),
         Destino("calidad/historial", "Historial", "Por proveedor y acopiador", Icons.Outlined.History),
@@ -61,6 +61,7 @@ fun destinosDe(rol: Rol): List<Destino> = when (rol) {
     )
     Rol.ADMIN -> listOf(
         Destino("admin/totales", "Totales", "Acopio, aceptación y ranking", Icons.Outlined.PieChart),
+        Destino("admin/negocio", "Dinero", "Ventas y pagos a proveedores", Icons.Outlined.Savings),
         Destino("admin/padron", "Padrón", "Proveedores y trabajadores", Icons.Outlined.People),
         Destino("admin/calidad", "Calidad", "Promedios por acopiador", Icons.Outlined.Science),
         Destino("admin/solicitudes", "Solicitudes", "Cambios de zona", Icons.Outlined.Notifications),

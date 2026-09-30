@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -163,8 +164,15 @@ private fun HojaRegistro(
     }
     val desvio = fila.proveedor.desvio(litros, parametros)
 
-    ModalBottomSheet(onDismissRequest = onCerrar, containerColor = Color(0xFF142333)) {
-        Column(Modifier.padding(horizontal = Medidas.Pantalla).padding(bottom = 22.dp)) {
+    ModalBottomSheet(
+        onDismissRequest = onCerrar, containerColor = Color(0xFF142333),
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), // abierta entera
+    ) {
+        // imePadding: la hoja sube con el teclado y el número de litros queda a la vista
+        Column(
+            Modifier.imePadding().verticalScroll(androidx.compose.foundation.rememberScrollState())
+                .padding(horizontal = Medidas.Pantalla).padding(bottom = 22.dp)
+        ) {
             Text(fila.proveedor.nombre, style = Texto.TituloPantalla, color = Altiplano.Texto)
             Spacer(Modifier.height(3.dp))
             Text(
@@ -173,9 +181,10 @@ private fun HojaRegistro(
             )
 
             Spacer(Modifier.height(20.dp))
-            StepperGrande(
+            CampoLitros( // teclado numérico al abrir; "Listo" guarda
                 valor = litros,
-                onCambio = { litros = it ?: 0.0 },
+                onCambio = { litros = it },
+                onListo = { onGuardar(litros) },
                 paso = 0.5,
                 unidad = fila.proveedor.promedioLitros
                     ?.let { "litros · promedio ${formatear(it)} L" }
@@ -219,6 +228,7 @@ private fun estadoDe(e: Entrega?): Estado = when {
     e.ausente -> Estado.NO_ENTREGO
     e.estadoCalidad == "ACEPTADO" -> Estado.ACEPTADO
     e.estadoCalidad == "RECHAZADO" -> Estado.RECHAZADO
+    e.estadoCalidad == ENVIADA -> Estado.SINCRONIZADO // "Enviado"
     else -> Estado.SIN_ENVIAR
 }
 

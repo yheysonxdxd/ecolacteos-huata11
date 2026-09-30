@@ -33,6 +33,10 @@ Route::prefix('v1')->group(function () {
 
         // --- Tablero del administrador en la app ---
         Route::get('admin/totales',      [Api\AdminAppController::class, 'totales']);
+        Route::get('admin/negocio',      [Api\AdminNegocioController::class, 'resumen']);
+        Route::get('admin/pagos',        [Api\AdminPagosController::class, 'semana']);
+        Route::post('admin/pagos/pagar', [Api\AdminPagosController::class, 'pagar']);
+        Route::get('admin/pagos/{id}',   [Api\AdminPagosController::class, 'detalle'])->whereNumber('id');
         Route::get('admin/padron',       [Api\AdminAppController::class, 'padron']);
         Route::get('admin/calidad',      [Api\AdminAppController::class, 'calidad']);
         Route::get('admin/solicitudes',  [Api\AdminAppController::class, 'solicitudes']);
@@ -41,6 +45,9 @@ Route::prefix('v1')->group(function () {
         Route::get('admin/costos',       [Api\AdminAppController::class, 'costos']);
         Route::get('admin/sesiones',     [Api\SesionesController::class, 'index']);
         Route::post('admin/usuarios/{id}/cerrar-sesiones', [Api\SesionesController::class, 'cerrar']);
+        Route::post('admin/proveedores',               [Api\AdminPadronController::class, 'nuevoProveedor']);
+        Route::post('admin/trabajadores',              [Api\AdminPadronController::class, 'nuevoTrabajador']);
+        Route::post('admin/trabajadores/{id}/activo',  [Api\AdminPadronController::class, 'cambiarActivo']);
 
         // --- Planta (operario) en la app ---
         Route::get('planta/recetas',              [Api\PlantaAppController::class, 'recetasYTanque']);
@@ -66,6 +73,7 @@ Route::prefix('v1')->group(function () {
         Route::get('calidad/entregas/{entrega}/brecha',    [Api\CalidadController::class, 'brecha']);
         Route::get('calidad/infractores', [Api\CalidadController::class, 'infractores']);
         Route::get('calidad/pendientes',  [Api\CalidadAppController::class, 'pendientes']);
+        Route::get('calidad/muestreo',    [Api\CalidadMuestreoController::class, 'entregas']);
         Route::get('calidad/historial',   [Api\CalidadAppController::class, 'historial']);
 
         /*

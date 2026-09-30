@@ -74,6 +74,7 @@ class SyncService
                     'registrado_en'  => $op['registrado_en'],
                     'recibido_en'    => now(),
                 ]);
+                AceptacionAutomatica::aplicar($e); // calidad es por muestreo
 
                 return $ok($e->id, [
                     'aviso_desvio' => $this->acopio->desvioPromedio($prov, (float) $e->litros),

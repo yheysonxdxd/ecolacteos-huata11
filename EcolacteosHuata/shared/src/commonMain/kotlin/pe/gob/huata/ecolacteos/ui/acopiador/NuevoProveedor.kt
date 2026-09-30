@@ -198,9 +198,12 @@ private fun HojaNuevoProveedor(onCerrar: () -> Unit, onAgregado: (String) -> Uni
         cursorColor = Altiplano.Exito,
     )
 
-    ModalBottomSheet(onDismissRequest = onCerrar, containerColor = Color(0xFF142333)) {
+    ModalBottomSheet(
+        onDismissRequest = onCerrar, containerColor = Color(0xFF142333),
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    ) {
         Column(
-            Modifier.verticalScroll(rememberScrollState())
+            Modifier.imePadding().verticalScroll(rememberScrollState())
                 .padding(horizontal = Medidas.Pantalla).padding(bottom = 22.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {

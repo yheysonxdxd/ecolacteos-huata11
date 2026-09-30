@@ -23,6 +23,10 @@ data class ResultadoOperacion(
     val error: String? = null,
     @kotlinx.serialization.SerialName("aviso_desvio") val avisoDesvio: JsonObject? = null,
     val veredicto: String? = null,
+    // corrección que el servidor ya no acepta: no reintentar, usar lo que quedó
+    val definitivo: Boolean = false,
+    val litros: Double? = null,
+    val ausente: Boolean? = null,
 )
 
 /**

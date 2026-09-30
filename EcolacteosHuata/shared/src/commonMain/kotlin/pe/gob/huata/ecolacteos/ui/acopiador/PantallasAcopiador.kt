@@ -72,8 +72,8 @@ fun ContenidoAcopiador(ruta: String, estado: EstadoAcopio, irA: (Int) -> Unit) {
     RecordarAcopio(estado)
     AltaProveedor(estado)
     val filas = Demo.proveedores.map {
-        FilaProveedor(it, Demo.comunidad(it.comunidadId).nombre, Demo.vehiculo(it.vehiculoId).codigo, estado.entregas[it.id])
-    }
+        FilaProveedor(it, Demo.comunidad(it.comunidadId).nombre, Demo.vehiculo(it.vehiculoId).codigo, estado.entregaParaMostrar(it.id))
+    }.cercaDeMiRuta()
     when (ruta) {
         "acopiador/hoy" -> PantallaHoy(filas, estado, irA)
         "acopiador/registrar" -> PantallaRegistrar(

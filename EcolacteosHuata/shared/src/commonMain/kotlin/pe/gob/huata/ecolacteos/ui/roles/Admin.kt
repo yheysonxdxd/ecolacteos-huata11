@@ -30,6 +30,7 @@ class EstadoAdmin {
 @Composable
 fun ContenidoAdmin(ruta: String, e: EstadoAdmin) {
     when (ruta) {
+        "admin/negocio" -> NegocioDemo()
         "admin/totales" -> {
             val litros = listOf(1214.0, 8460.0, 34120.0)[e.periodo]
             PantallaScroll {

@@ -17,6 +17,7 @@ import pe.gob.huata.ecolacteos.ui.componentes.*
 fun ContenidoAdminReal(ruta: String, e: EstadoAdmin) {
     when (ruta) {
         "admin/totales" -> TotalesReal(e)
+        "admin/negocio" -> DineroReal(e)
         "admin/padron" -> PadronReal()
         "admin/calidad" -> CalidadAdminReal()
         "admin/solicitudes" -> SolicitudesReal()
@@ -68,13 +69,14 @@ private fun TotalesReal(e: EstadoAdmin) {
 @Composable
 private fun PadronReal() {
     var verTrabajadores by remember { mutableStateOf(false) }
-    CargaServidor("/api/v1/admin/padron") { d, _ ->
+    CargaServidor("/api/v1/admin/padron") { d, recargar ->
         val provs = d.lista("proveedores")
         val trab = d.lista("trabajadores")
         PantallaScroll {
             Segmentos(listOf("Proveedores · ${provs.size}", "Trabajadores · ${trab.size}"), if (verTrabajadores) 1 else 0) {
                 verTrabajadores = it == 1
             }
+            AltasPadron(verTrabajadores, recargar)
             if (!verTrabajadores) {
                 provs.groupBy { it.txt("vehiculo") }.forEach { (vehiculo, lista) ->
                     Seccion("$vehiculo · ${lista.size}")
@@ -93,7 +95,7 @@ private fun PadronReal() {
                 }
             } else {
                 trab.forEach { u ->
-                    FilaLista(u.txt("nombre"), "DNI ${u.txt("dni")} · ${u.txt("rol").lowercase().replaceFirstChar { it.uppercase() }}") {
+                    FilaLista(u.txt("nombre"), "DNI ${u.txt("dni")} · ${u.txt("rol").lowercase().replaceFirstChar { it.uppercase() }}", onClick = { TrabajadorElegido.valor = u }) {
                         ChipEstado(if (u.txt("activo") == "true") Estado.ACEPTADO else Estado.RECHAZADO)
                     }
                 }

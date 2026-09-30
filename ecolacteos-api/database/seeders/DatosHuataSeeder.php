@@ -84,13 +84,16 @@ class DatosHuataSeeder extends Seeder
             'rendimiento_min' => 0.12, 'rendimiento_max' => 0.13, 'vida_util_dias' => 45,
         ]);
         $yogurt = Producto::create([
-            'nombre' => 'Yogurt natural', 'unidad' => 'baldes de 4 L',
-            'rendimiento_min' => 0.2375, 'rendimiento_max' => 0.2375, 'vida_util_dias' => 21,
+            // se mide y se vende por litro (0,95 L de yogurt por litro de leche)
+            'nombre' => 'Yogurt natural', 'unidad' => 'litros',
+            'rendimiento_min' => 0.95, 'rendimiento_max' => 0.95, 'vida_util_dias' => 21,
         ]);
 
         foreach ([
-            [$paria,  'MAYORISTA', 19.00], [$paria,  'DIRECTO', 20.00], [$paria,  'PLANTA', 21.00],
-            [$yogurt, 'MAYORISTA', 19.00], [$yogurt, 'DIRECTO', 20.00], [$yogurt, 'PLANTA', 21.00],
+            // queso: mayoristas 21, vecinos de Huata (DIRECTO) 20, proveedores de leche (PLANTA) 19
+            // yogurt: S/ 5 el litro para todos
+            [$paria,  'MAYORISTA', 21.00], [$paria,  'DIRECTO', 20.00], [$paria,  'PLANTA', 19.00],
+            [$yogurt, 'MAYORISTA', 5.00], [$yogurt, 'DIRECTO', 5.00], [$yogurt, 'PLANTA', 5.00],
         ] as [$producto, $tipo, $precio]) {
             PrecioVenta::create([
                 'producto_id' => $producto->id, 'tipo_cliente' => $tipo,

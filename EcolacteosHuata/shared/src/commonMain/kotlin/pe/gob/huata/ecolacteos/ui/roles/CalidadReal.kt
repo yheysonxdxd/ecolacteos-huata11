@@ -52,7 +52,7 @@ fun ContenidoCalidadReal(ruta: String, irA: (Int) -> Unit) {
         }
     }
     when (ruta) {
-        "calidad/cola" -> ColaReal(irA)
+        "calidad/cola" -> MuestreoReal(irA) // antes ColaReal: calidad ahora es por muestreo
         "calidad/diagnostico" -> DiagnosticoReal(irA)
         "calidad/infractores" -> InfractoresReal()
         else -> HistorialReal()

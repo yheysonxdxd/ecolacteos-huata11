@@ -14,7 +14,8 @@ use Illuminate\Support\Facades\DB;
  * la fila pasa a tener el uuid nuevo (y reemplaza_uuid = el anterior) y el
  * cambio queda en entrega_correcciones.
  *
- * Solo se corrige mientras calidad no la haya analizado (estado PENDIENTE).
+ * Solo se corrige mientras calidad no la haya analizado y planta no la haya
+ * usado en un lote (las entregas se aceptan solas: ver AceptacionAutomatica).
  */
 class CorreccionEntrega
 {
@@ -41,10 +42,26 @@ class CorreccionEntrega
             return null;
         }
 
-        if ($e->estado_calidad !== 'PENDIENTE') {
-            throw new \RuntimeException(
-                "{$e->proveedor->nombre} ya fue analizada en planta ({$e->estado_calidad}); no se puede corregir desde la app."
-            );
+        // Ya no se puede cambiar: se responde ERROR "definitivo" con los litros que
+        // quedaron, para que la app deje de reintentar y muestre el dato real.
+        $motivo = match (true) {
+            $e->analisis()->exists() => 'calidad ya la analizó',
+            $e->lotes()->exists()    => 'su leche ya entró a producción',
+            default                  => null,
+        };
+        if ($motivo) {
+            $quedo = $e->ausente ? 'como "no entregó"' : 'en ' . rtrim(rtrim(number_format((float) $e->litros, 2, ',', ''), '0'), ',') . ' L';
+
+            return [
+                'uuid'       => $uuid,
+                'estado'     => 'ERROR',
+                'id'         => $e->id,
+                'error'      => "No se cambió la entrega de {$e->proveedor->nombre} del "
+                    . $e->fecha->format('d/m') . ": $motivo. Quedó $quedo. Si está mal, avisa al administrador.",
+                'definitivo' => true,
+                'litros'     => (float) $e->litros,
+                'ausente'    => (bool) $e->ausente,
+            ];
         }
 
         $ausente = (bool) ($op['ausente'] ?? false);
@@ -77,6 +94,7 @@ class CorreccionEntrega
             'confirmada_proveedor' => false,
             'confirmada_en'        => null,
         ]);
+        AceptacionAutomatica::aplicar($e); // el monto sigue a los litros nuevos
 
         return ['uuid' => $uuid, 'estado' => 'APLICADO', 'id' => $e->id, 'corregida' => true];
     }

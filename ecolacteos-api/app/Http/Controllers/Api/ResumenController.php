@@ -114,6 +114,7 @@ class ResumenController extends Controller
                     'semana' => $s->semana_iso, 'inicio' => $s->inicio, 'fin' => $s->fin,
                     'litros' => (float) $s->litros_aceptados, 'monto' => (float) $s->monto,
                     'precio' => (float) $s->precio_litro, 'estado' => $s->estado, 'pagado_el' => $s->pagado_el,
+                    'metodo' => $s->metodo ?? null,
                 ])
         );
 

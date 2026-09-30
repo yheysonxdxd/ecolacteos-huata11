@@ -127,7 +127,8 @@ private fun PagosReal(pagos: List<JsonObject>) {
                 Text(soles(p.num("monto")), style = Texto.DatoMedio, color = Altiplano.Texto)
                 Text(
                     "${formatear(p.num("litros"))} L aceptados · ${soles(p.num("precio"))} por litro" +
-                        (p.txt("pagado_el").takeIf { it.isNotEmpty() }?.let { " · pagado el ${fechaCorta(it)}" } ?: ""),
+                        (p.txt("pagado_el").takeIf { it.isNotEmpty() }?.let { " · pagado el ${fechaCorta(it)}" } ?: "") +
+                        (p.txt("metodo").takeIf { it.isNotEmpty() }?.let { " (${metodoTexto(it)})" } ?: ""),
                     style = Texto.Apoyo, color = Altiplano.TextoTerciario,
                 )
             }

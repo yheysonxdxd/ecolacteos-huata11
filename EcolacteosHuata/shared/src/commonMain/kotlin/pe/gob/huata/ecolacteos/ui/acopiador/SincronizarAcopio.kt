@@ -128,6 +128,9 @@ private suspend fun enviar(estado: EstadoAcopio): Pair<Int, List<String>> {
         cliente.push(opsEnt).resultados.zip(entregas.keys.toList()).forEach { (r, provId) ->
             if (r.estado == "APLICADO" || r.estado == "DUPLICADO") {
                 estado.enviados.add(provId); ok++
+            } else if (r.definitivo) {
+                aceptarRechazoDefinitivo(estado, provId, r)
+                errores += r.error ?: "No se pudo cambiar la entrega"
             } else {
                 errores += "${Demo.proveedores.first { it.id == provId }.nombre}: ${r.error}"
             }

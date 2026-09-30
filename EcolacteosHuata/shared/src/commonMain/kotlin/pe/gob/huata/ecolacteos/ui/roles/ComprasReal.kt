@@ -24,7 +24,7 @@ object ComprasReal {
     var version by mutableStateOf(0)
 }
 
-private val NOMBRE_CANAL = mapOf("MAYORISTA" to "Mayorista", "DIRECTO" to "Mercados / directo", "PLANTA" to "Público en planta")
+private val NOMBRE_CANAL = mapOf("MAYORISTA" to "Mayorista", "DIRECTO" to "Vecino de Huata", "PLANTA" to "Proveedor de leche")
 
 /** Compras con la base: inventario, órdenes de compra, ventas y movimientos. */
 @Composable

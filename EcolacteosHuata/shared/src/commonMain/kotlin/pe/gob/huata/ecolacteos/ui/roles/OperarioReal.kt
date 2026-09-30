@@ -82,11 +82,12 @@ private fun NuevaOrdenReal(irA: (Int) -> Unit) {
         val sinLeche = litros > tanque
 
         PantallaScroll {
-            Segmentos(recetas.map { it.txt("nombre") }, OperarioReal.receta) { OperarioReal.receta = it }
+            Segmentos(recetas.map { it.txt("nombre") }, OperarioReal.receta) { OperarioReal.receta = it; LimiteOrden.aviso = null }
+            ElegirQuesos(r, tanque)
             Tarjeta {
                 Text("Litros a procesar · leche aceptada disponible ${formatear(tanque)} L", style = Texto.Cuerpo, color = Altiplano.TextoSecundario)
                 Spacer(Modifier.height(10.dp))
-                StepperGrande(litros, { OperarioReal.litros = (it ?: 50.0).coerceAtLeast(50.0) }, paso = 50.0, minimo = 50.0, decimales = 0, unidad = "litros · pasos de 50", fueraDeRango = sinLeche)
+                StepperGrande(litros, { val (l, aviso) = limitarLitros(it ?: 50.0, tanque); OperarioReal.litros = l; LimiteOrden.aviso = aviso }, paso = 50.0, minimo = 50.0, decimales = 0, unidad = "litros · pasos de 50", fueraDeRango = sinLeche)
             }
             Tarjeta {
                 Seccion("Insumos requeridos")

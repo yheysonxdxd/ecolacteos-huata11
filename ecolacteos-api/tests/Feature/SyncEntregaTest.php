@@ -101,13 +101,68 @@ class SyncEntregaTest extends TestCase
     public function test_no_se_corrige_lo_que_calidad_ya_analizo(): void
     {
         $this->push($this->opEntrega(self::U1, 18.5));
-        DB::table('entregas')->update(['estado_calidad' => 'ACEPTADO']);
+        DB::table('analisis_calidad')->insert([
+            'uuid' => '99999999-0000-4000-8000-000000000001', 'entrega_id' => $this->entrega()->id,
+            'muestra' => 'CAMPO', 'veredicto' => 'ACEPTADO',
+            'analista_id' => $this->usuarios['CALIDAD']->id, 'tomada_en' => now(),
+        ]);
 
         $r = $this->push($this->opEntrega(self::U2, 30));
 
         $this->assertSame('ERROR', $r[0]['estado']);
-        $this->assertStringContainsString('ya fue analizada', $r[0]['error']);
+        $this->assertStringContainsString('calidad ya la analizó', $r[0]['error']);
+        $this->assertStringContainsString('Quedó en 18,5 L', $r[0]['error']);
+        $this->assertTrue($r[0]['definitivo']);
+        $this->assertEquals(18.5, $r[0]['litros']);
         $this->assertEquals(18.5, $this->entrega()->litros);
+    }
+
+    // --- calidad por muestreo: toda entrega nace aceptada ---
+
+    public function test_entrega_nueva_queda_aceptada_y_con_monto(): void
+    {
+        $this->push($this->opEntrega(self::U1, 20));
+
+        $e = $this->entrega();
+        $this->assertSame('ACEPTADO', $e->estado_calidad);
+        $this->assertEquals(1.80, $e->precio_litro);
+        $this->assertEquals(36, $e->monto);
+    }
+
+    public function test_no_entrego_queda_aceptada_con_monto_cero(): void
+    {
+        $this->push($this->opEntrega(self::U1, 0, ausente: true));
+        $this->assertSame('ACEPTADO', $this->entrega()->estado_calidad);
+        $this->assertEquals(0, $this->entrega()->monto);
+    }
+
+    public function test_correccion_recalcula_el_monto(): void
+    {
+        $this->push($this->opEntrega(self::U1, 20));
+        $this->push($this->opEntrega(self::U2, 10));
+        $this->assertEquals(18, $this->entrega()->monto);
+    }
+
+    public function test_no_se_corrige_lo_que_ya_entro_a_produccion(): void
+    {
+        $this->push($this->opEntrega(self::U1, 20));
+        $producto = DB::table('productos')->insertGetId([
+            'nombre' => 'Queso', 'unidad' => 'un', 'rendimiento_min' => 0.12, 'rendimiento_max' => 0.13, 'vida_util_dias' => 45,
+        ]);
+        $lote = DB::table('lotes')->insertGetId([
+            'uuid' => '88888888-0000-4000-8000-000000000001', 'codigo' => 'L-1', 'producto_id' => $producto,
+            'litros_leche' => 20, 'esperado_min' => 2, 'esperado_max' => 3, 'estado' => 'EN_PROCESO',
+            'vence_el' => now()->addDays(45)->toDateString(),
+            'operario_id' => $this->usuarios['OPERARIO']->id, 'iniciado_en' => now(),
+        ]);
+        DB::table('lote_entrega')->insert(['lote_id' => $lote, 'entrega_id' => $this->entrega()->id, 'litros' => 20]);
+
+        $r = $this->push($this->opEntrega(self::U2, 30));
+
+        $this->assertSame('ERROR', $r[0]['estado']);
+        $this->assertStringContainsString('ya entró a producción', $r[0]['error']);
+        $this->assertTrue($r[0]['definitivo']);
+        $this->assertEquals(20, $r[0]['litros']);
     }
 
     public function test_otro_dia_es_otra_entrega(): void
