@@ -1,0 +1,18 @@
+# Repositorio de Ecolácteos Huata
+#   ecolacteos-api/   backend Laravel
+#   EcolacteosHuata/  app Kotlin Multiplatform (Android / iOS)
+# Cada carpeta tiene además su propio .gitignore.
+
+# secretos: nunca subir .env ni sus respaldos (solo la plantilla)
+.env
+.env.*
+!.env.example
+
+# borradores anteriores y documentos sueltos (fuera del repositorio)
+/app-android/
+/backend/
+/*.pdf
+
+# sistema
+Thumbs.db
+desktop.ini
