@@ -49,7 +49,7 @@ table.lista { width: 100%; border-collapse: collapse; background: var(--superfic
 .lista th { text-align: left; font-size: 12px; color: var(--texto-3); font-weight: 600; letter-spacing: .04em; padding: 10px 12px; background: var(--superficie-2); }
 .lista td { padding: 10px 12px; border-top: 1px solid var(--borde); vertical-align: middle; }
 .lista tr.clic { cursor: pointer; } .lista tr.clic:hover td { background: var(--superficie-2); }
-.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.num, .lista th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .chip { display: inline-block; font-size: 12px; padding: 2px 9px; border-radius: 99px; border: 1px solid var(--borde); color: var(--texto-2); white-space: nowrap; }
 .chip.ok { border-color: var(--verde-borde); background: var(--verde-suave); color: var(--exito); }
 .chip.ojo { border-color: #6b5427; background: var(--aviso-fondo); color: var(--aviso); }
@@ -98,6 +98,50 @@ input:focus, select:focus { outline: 2px solid var(--verde); border-color: trans
 
 .cargando { color: var(--texto-3); padding: 30px 0; }
 
+/* --- fórmulas y kardex --- */
+textarea { width: 100%; background: var(--fondo); border: 1px solid var(--borde); color: var(--texto); border-radius: 9px;
+  padding: 10px 12px; font: inherit; resize: vertical; }
+textarea:focus { outline: 2px solid var(--verde); border-color: transparent; }
+ol.pasos { margin: 0; padding-left: 22px; color: var(--texto-2); }
+ol.pasos li { padding: 3px 0; }
+.lista th.grupo-col { text-align: center; border-left: 1px solid var(--borde); }
+.lista.kardex td, .lista.kardex th { font-size: 13px; padding: 8px 9px; }
+.lista tr.tenue td { color: var(--texto-3); font-style: italic; }
+.solo-imprimir { display: none; }
+/* padrón: cambio de comunidad reciente / programado */
+.etiqueta { border: 1px solid; border-radius: 99px; padding: 1px 9px; font: inherit; font-size: 12px; margin-top: 4px; cursor: pointer; white-space: nowrap; }
+.etiqueta.reciente { border-color: #2b5b7a; background: #16324a; color: #8fd3ff; }
+.etiqueta.programado { border-color: #6b5427; background: var(--aviso-fondo); color: var(--aviso); }
+ol.historial { list-style: none; margin: 14px 0 0; padding: 0 0 0 18px; border-left: 2px solid var(--borde); }
+ol.historial li { position: relative; padding: 0 0 14px 6px; }
+ol.historial li::before { content: ''; position: absolute; left: -25px; top: 5px; width: 10px; height: 10px; border-radius: 50%;
+  background: var(--borde); border: 2px solid var(--fondo); }
+ol.historial li.actual::before { background: var(--exito); }
+ol.historial li.futuro::before { background: var(--aviso); }
+.decision { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; border-radius: 10px; padding: 12px 16px; margin: 12px 0; border: 1px solid; }
+.decision .texto { flex: 1; min-width: 220px; }
+.decision.si { border-color: var(--verde-borde); background: var(--verde-suave); color: var(--exito); }
+.decision.no { border-color: #6b3036; background: var(--alerta-fondo); color: var(--alerta); }
+.decision .btn { padding: 11px 18px; font-weight: 600; }
+.resumen-kardex { margin-top: 14px; background: var(--superficie); border: 1px solid var(--borde); border-left: 4px solid var(--exito);
+  border-radius: 10px; padding: 12px 16px; font-size: 16px; line-height: 1.6; }
+.lista.kardex-simple td { padding: 11px 12px; }
+.lista.kardex-simple .quien { color: var(--texto-3); font-size: 12px; margin-top: 2px; }
+.lista.kardex-simple td.sale { color: #f0a35e; }
+.fila.quiero { background: var(--superficie-2); border: 1px solid var(--verde-borde); border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; }
+
+@media print {
+  html, body { background: #fff; color: #000; }
+  nav.menu, .no-imprimir, .aviso, .velo { display: none !important; }
+  .app { display: block; }
+  main { padding: 0; max-width: none; }
+  .solo-imprimir { display: block; }
+  .tarjeta, table.lista { background: #fff; border-color: #999; color: #000; }
+  .lista th { background: #eee; color: #000; }
+  .lista td { border-color: #bbb; }
+  .ok, .mal, .ojo, .chip, .sub, .tarjeta .eti, .tarjeta .apoyo { color: #000 !important; background: none !important; border-color: #999 !important; }
+}
+
 @media (max-width: 800px) {
   .app { grid-template-columns: 1fr; }
   nav.menu { position: static; height: auto; }
@@ -124,3 +168,13 @@ input:focus, select:focus { outline: 2px solid var(--verde); border-color: trans
   .ventana { padding: 18px 16px; }
   .ventana .pie { flex-wrap: wrap; }
 }
+
+/* padrón: botones de cada proveedor */
+.lista td.acciones { white-space: normal; min-width: 170px; }
+.lista td.acciones .btn { margin: 2px 0 2px 2px; }
+.ventana.ancha { max-width: 920px; }
+.ventana .pie .espacio { flex: 1; }
+/* ficha: días de una semana al desplegarla */
+.lista tr.dias-semana td { background: var(--fondo); padding: 8px 12px 10px; }
+.lista tr.dias-semana .dia { display: inline-block; margin: 2px 12px 2px 0; font-size: 13px; color: var(--texto-2); white-space: nowrap; }
+.lista tr.dias-semana .dia.mal { color: var(--alerta); }

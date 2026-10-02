@@ -46,35 +46,48 @@ function oficina() {
     padron: 'proveedores',
     adulteracion: 'todos',
     buscar: '',
+    kardex: { tipo: 'insumo', id: null, desde: '', hasta: '' }, // tipo: insumo | producto | leche
+    quiero: {},     // producto => cuántos quesos / litros de yogurt se quieren hacer
 
     soles, num, fechaCorta, hora, TIPO_CLIENTE, ROLES, esCorreo,
 
     iniciar() {
-      if (this.usuario) this.ir(this.menu()[0].id);
+      if (this.usuario) this.ir(this.menu()[0].pestanas[0].id);
     },
 
+    /**
+     * Menú: cada opción agrupa una o más pantallas que se muestran como
+     * pestañas arriba (ej. Calidad → Por vehículo | Adulteraciones).
+     */
     menu() {
       const admin = this.usuario?.rol === 'ADMIN';
       const compras = [
-        { id: 'vender', nombre: 'Vender', grupo: 'Compras y ventas' },
-        { id: 'inventario', nombre: 'Inventario', grupo: 'Compras y ventas' },
-        { id: 'ordenes', nombre: 'Órdenes de compra', grupo: 'Compras y ventas' },
-        { id: 'movimientos', nombre: 'Movimientos', grupo: 'Compras y ventas' },
+        { id: 'formulas-grupo', nombre: 'Fórmulas y producción', grupo: 'Compras y almacén',
+          // los lotes son de planta: los ve e inicia/cierra el administrador (Compras solo ve las fórmulas)
+          pestanas: [{ id: 'formulas', nombre: 'Fórmulas' }, ...(admin ? [{ id: 'lotes', nombre: 'Lotes en producción' }] : [])] },
+        { id: 'vender', nombre: 'Vender', grupo: 'Compras y almacén',
+          pestanas: [{ id: 'vender', nombre: 'Nueva venta' }, { id: 'movimientos', nombre: 'Últimas ventas y notas' }] },
+        { id: 'almacen', nombre: 'Almacén', grupo: 'Compras y almacén',
+          pestanas: [{ id: 'inventario', nombre: 'Stock y avisos' }, { id: 'mermas', nombre: 'Pérdidas (mermas)' }] },
+        { id: 'kardex', nombre: 'Kardex', grupo: 'Compras y almacén', pestanas: [{ id: 'kardex', nombre: 'Kardex' }] },
+        { id: 'ordenes', nombre: 'Órdenes de compra', grupo: 'Compras y almacén', pestanas: [{ id: 'ordenes', nombre: 'Órdenes de compra' }] },
       ];
       if (!admin) return compras;
       return [
-        { id: 'totales', nombre: 'Totales de acopio', grupo: 'Administración' },
-        { id: 'dinero', nombre: 'Dinero · ventas y pagos', grupo: 'Administración' },
-        { id: 'padron', nombre: 'Padrón', grupo: 'Administración' },
-        { id: 'calidad', nombre: 'Calidad por vehículo', grupo: 'Administración' },
-        { id: 'adulteraciones', nombre: 'Adulteraciones', grupo: 'Administración' },
-        { id: 'solicitudes', nombre: 'Cambios de zona', grupo: 'Administración' },
-        { id: 'conciliacion', nombre: 'Conciliación', grupo: 'Administración' },
-        { id: 'costos', nombre: 'Costos y rendimiento', grupo: 'Administración' },
-        { id: 'sesiones', nombre: 'Sesiones abiertas', grupo: 'Administración' },
+        { id: 'acopio', nombre: 'Acopio', grupo: 'Administración',
+          pestanas: [{ id: 'totales', nombre: 'Totales' }, { id: 'conciliacion', nombre: 'Conciliación campo vs. planta' }] },
+        { id: 'dinero-grupo', nombre: 'Dinero', grupo: 'Administración',
+          pestanas: [{ id: 'dinero', nombre: 'Ventas y pagos' }, { id: 'costos', nombre: 'Costos y rendimiento' }] },
+        { id: 'padron-grupo', nombre: 'Padrón', grupo: 'Administración',
+          pestanas: [{ id: 'padron', nombre: 'Proveedores y trabajadores' }, { id: 'solicitudes', nombre: 'Cambios de comunidad' },
+            { id: 'sesiones', nombre: 'Sesiones abiertas' }] },
+        { id: 'calidad-grupo', nombre: 'Calidad', grupo: 'Administración',
+          pestanas: [{ id: 'calidad', nombre: 'Por vehículo' }, { id: 'adulteraciones', nombre: 'Adulteraciones' }] },
         ...compras,
       ];
     },
+    /** Opción del menú en la que está la pantalla abierta. */
+    opcionActual() { return this.menu().find((m) => m.pestanas.some((p) => p.id === this.seccion)); },
 
     // ------------------------------------------------------------------- API
     async api(ruta, cuerpo = null) {
@@ -109,7 +122,7 @@ function oficina() {
         sessionStorage.setItem('token', this.token);
         sessionStorage.setItem('usuario', JSON.stringify(this.usuario));
         l.clave = '';
-        this.ir(this.menu()[0].id);
+        this.ir(this.menu()[0].pestanas[0].id);
       } catch (e) {
         l.error = e.message;
       } finally {
@@ -149,6 +162,22 @@ function oficina() {
             this.d = { ...(await this.api('/compras/ordenes')), inv: await this.api('/compras/inventario') };
             break;
           case 'movimientos': this.d = await this.api('/compras/movimientos'); break;
+          case 'formulas': this.d = await this.api('/compras/formulas'); break;
+          case 'mermas': this.d = await this.api('/compras/mermas'); break;
+          case 'lotes': this.d = await this.api('/planta/lotes'); this.cierre = {}; break;
+          case 'kardex': {
+            const inv = await this.api('/compras/inventario');
+            const k = this.kardex;
+            // insumos o productos: si lo elegido ya no está en la lista, el primero
+            const lista = k.tipo === 'producto' ? inv.productos : inv.insumos;
+            if (k.tipo !== 'leche' && !lista.some((i) => i.id === k.id)) k.id = lista[0]?.id ?? null;
+            const q = new URLSearchParams({ tipo: k.tipo });
+            if (k.tipo !== 'leche') q.set('id', k.id ?? '');
+            if (k.desde) q.set('desde', k.desde);
+            if (k.hasta) q.set('hasta', k.hasta);
+            this.d = { inv, ...(k.tipo === 'leche' || k.id ? await this.api('/compras/kardex?' + q) : {}) };
+            break;
+          }
         }
       } catch (e) {
         this.error = e.message;
@@ -228,6 +257,127 @@ function oficina() {
         this.aviso = { texto: t.activo ? `${t.nombre} quedó desactivado` : `✓ ${t.nombre} quedó activo` };
         await this.cargar();
       } catch (e) { this.aviso = { error: true, texto: e.message }; }
+    },
+
+    // ------------------------------------- cambio de comunidad por el admin
+    // el productor llamó o vino a Huata (casi no tienen internet para pedirlo por la app)
+    CANAL: { APP: 'Por la app', LLAMADA: '📞 Llamó', OFICINA: '🏠 Vino a Huata' },
+    /** editar = true: corregir su traslado programado o reciente (lugar, fecha, cómo avisó, motivo). */
+    async abrirCambio(proveedorId = null, editar = false) {
+      this.f = { buscar: '', proveedor: null, fijo: !!proveedorId, editar, traslado: null, comunidad_id: null, canal: null,
+        cuando: 'hoy', fecha: '', motivo: '', datos: null, error: null, enviando: false };
+      this.ventana = 'cambio';
+      try {
+        this.f.datos = await this.api('/admin/solicitudes');
+        if (proveedorId) this.f.proveedor = this.f.datos.proveedores.find((p) => p.id === proveedorId) || null;
+        if (editar) {
+          const t = (await this.api(`/admin/proveedores/${proveedorId}/traslado`)).traslado;
+          Object.assign(this.f, { traslado: t, comunidad_id: t.destino_id, canal: t.canal, motivo: t.motivo || '',
+            cuando: 'fecha', fecha: t.desde });
+        }
+      } catch (e) { this.f.error = e.message; }
+    },
+    async anularTraslado() {
+      const f = this.f; const t = f.traslado;
+      const pregunta = t.programado
+        ? `¿Anular el traslado de ${f.proveedor.nombre} a ${t.destino}?\nSe queda en ${t.origen}.`
+        : `¿Anular el traslado de ${f.proveedor.nombre} a ${t.destino}?\nVuelve a ${t.origen} y lo recoge el vehículo de esa ruta.`;
+      if (!confirm(pregunta)) return;
+      await this.enviar(`/admin/proveedores/${f.proveedor.id}/traslado/anular`, {}, null,
+        (r) => `Traslado anulado: ${f.proveedor.nombre} se queda en ${r.se_queda_en}`);
+    },
+    // ---------------------------------------------------- ficha del proveedor
+    // tocar al proveedor: todo en un lugar (leche, pagos, comunidades) y Editar · Trasladar · Eliminar
+    async abrirFicha(id) {
+      this.f = { id, ficha: null, abierta: null, error: null };
+      this.ventana = 'ficha';
+      try { this.f.ficha = await this.api(`/admin/proveedores/${id}/ficha`); } catch (e) { this.f.error = e.message; }
+    },
+    /** Entregas y pagos van de 8 en 8 semanas: así con meses de historia la lista no se hace larga. */
+    async verMasSemanas() {
+      const f = this.f;
+      try { f.ficha = await this.api(`/admin/proveedores/${f.id}/ficha?semanas=${f.ficha.semanas_pedidas + 8}`); }
+      catch (e) { this.aviso = { error: true, texto: e.message }; }
+    },
+    volverAFicha() { this.abrirFicha(this.f.id); },
+    async abrirEditarProveedor() {
+      const fi = this.f.ficha; const p = fi.proveedor;
+      const ultimoTraslado = fi.historial.some((h) => h.como !== 'Inscripción' && !h.futuro);
+      this.f = { id: p.id, nombre: p.nombre, dni: p.dni, promedio: p.promedio ?? '', vacas: p.vacas ?? '', leche: fi.leche,
+        programado: p.programado, ultimoTraslado,
+        // con traslado programado se corrige su destino; si no, la comunidad donde está
+        comunidad_original: p.programado?.comunidad_id ?? p.comunidad_id, comunidad_id: p.programado?.comunidad_id ?? p.comunidad_id,
+        comunidades: [], error: null, enviando: false };
+      this.ventana = 'editarProveedor';
+      try { this.f.comunidades = (await this.api('/admin/solicitudes')).comunidades; } catch (e) { this.f.error = e.message; }
+    },
+    async guardarEditarProveedor() {
+      const f = this.f;
+      if (f.nombre.trim().split(/\s+/).length < 2) return (f.error = 'Escribe nombre y apellidos');
+      if (!/^\d{8}$/.test(f.dni)) return (f.error = 'El DNI debe tener 8 dígitos');
+      f.enviando = true; f.error = null;
+      try {
+        const r = await this.api(`/admin/proveedores/${f.id}`, {
+          nombre: f.nombre.trim(), dni: f.dni, comunidad_id: f.comunidad_id,
+          promedio_litros: f.promedio !== '' ? Number(f.promedio) : null, vacas_ordeno: f.vacas !== '' ? Number(f.vacas) : null,
+        });
+        const QUE = { ALTA: ' · comunidad corregida', TRASLADO: ' · se corrigió el destino de su traslado',
+          TRASLADO_ANULADO: ' · el traslado se anuló: vuelve a su comunidad', PROGRAMADO: ' · se corrigió el destino del traslado programado' };
+        await this.cargar();
+        await this.abrirFicha(f.id);
+        this.aviso = { texto: `✓ Datos de ${f.nombre.trim()} corregidos` + (QUE[r.comunidad_corregida] || '') };
+      } catch (e) { f.error = e.message; } finally { f.enviando = false; }
+    },
+    abrirEliminarProveedor() {
+      // si ya entregó leche o tiene pagos no se borra: se da de baja (su historia y pagos se quedan)
+      const fi = this.f.ficha; const h = fi.historia;
+      this.f = { id: fi.proveedor.id, nombre: fi.proveedor.nombre, entregas: h.entregas,
+        modo: h.entregas + h.pagos + h.sanciones > 0 ? 'baja' : 'eliminar', motivo: '', aviso: null, error: null, enviando: false };
+      this.ventana = 'eliminarProveedor';
+    },
+    async confirmarEliminarProveedor() {
+      const f = this.f;
+      if (f.modo === 'baja') {
+        if (f.motivo.trim().length < 3) return (f.error = 'Escribe por qué se da de baja');
+        return this.enviar(`/admin/proveedores/${f.id}/baja`, { motivo: f.motivo.trim() }, `${f.nombre} quedó dado de baja (su historia se guarda)`);
+      }
+      f.enviando = true; f.error = null;
+      try {
+        await this.api(`/admin/proveedores/${f.id}/eliminar`, {});
+        this.ventana = null;
+        this.aviso = { texto: `${f.nombre} fue eliminado del padrón` };
+        await this.cargar();
+      } catch (e) {
+        f.modo = 'baja'; f.aviso = e.message; // por si se registró algo mientras tanto
+      } finally { f.enviando = false; }
+    },
+
+    async abrirHistorial(p) {
+      this.f = { id: p.id, nombre: p.nombre, programado: p.programado, historial: null, error: null };
+      this.ventana = 'historial';
+      try { this.f.historial = await this.api(`/admin/proveedores/${p.id}/historial-comunidad`); } catch (e) { this.f.error = e.message; }
+    },
+    productoresCambio() {
+      const b = this.f.buscar.trim().toLowerCase();
+      return (this.f.datos?.proveedores || []).filter((p) => (p.nombre + ' ' + p.dni).toLowerCase().includes(b)).slice(0, 8);
+    },
+    async guardarCambio() {
+      const f = this.f;
+      if (!f.comunidad_id) return (f.error = 'Elige la comunidad nueva');
+      if (!f.canal) return (f.error = 'Indica si llamó o vino a Huata');
+      const dia = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toLocaleDateString('en-CA'); }; // AAAA-MM-DD
+      const desde = f.cuando === 'hoy' ? dia(0) : (f.cuando === 'manana' ? dia(1) : f.fecha);
+      if (!desde) return (f.error = 'Elige la fecha');
+      if (f.editar) {
+        return this.enviar(`/admin/proveedores/${f.proveedor.id}/traslado`, {
+          comunidad_id: f.comunidad_id, canal: f.canal, motivo: f.motivo.trim() || null,
+          desde: f.traslado.programado ? desde : null, // uno ya hecho no cambia de fecha
+        }, null, (r) => `✓ Traslado corregido: ${f.proveedor.nombre} va a ${r.comunidad} desde el ${fechaCorta(r.desde)}`);
+      }
+      await this.enviar(`/admin/proveedores/${f.proveedor.id}/cambiar-comunidad`,
+        { comunidad_id: f.comunidad_id, canal: f.canal, desde, motivo: f.motivo.trim() || null }, null,
+        (r) => `✓ ${r.proveedor} pasa a ${r.comunidad} desde el ${fechaCorta(r.vigente_desde)}. Lo recoge el vehículo ${r.vehiculo}. ` +
+          'Si te equivocaste, usa “Editar traslado” en su fila.');
     },
 
     // ---------------------------------------------------- cambios de zona
@@ -355,6 +505,164 @@ function oficina() {
         this.aviso = { texto: `✓ ${o.codigo} recibida: el stock de ${o.insumo} ya se actualizó` };
         await this.cargar();
       } catch (e) { this.aviso = { error: true, texto: e.message }; }
+    },
+
+    // ---------------------------------------------------------------- kardex
+    verKardex(id, tipo = 'insumo') { this.kardex.tipo = tipo; this.kardex.id = id; this.ir('kardex'); },
+    tipoKardex(tipo, id = null) { this.kardex.tipo = tipo; this.kardex.id = id; this.cargar(); },
+    // pestañas: Insumos | Queso Paria | Yogurt natural | Leche
+    pestanasKardex() {
+      return [
+        { tipo: 'insumo', id: null, nombre: 'Insumos' },
+        ...(this.d.inv?.productos || []).map((p) => ({ tipo: 'producto', id: p.id, nombre: p.nombre })),
+        { tipo: 'leche', id: null, nombre: 'Leche' },
+      ];
+    },
+    pestanaKardexActiva(t) { return this.kardex.tipo === t.tipo && (t.tipo !== 'producto' || this.kardex.id === t.id); },
+
+    // -------------------------------------------------------------- pérdidas
+    async abrirMerma(tipo = 'PRODUCTO', productoId = null) {
+      this.f = { tipo, producto_id: productoId, lote_id: null, cantidad: '', motivo: null, detalle: '', datos: null, error: null, enviando: false };
+      this.ventana = 'merma';
+      try {
+        this.f.datos = await this.api('/compras/mermas');
+        if (tipo === 'PRODUCTO' && !productoId) this.f.producto_id = this.f.datos.productos[0]?.id ?? null;
+      } catch (e) { this.f.error = e.message; }
+    },
+    productoMerma() { return (this.f.datos?.productos || []).find((p) => p.id === this.f.producto_id); },
+    hayParaMerma() {
+      const f = this.f;
+      if (!f.datos) return { cant: 0, u: '' };
+      if (f.tipo === 'LECHE') return { cant: f.datos.leche.sin_usar, u: 'L' };
+      const p = this.productoMerma();
+      return { cant: p?.stock ?? 0, u: p?.unidad ?? '' };
+    },
+    async guardarMerma() {
+      const f = this.f; const hay = this.hayParaMerma();
+      if (f.tipo === 'PRODUCTO' && !f.producto_id) return (f.error = 'Elige si es queso o yogurt');
+      if (!(Number(f.cantidad) > 0)) return (f.error = 'Escribe cuánto se perdió');
+      if (Number(f.cantidad) > hay.cant) return (f.error = `Solo hay ${num(hay.cant, 2)} ${hay.u}`);
+      if (!f.motivo) return (f.error = 'Elige el motivo');
+      if (f.motivo === 'OTRO' && !f.detalle.trim()) return (f.error = 'Escribe qué pasó');
+      const que = f.tipo === 'LECHE' ? 'leche' : this.productoMerma().nombre;
+      await this.enviar('/compras/mermas', {
+        tipo: f.tipo, producto_id: f.tipo === 'PRODUCTO' ? f.producto_id : null, lote_id: f.lote_id || null,
+        cantidad: Number(f.cantidad), motivo: f.motivo, detalle: f.detalle.trim() || null,
+      }, null, (r) => `✓ Pérdida registrada: ${num(f.cantidad, 2)} ${hay.u} de ${que} · ahora quedan ${num(r.stock, 2)} ${hay.u}`);
+    },
+    opcionesKardex() {
+      const inv = this.d.inv || {};
+      return this.kardex.tipo === 'producto'
+        ? (inv.productos || []).map((p) => ({ id: p.id, nombre: p.nombre + ' (' + p.unidad.split(' ')[0] + ')' }))
+        : (inv.insumos || []).map((i) => ({ id: i.id, nombre: i.nombre + ' (' + i.unidad + ')' }));
+    },
+    kardexContable: false,
+    /** "Entraron 60 kg (60 kg por compras). Salieron 31.6 kg (31.6 kg para hacer lotes). Ahora quedan 28.4 kg." */
+    resumenKardex() {
+      const d = this.d; if (!d.item || !d.totales) return '';
+      const u = d.item.unidad; const t = d.totales;
+      const POR_ENTRA = { INICIAL: 'que ya había', COMPRA: 'por compras', AJUSTE: 'por ajustes', ACOPIO: 'de acopio aceptado', PRODUCCION: 'hechos en lotes' };
+      const POR_SALE = { PRODUCCION: 'para hacer lotes', VENTA: 'vendidos', AJUSTE: 'por mermas o ajustes', MERMA: 'perdidos' };
+      const detalle = (lado, nombres) => (d.resumen || []).filter((r) => r[lado] > 0)
+        .map((r) => `${num(r[lado], 3)} ${u} ${nombres[r.tipo] || r.tipo.toLowerCase()}`).join(', ');
+      const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+      const partes = [];
+      if (this.kardex.desde) partes.push(`Al ${fechaCorta(this.kardex.desde)} había <b>${num(t.inicio, 3)} ${esc(u)}</b>.`);
+      partes.push(t.entradas.cantidad > 0
+        ? `Entraron <b class="ok">${num(t.entradas.cantidad, 3)} ${esc(u)}</b> (${esc(detalle('entra', POR_ENTRA))}).` : 'No entró nada.');
+      partes.push(t.salidas.cantidad > 0
+        ? `Salieron <b>${num(t.salidas.cantidad, 3)} ${esc(u)}</b> (${esc(detalle('sale', POR_SALE))}).` : 'No salió nada.');
+      partes.push(`${this.kardex.hasta ? 'Al ' + fechaCorta(this.kardex.hasta) + ' quedaban' : 'Ahora quedan'} <b>${num(t.saldo.cantidad, 3)} ${esc(u)}</b>.`);
+      return partes.join(' ');
+    },
+    TIPO_KARDEX: { INICIAL: 'Saldo inicial', ANTERIOR: 'Saldo anterior', COMPRA: 'Compra', PRODUCCION: 'Producción',
+      AJUSTE: 'Ajuste', VENTA: 'Venta', ACOPIO: 'Acopio', MERMA: 'Pérdida' },
+    cu: (v) => 'S/ ' + Number(v || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 4 }),
+    abrirAjuste() {
+      this.f = { tipo: 'SALIDA', cantidad: '', motivo: '', error: null, enviando: false };
+      this.ventana = 'ajuste';
+    },
+    async guardarAjuste() {
+      const f = this.f; const i = this.d.item;
+      if (!(Number(f.cantidad) > 0)) return (f.error = 'Escribe la cantidad');
+      if (f.motivo.trim().length < 3) return (f.error = 'Escribe el motivo (merma, vencido, conteo físico…)');
+      if (f.tipo === 'SALIDA' && Number(f.cantidad) > i.stock) return (f.error = `Solo hay ${num(i.stock, 3)} ${i.unidad}`);
+      await this.enviar('/compras/ajustes', { insumo_id: i.id, tipo: f.tipo, cantidad: Number(f.cantidad), motivo: f.motivo.trim() },
+        null, (r) => `✓ Ajuste registrado · ${r.insumo} queda con ${num(r.stock, 3)} ${i.unidad}`);
+    },
+
+    // -------------------------------------------------------------- fórmulas
+    // "quiero hacer 10 quesos": la leche se calcula con el rendimiento mínimo, así esa cantidad sale segura
+    unidadProducto(p) { return p.unidad.split(' ')[0]; }, // "quesos de 1 kg" → "quesos"
+    cantidadQuiero(p) { return this.quiero[p.id] ?? 10; },
+    litrosPara(p) {
+      const q = Number(this.cantidadQuiero(p)) || 0;
+      return p.rendimiento_min > 0 ? Math.ceil(q / p.rendimiento_min - 1e-9) : 0;
+    },
+    necesita(i, p) { return (i.por_100l * this.litrosPara(p)) / 100; },
+    faltantes(p) { return p.insumos.filter((i) => this.necesita(i, p) > i.stock + 1e-9); },
+    /** ¿Se puede hacer la cantidad pedida? { ok, motivo } */
+    sePuede(p) {
+      const q = Number(this.cantidadQuiero(p)) || 0; const u = this.unidadProducto(p);
+      if (q <= 0) return { ok: false, motivo: `Escribe cuántos ${u} quieres hacer.` };
+      const falta = [];
+      if (this.litrosPara(p) > this.d.tanque) falta.push(`leche (${num(this.litrosPara(p) - this.d.tanque, 1)} L)`);
+      this.faltantes(p).forEach((i) => falta.push(`${i.nombre.toLowerCase()} (${num(this.necesita(i, p) - i.stock, 3)} ${i.unidad})`));
+      return falta.length
+        ? { ok: false, motivo: `Para hacer ${num(q, 0)} ${u} falta ${falta.join(', ')}. Hay que conseguirlo antes de producir.` }
+        : { ok: true, motivo: '' };
+    },
+    abrirProducir(p) {
+      this.f = { producto: p, cantidad: Number(this.cantidadQuiero(p)), litros: this.litrosPara(p), error: null, enviando: false };
+      this.ventana = 'producir';
+    },
+    async confirmarProducir() {
+      const f = this.f;
+      f.enviando = true; f.error = null;
+      try {
+        const r = await this.api('/planta/lotes', { producto_id: f.producto.id, litros: f.litros });
+        this.ventana = null;
+        await this.ir('lotes'); // para verlo en producción y cerrarlo al terminar
+        this.aviso = { texto: `✓ Lote ${r.codigo} iniciado: ${num(f.cantidad, 0)} ${this.unidadProducto(f.producto)} de ${f.producto.nombre} con ` +
+          `${num(f.litros, 0)} L de leche. Se descontaron la leche y los insumos. Cuando termine, ciérralo aquí con lo que salió.` };
+      } catch (e) { f.error = e.message; } finally { f.enviando = false; }
+    },
+
+    // ----------------------------------------------------- lotes en producción
+    cierre: {}, // lote => cantidad que salió
+    async cerrarLote(l) {
+      const obtenido = Number(this.cierre[l.id] ?? '');
+      const u = l.unidad.split(' ')[0];
+      if (!(obtenido >= 0) || this.cierre[l.id] === '' || this.cierre[l.id] == null) {
+        this.aviso = { error: true, texto: `Escribe cuántos ${u} salieron del lote ${l.codigo}` }; return;
+      }
+      if (!confirm(`¿Cerrar el lote ${l.codigo} con ${num(obtenido, 2)} ${u}?\nEntran al stock y ya se pueden vender.`)) return;
+      try {
+        const r = await this.api(`/planta/lotes/${l.id}/cerrar`, { obtenido });
+        await this.cargar();
+        this.aviso = { texto: `✓ ${r.codigo} cerrado: entraron ${num(obtenido, 2)} ${u} al stock (desvío ${num(r.desvio_pct, 1)} % contra lo esperado)` };
+      } catch (e) { this.aviso = { error: true, texto: e.message }; }
+    },
+    abrirFormula(p) {
+      this.f = {
+        producto: p,
+        insumos: p.insumos.map((i) => ({ insumo_id: i.id, por_100l: i.por_100l })),
+        pasos: p.procedimiento.join('\n'),
+        error: null, enviando: false,
+      };
+      this.ventana = 'formula';
+    },
+    unidadInsumo(id) { return (this.d.insumos || []).find((i) => i.id === Number(id))?.unidad || ''; },
+    async guardarFormula() {
+      const f = this.f;
+      const filas = f.insumos.filter((x) => x.insumo_id);
+      if (filas.some((x) => !(Number(x.por_100l) > 0))) return (f.error = 'Cada insumo necesita una cantidad mayor a 0');
+      const ids = filas.map((x) => Number(x.insumo_id));
+      if (new Set(ids).size !== ids.length) return (f.error = 'Hay un insumo repetido');
+      await this.enviar(`/admin/formulas/${f.producto.id}`, {
+        insumos: filas.map((x) => ({ insumo_id: Number(x.insumo_id), por_100l: Number(x.por_100l) })),
+        procedimiento: f.pasos.split(/\r?\n/).map((x) => x.trim()).filter(Boolean),
+      }, `✓ Fórmula de ${f.producto.nombre} guardada · los próximos lotes ya la usan`);
     },
 
     // --------------------------------------------------------------- común

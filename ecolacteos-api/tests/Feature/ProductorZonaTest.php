@@ -68,10 +68,14 @@ class ProductorZonaTest extends TestCase
         $this->postJson("/api/v1/admin/solicitudes/$id/resolver", ['aprobar' => true])
             ->assertOk()->assertJsonPath('vehiculo', 'M-01');
 
+        // se pidió con 3 días de anticipación: hasta ese día sigue en su comunidad
         Sanctum::actingAs($this->usuarios['PRODUCTOR']);
         $this->getJson('/api/v1/productor/comunidad')
-            ->assertJsonPath('asignacion.comunidad', 'Kapi')
+            ->assertJsonPath('asignacion.comunidad', 'Huatta')
             ->assertJsonPath('solicitudes.0.estado', 'APROBADA');
+
+        $this->travel(3)->days();
+        $this->getJson('/api/v1/productor/comunidad')->assertJsonPath('asignacion.comunidad', 'Kapi');
     }
 
     public function test_usuario_sin_proveedor_da_404(): void

@@ -117,16 +117,13 @@ class AdminNegocioController extends Controller
 
     private function inventario(): array
     {
-        // stock de producto terminado = lo producido (lotes terminados) − lo vendido
-        // (mismo cálculo que ComprasAppController::productos)
+        // stock de producto terminado = lo producido (lotes terminados) − lo vendido − lo perdido
         $productos = DB::table('productos')->orderBy('id')->get()->map(function ($p) {
-            $producido = (float) DB::table('lotes')->where('producto_id', $p->id)->where('estado', 'TERMINADO')->sum('obtenido');
-            $vendido = (float) DB::table('ventas')->where('producto_id', $p->id)->sum('cantidad');
             $porVencer = (float) DB::table('lotes')->where('producto_id', $p->id)->where('estado', 'TERMINADO')
                 ->whereBetween('vence_el', [now('America/Lima')->toDateString(), now('America/Lima')->addDays(7)->toDateString()])
                 ->count();
 
-            return ['nombre' => $p->nombre, 'unidad' => $p->unidad, 'stock' => round($producido - $vendido, 2), 'lotes_por_vencer' => $porVencer];
+            return ['nombre' => $p->nombre, 'unidad' => $p->unidad, 'stock' => \App\Services\Mermas::stockProducto($p->id), 'lotes_por_vencer' => $porVencer];
         });
 
         $bajoMinimo = DB::table('insumos')->whereColumn('stock', '<', 'stock_minimo')->orderBy('nombre')

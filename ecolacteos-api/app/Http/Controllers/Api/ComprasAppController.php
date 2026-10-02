@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\Formulas;
+use App\Services\Mermas;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -17,16 +19,14 @@ class ComprasAppController extends Controller
             ->mapWithKeys(fn ($o) => [$o->insumo_id => $o->cantidad > 0 ? round($o->costo_estimado / $o->cantidad, 4) : 0]);
     }
 
-    /** Stock de producto terminado = obtenido en lotes cerrados − vendido. */
+    /** Stock de producto terminado = obtenido en lotes cerrados − vendido − perdido. */
     private function productos()
     {
         $precios = DB::table('precios_venta')->whereNull('vigente_hasta')->get()->groupBy('producto_id');
         return DB::table('productos')->orderBy('id')->get()->map(function ($p) use ($precios) {
-            $producido = (float) DB::table('lotes')->where('producto_id', $p->id)->where('estado', 'TERMINADO')->sum('obtenido');
-            $vendido = (float) DB::table('ventas')->where('producto_id', $p->id)->sum('cantidad');
             return [
                 'id' => $p->id, 'nombre' => $p->nombre, 'unidad' => $p->unidad,
-                'stock' => round($producido - $vendido, 2),
+                'stock' => Mermas::stockProducto($p->id),
                 'precios' => ($precios[$p->id] ?? collect())->mapWithKeys(fn ($x) => [$x->tipo_cliente => (float) $x->precio]),
             ];
         });
@@ -42,7 +42,7 @@ class ComprasAppController extends Controller
             'costo' => (float) ($costos[$i->id] ?? 0),
         ]);
 
-        return response()->json(['insumos' => $insumos, 'productos' => $this->productos()]);
+        return response()->json(['insumos' => $insumos, 'productos' => $this->productos(), 'avisos' => Formulas::avisos()]);
     }
 
     /** GET /api/v1/compras/ordenes — últimas 20, las emitidas primero. */

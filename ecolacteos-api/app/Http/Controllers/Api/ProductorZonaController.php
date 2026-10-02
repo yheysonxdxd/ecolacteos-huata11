@@ -21,6 +21,7 @@ class ProductorZonaController extends Controller
     /** GET /api/v1/productor/comunidad */
     public function ver(Request $r)
     {
+        \App\Services\CambiosComunidad::aplicarProgramados();
         $p = $this->proveedor($r);
 
         $vehiculos = DB::table('vehiculos')

@@ -46,13 +46,24 @@ Route::prefix('v1')->group(function () {
         Route::get('admin/adulteraciones', [Api\AdminAppController::class, 'adulteraciones']);
         Route::get('admin/solicitudes',  [Api\AdminAppController::class, 'solicitudes']);
         Route::post('admin/solicitudes/{id}/resolver', [Api\AdminAppController::class, 'resolverSolicitud']);
+        // el productor avisó por teléfono o vino a Huata: el admin registra el cambio directamente
+        Route::post('admin/proveedores/{id}/cambiar-comunidad', [Api\AdminAppController::class, 'cambiarComunidad'])->whereNumber('id');
+        Route::get('admin/proveedores/{id}/historial-comunidad', [Api\AdminAppController::class, 'historialComunidad'])->whereNumber('id');
+        Route::get('admin/proveedores/{id}/traslado',          [Api\AdminAppController::class, 'verTraslado'])->whereNumber('id');
+        Route::post('admin/proveedores/{id}/traslado',         [Api\AdminAppController::class, 'editarTraslado'])->whereNumber('id');
+        Route::post('admin/proveedores/{id}/traslado/anular',  [Api\AdminAppController::class, 'anularTraslado'])->whereNumber('id');
         Route::get('admin/conciliacion', [Api\AdminAppController::class, 'conciliacion']);
         Route::get('admin/costos',       [Api\AdminAppController::class, 'costos']);
         Route::get('admin/sesiones',     [Api\SesionesController::class, 'index']);
         Route::post('admin/usuarios/{id}/cerrar-sesiones', [Api\SesionesController::class, 'cerrar']);
         Route::post('admin/proveedores',               [Api\AdminPadronController::class, 'nuevoProveedor']);
+        Route::post('admin/proveedores/{id}',          [Api\AdminPadronController::class, 'editarProveedor'])->whereNumber('id');
+        Route::get('admin/proveedores/{id}/ficha',     [Api\AdminPadronController::class, 'ficha'])->whereNumber('id');
+        Route::post('admin/proveedores/{id}/eliminar', [Api\AdminPadronController::class, 'eliminarProveedor'])->whereNumber('id');
+        Route::post('admin/proveedores/{id}/baja',     [Api\AdminPadronController::class, 'darDeBaja'])->whereNumber('id');
         Route::post('admin/trabajadores',              [Api\AdminPadronController::class, 'nuevoTrabajador']);
         Route::post('admin/trabajadores/{id}/activo',  [Api\AdminPadronController::class, 'cambiarActivo']);
+        Route::post('admin/formulas/{producto}',       [Api\FormulasController::class, 'guardar'])->whereNumber('producto');
 
         // --- Planta (operario) en la app ---
         Route::get('planta/recetas',              [Api\PlantaAppController::class, 'recetasYTanque']);
@@ -68,6 +79,14 @@ Route::prefix('v1')->group(function () {
         Route::get('compras/ventas-datos',        [Api\ComprasAppController::class, 'datosVenta']);
         Route::post('compras/ventas',             [Api\ComprasAppController::class, 'vender']);
         Route::get('compras/movimientos',         [Api\ComprasAppController::class, 'movimientos']);
+        Route::get('compras/formulas',            [Api\FormulasController::class, 'index']);
+        Route::get('compras/kardex',              [Api\KardexController::class, 'ver']);
+        Route::post('compras/ajustes',            [Api\KardexController::class, 'ajustar']);
+        Route::get('compras/mermas',              [Api\MermasController::class, 'index']);
+        Route::post('compras/mermas',             [Api\MermasController::class, 'guardar']);
+        // el operario también registra la leche que se corta y lo que se malogra en planta
+        Route::get('planta/mermas',               [Api\MermasController::class, 'index']);
+        Route::post('planta/mermas',              [Api\MermasController::class, 'guardar']);
         Route::get('compras/ventas/{id}/nota',    [Api\NotaVentaController::class, 'enlace'])->whereNumber('id');
         Route::post('compras/ventas/{id}/enviar-nota', [Api\NotaVentaController::class, 'enviar'])->whereNumber('id');
 

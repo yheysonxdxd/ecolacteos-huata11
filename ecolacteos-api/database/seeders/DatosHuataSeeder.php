@@ -9,6 +9,7 @@ use App\Models\PrecioVenta;
 use App\Models\Producto;
 use App\Models\Vehiculo;
 use App\Models\Zona;
+use App\Services\Formulas;
 use Illuminate\Database\Seeder;
 
 class DatosHuataSeeder extends Seeder
@@ -112,5 +113,8 @@ class DatosHuataSeeder extends Seeder
                 'stock' => $stock, 'stock_minimo' => $min,
             ]);
         }
+
+        // insumos por cada 100 L y pasos del queso y el yogurt
+        Formulas::cargarIniciales();
     }
 }

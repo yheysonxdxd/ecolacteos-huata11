@@ -7,6 +7,7 @@ use App\Models\Comunidad;
 use App\Models\Parametro;
 use App\Models\Proveedor;
 use App\Models\Vehiculo;
+use App\Services\CambiosComunidad;
 use App\Services\SyncService;
 use Illuminate\Http\Request;
 
@@ -34,6 +35,7 @@ class SyncController extends Controller
     public function pull(Request $r)
     {
         $r->validate(['desde' => ['nullable', 'date']]);
+        CambiosComunidad::aplicarProgramados(); // así el cambio del día baja en este pull
 
         return response()->json($this->sync->pull($r->query('desde')));
     }
@@ -45,14 +47,27 @@ class SyncController extends Controller
      */
     public function bootstrap()
     {
+        CambiosComunidad::aplicarProgramados();
+        $recientes = CambiosComunidad::recientes();
+        $proveedores = Proveedor::activos()->with('comunidad:id,nombre')->get();
+
         return response()->json([
             'cursor'      => now()->toIso8601String(),
             'vehiculos'   => Vehiculo::with('zona:id,nombre', 'acopiador:id,name')->get(),
             'comunidades' => Comunidad::select(
                 'id', 'zona_id', 'nombre', 'croquis_x', 'croquis_y', 'vias'
             )->get(),
-            'proveedores' => Proveedor::activos()
-                ->with('comunidad:id,nombre')->get(),
+            // "🆕 Nuevo en tu ruta · antes en Carata" los primeros 15 días tras un cambio de comunidad
+            'proveedores' => $proveedores->map(fn ($p) => $p->setAttribute('cambio_reciente', ($c = $recientes->get($p->id))
+                ? ['desde' => $c->desde, 'antes' => $c->antes, 'antes_vehiculo_id' => $c->antes_vehiculo_id] : null)),
+            // "Ya no está en tu ruta": se cambiaron a otra comunidad que recoge otro vehículo
+            'se_fueron'   => $recientes->map(function ($c) use ($proveedores) {
+                $p = $proveedores->firstWhere('id', $c->proveedor_id);
+                return $p && $c->antes_vehiculo_id && $c->antes_vehiculo_id !== $p->vehiculo_id ? [
+                    'proveedor_id' => $p->id, 'nombre' => $p->nombre, 'de_vehiculo_id' => $c->antes_vehiculo_id,
+                    'antes' => $c->antes, 'ahora' => $c->ahora, 'desde' => $c->desde,
+                ] : null;
+            })->filter()->values(),
             'parametros'  => Parametro::pluck('valor', 'clave'),
         ]);
     }

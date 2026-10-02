@@ -3,48 +3,47 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\Formulas;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
-/** Operario de planta: recetas, leche disponible, iniciar y cerrar lotes. */
+/** Operario de planta: fórmulas, leche disponible, iniciar y cerrar lotes. */
 class PlantaAppController extends Controller
 {
-    /** Entregas aceptadas de los últimos 3 días que todavía no entraron a un lote. */
     private function entregasDisponibles()
     {
-        return DB::table('entregas')
-            ->where('estado_calidad', 'ACEPTADO')->where('ausente', false)
-            ->where('fecha', '>=', Carbon::today('America/Lima')->subDays(2)->toDateString())
-            ->whereNotIn('id', DB::table('lote_entrega')->select('entrega_id'))
-            ->orderBy('fecha')->orderBy('id');
+        return Formulas::entregasDisponibles();
     }
 
-    private function recetas()
+    private function recetas(array $productos)
     {
-        $insumos = DB::table('recetas_insumo as r')->join('insumos as i', 'i.id', '=', 'r.insumo_id')
-            ->select('r.producto_id', 'i.id', 'i.nombre', 'i.unidad', 'i.stock', 'r.cantidad_por_100l')
-            ->get()->groupBy('producto_id');
-
-        return DB::table('productos')->orderBy('id')->get()->map(fn ($p) => [
-            'id' => $p->id, 'nombre' => $p->nombre, 'unidad' => $p->unidad,
-            'por_100l' => round(($p->rendimiento_min + $p->rendimiento_max) / 2 * 100, 2),
-            'min_100l' => round($p->rendimiento_min * 100, 2), 'max_100l' => round($p->rendimiento_max * 100, 2),
-            'vida_util_dias' => $p->vida_util_dias,
-            'insumos' => ($insumos[$p->id] ?? collect())->map(fn ($i) => [
-                'id' => $i->id, 'nombre' => $i->nombre, 'unidad' => $i->unidad,
-                'por_100l' => (float) $i->cantidad_por_100l, 'stock' => (float) $i->stock,
+        return collect($productos)->map(fn ($p) => [
+            'id' => $p['id'], 'nombre' => $p['nombre'], 'unidad' => $p['unidad'],
+            'por_100l' => round(($p['rendimiento_min'] + $p['rendimiento_max']) / 2 * 100, 2),
+            'min_100l' => round($p['rendimiento_min'] * 100, 2), 'max_100l' => round($p['rendimiento_max'] * 100, 2),
+            'vida_util_dias' => $p['vida_util_dias'],
+            'procedimiento' => $p['procedimiento'],
+            'alcanza_litros' => $p['alcanza_litros'],
+            'insumos' => collect($p['insumos'])->map(fn ($i) => [
+                'id' => $i['id'], 'nombre' => $i['nombre'], 'unidad' => $i['unidad'],
+                'por_100l' => $i['por_100l'], 'stock' => $i['stock'], 'minimo' => $i['minimo'],
+                'alcanza_litros' => $i['alcanza_litros'],
             ])->values(),
-        ]);
+        ])->values();
     }
 
-    /** GET /api/v1/planta/recetas — recetas y leche disponible en el tanque. */
+    /** GET /api/v1/planta/recetas — fórmulas, leche disponible en el tanque y avisos de insumos. */
     public function recetasYTanque()
     {
+        $tanque = Formulas::litrosEnTanque();
+        $productos = Formulas::productos($tanque);
+
         return response()->json([
-            'tanque' => round((float) $this->entregasDisponibles()->sum('litros'), 2),
-            'recetas' => $this->recetas(),
+            'tanque' => $tanque,
+            'recetas' => $this->recetas($productos),
+            'avisos' => Formulas::avisos($productos, $tanque),
         ]);
     }
 
@@ -55,8 +54,20 @@ class PlantaAppController extends Controller
             ->orderByRaw("l.estado = 'EN_PROCESO' DESC")->orderByDesc('l.iniciado_en')->limit(15)
             ->select('l.id', 'l.codigo', 'l.estado', 'l.litros_leche', 'l.esperado_min', 'l.esperado_max',
                 'l.obtenido', 'l.desvio_pct', 'l.fuera_referencia', 'l.vence_el', 'l.iniciado_en',
-                'p.nombre as producto', 'p.unidad')
+                'p.nombre as producto', 'p.unidad', 'p.procedimiento')
             ->get();
+
+        // fórmula con la que se hizo cada lote: insumos que se le descontaron y pasos
+        $usados = DB::table('movimientos_insumo as m')->join('insumos as i', 'i.id', '=', 'm.insumo_id')
+            ->where('m.origen_type', 'lote')->whereIn('m.origen_id', $filas->pluck('id'))->orderBy('i.nombre')
+            ->get(['m.origen_id', 'i.nombre', 'i.unidad', 'm.cantidad'])->groupBy('origen_id');
+        $filas = $filas->map(function ($l) use ($usados) {
+            $l->procedimiento = json_decode($l->procedimiento ?? '[]', true) ?: [];
+            $l->insumos = ($usados[$l->id] ?? collect())->map(fn ($m) => [
+                'nombre' => $m->nombre, 'unidad' => $m->unidad, 'cantidad' => round(abs((float) $m->cantidad), 3),
+            ])->values();
+            return $l;
+        });
 
         return response()->json(['lotes' => $filas]);
     }
@@ -77,15 +88,15 @@ class PlantaAppController extends Controller
             $litros = (float) $data['litros'];
 
             $disponibles = $this->entregasDisponibles()->lockForUpdate()->get();
-            abort_if($disponibles->sum('litros') < $litros, 422,
-                'Solo hay '.$disponibles->sum('litros').' L de leche aceptada disponible.');
+            abort_if(round($disponibles->sum('restante'), 2) < $litros, 422,
+                'Solo hay '.round($disponibles->sum('restante'), 2).' L de leche aceptada disponible.');
 
             $receta = DB::table('recetas_insumo as r')->join('insumos as i', 'i.id', '=', 'r.insumo_id')
-                ->where('r.producto_id', $prod->id)->select('i.id', 'i.nombre', 'i.stock', 'r.cantidad_por_100l')->get();
-            foreach ($receta as $i) {
-                $necesita = $i->cantidad_por_100l * $litros / 100;
-                abort_if($i->stock < $necesita, 422, "Falta {$i->nombre}: se necesita ".round($necesita, 3).' y hay '.(float) $i->stock);
-            }
+                ->where('r.producto_id', $prod->id)->select('i.id', 'i.nombre', 'i.unidad', 'i.stock', 'r.cantidad_por_100l')->get();
+            $faltan = $receta->filter(fn ($i) => $i->stock < $i->cantidad_por_100l * $litros / 100)
+                ->map(fn ($i) => "{$i->nombre} (se necesita ".round($i->cantidad_por_100l * $litros / 100, 3)
+                    ." {$i->unidad} y hay ".(float) $i->stock.')');
+            abort_if($faltan->isNotEmpty(), 422, 'Falta '.$faltan->join(', ', ' y ').'. Pide a Compras que reponga.');
 
             $ultimo = DB::table('lotes')->where('codigo', 'like', 'L-%')->get('codigo')
                 ->map(fn ($l) => (int) substr($l->codigo, 2))->max() ?? 2400;
@@ -107,7 +118,7 @@ class PlantaAppController extends Controller
             $falta = $litros;
             foreach ($disponibles as $e) {
                 if ($falta <= 0) break;
-                $usa = min($falta, (float) $e->litros);
+                $usa = min($falta, (float) $e->restante);
                 DB::table('lote_entrega')->insert([
                     'lote_id' => $loteId, 'entrega_id' => $e->id, 'litros' => $usa,
                     'created_at' => $ahora, 'updated_at' => $ahora,

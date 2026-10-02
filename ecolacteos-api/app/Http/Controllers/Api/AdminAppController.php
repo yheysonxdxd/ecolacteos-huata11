@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\CambiosComunidad;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /** Tablero del administrador para la app: totales, padrón, calidad, solicitudes, conciliación y costos. */
 class AdminAppController extends Controller
@@ -75,17 +77,40 @@ class AdminAppController extends Controller
     /** GET /api/v1/admin/padron — proveedores y trabajadores. */
     public function padron()
     {
+        CambiosComunidad::aplicarProgramados();
+        $recientes = CambiosComunidad::recientes();
+        $programados = CambiosComunidad::programados();
+
+        // cuánto entrega de verdad: litros de los últimos 30 días y de los últimos 7, y su última entrega
+        $hace30 = $this->hoy()->subDays(29)->toDateString();
+        $hace7 = $this->hoy()->subDays(6)->toDateString();
+        $leche = DB::table('entregas')->where('ausente', false)->where('litros', '>', 0)
+            ->selectRaw('proveedor_id, SUM(CASE WHEN fecha >= ? THEN litros ELSE 0 END) as litros_30,
+                SUM(CASE WHEN fecha >= ? THEN 1 ELSE 0 END) as dias_30,
+                SUM(CASE WHEN fecha >= ? THEN litros ELSE 0 END) as litros_7,
+                MAX(fecha) as ultima, COUNT(*) as entregas', [$hace30, $hace30, $hace7])
+            ->groupBy('proveedor_id')->get()->keyBy('proveedor_id');
+
         $proveedores = DB::table('proveedores as p')
             ->join('comunidades as c', 'c.id', '=', 'p.comunidad_id')
             ->join('vehiculos as v', 'v.id', '=', 'p.vehiculo_id')
             ->orderBy('v.codigo')->orderBy('c.nombre')->orderBy('p.nombre')
-            ->select('p.id', 'p.nombre', 'p.dni', 'p.estado', 'p.promedio_litros', 'p.motivo_baja',
+            ->select('p.id', 'p.nombre', 'p.dni', 'p.estado', 'p.promedio_litros', 'p.vacas_ordeno', 'p.motivo_baja',
                 'c.nombre as comunidad', 'v.codigo as vehiculo')
             ->get()
             ->map(fn ($p) => [
                 'id' => $p->id, 'nombre' => $p->nombre, 'dni' => $p->dni, 'estado' => $p->estado,
                 'promedio' => $p->promedio_litros ? (float) $p->promedio_litros : null,
                 'comunidad' => $p->comunidad, 'vehiculo' => $p->vehiculo, 'motivo_baja' => $p->motivo_baja,
+                // "Cambió el 2 oct · antes Carata" (15 días) y "Pasa a Kapi el 5 oct"
+                'cambio_reciente' => ($c = $recientes->get($p->id)) ? ['desde' => $c->desde, 'antes' => $c->antes, 'canal' => $c->canal] : null,
+                'programado' => ($g = $programados->get($p->id)) ? ['desde' => $g->desde, 'comunidad' => $g->comunidad, 'vehiculo' => $g->vehiculo] : null,
+                'leche' => ($l = $leche->get($p->id)) ? [
+                    'por_dia' => $l->dias_30 > 0 ? round($l->litros_30 / $l->dias_30, 1) : null, // en los días que entregó
+                    'litros_30' => round((float) $l->litros_30, 1), 'dias_30' => (int) $l->dias_30,
+                    'litros_7' => round((float) $l->litros_7, 1), 'ultima' => $l->ultima, 'entregas' => (int) $l->entregas,
+                ] : null,
+                'vacas' => $p->vacas_ordeno,
             ]);
 
         $trabajadores = DB::table('users')->orderBy('rol')->orderBy('name')
@@ -179,16 +204,134 @@ class AdminAppController extends Controller
     /** GET /api/v1/admin/solicitudes — cambios de zona, pendientes primero. */
     public function solicitudes()
     {
+        CambiosComunidad::aplicarProgramados();
         $filas = DB::table('solicitudes_cambio_zona as s')
             ->join('proveedores as p', 'p.id', '=', 's.proveedor_id')
             ->join('comunidades as o', 'o.id', '=', 's.comunidad_origen_id')
             ->join('comunidades as d', 'd.id', '=', 's.comunidad_destino_id')
             ->orderByRaw("s.estado = 'PENDIENTE' DESC")->orderByDesc('s.created_at')
-            ->select('s.id', 's.estado', 's.motivo', 's.solicitada_para', 's.vigente_desde',
-                'p.nombre as proveedor', 'o.nombre as origen', 'd.nombre as destino')
+            ->leftJoin('users as u', 'u.id', '=', 's.registrada_por')
+            ->select('s.id', 's.estado', 's.motivo', 's.canal', 's.solicitada_para', 's.vigente_desde', 's.created_at',
+                'p.nombre as proveedor', 'p.dni', 'o.nombre as origen', 'd.nombre as destino', 'u.name as registrada_por')
             ->get();
 
-        return response()->json(['solicitudes' => $filas]);
+        // para registrar un cambio: a qué comunidades se puede ir (con el vehículo que pasa por ahí) y quiénes son los proveedores
+        $vehiculos = DB::table('vehiculos as v')->leftJoin('users as a', 'a.id', '=', 'v.acopiador_id')
+            ->get(['v.id', 'v.codigo', 'v.orden_ruta', 'a.name as acopiador']);
+        $comunidades = DB::table('comunidades')->orderBy('nombre')->get(['id', 'nombre'])->map(function ($c) use ($vehiculos) {
+            $v = $vehiculos->first(fn ($v) => in_array($c->id, json_decode($v->orden_ruta ?? '[]', true)));
+            return ['id' => $c->id, 'nombre' => $c->nombre, 'vehiculo' => $v?->codigo, 'acopiador' => $v?->acopiador];
+        });
+        $proveedores = DB::table('proveedores as p')->join('comunidades as c', 'c.id', '=', 'p.comunidad_id')
+            ->leftJoin('vehiculos as v', 'v.id', '=', 'p.vehiculo_id')->where('p.estado', '!=', 'BAJA')->orderBy('p.nombre')
+            ->get(['p.id', 'p.nombre', 'p.dni', 'p.comunidad_id', 'c.nombre as comunidad', 'v.codigo as vehiculo']);
+
+        return response()->json(['solicitudes' => $filas, 'comunidades' => $comunidades, 'proveedores' => $proveedores]);
+    }
+
+    /**
+     * POST /api/v1/admin/proveedores/{id}/cambiar-comunidad
+     * { comunidad_id, canal: LLAMADA|OFICINA, desde?: AAAA-MM-DD, motivo? }
+     * El productor avisó por teléfono o vino a Huata (casi no tienen internet):
+     * el administrador registra el cambio y queda aprobado al momento.
+     */
+    public function cambiarComunidad(Request $r, int $id)
+    {
+        $data = $r->validate([
+            'comunidad_id' => ['required', 'integer', 'exists:comunidades,id'],
+            'canal' => ['required', 'in:LLAMADA,OFICINA'],
+            'desde' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:'.$this->hoy()->toDateString()],
+            'motivo' => ['nullable', 'string', 'max:300'],
+        ], [
+            'canal.required' => 'Indica si el productor llamó o vino a Huata.',
+            'desde.after_or_equal' => 'El cambio no puede ser para una fecha pasada.',
+        ]);
+        $p = DB::table('proveedores')->find($id);
+        abort_if(! $p, 404, 'Proveedor no encontrado');
+        abort_if($p->estado === 'BAJA', 422, 'Ese proveedor está dado de baja.');
+        abort_if((int) $data['comunidad_id'] === (int) $p->comunidad_id, 422, 'El proveedor ya está en esa comunidad.');
+        $programado = CambiosComunidad::programados()->get($p->id);
+        abort_if($programado !== null, 422,
+            "Ya tiene un cambio programado a {$programado?->comunidad} desde el {$programado?->desde}. Espera a que se aplique.");
+
+        return DB::transaction(function () use ($r, $p, $data) {
+            $vigente = $data['desde'] ?? $this->hoy()->toDateString();
+            $vehiculo = $this->moverProveedor($p->id, (int) $data['comunidad_id'], $vigente, $r->user()->id);
+
+            // si había pedido algo por la app, ese pedido queda resuelto con este cambio
+            DB::table('solicitudes_cambio_zona')->where('proveedor_id', $p->id)->where('estado', 'PENDIENTE')->update([
+                'estado' => DB::raw('CASE WHEN comunidad_destino_id = '.(int) $data['comunidad_id']." THEN 'APROBADA' ELSE 'RECHAZADA' END"),
+                'resuelta_por' => $r->user()->id, 'updated_at' => now(),
+            ]);
+            DB::table('solicitudes_cambio_zona')->insert([
+                'uuid' => (string) Str::uuid(), 'proveedor_id' => $p->id,
+                'comunidad_origen_id' => $p->comunidad_id, 'comunidad_destino_id' => $data['comunidad_id'],
+                'motivo' => $data['motivo'] ?? null, 'canal' => $data['canal'], 'registrada_por' => $r->user()->id,
+                'estado' => 'APROBADA', 'solicitada_para' => $vigente, 'vigente_desde' => $vigente,
+                'resuelta_por' => $r->user()->id, 'created_at' => now(), 'updated_at' => now(),
+            ]);
+
+            return response()->json([
+                'proveedor' => $p->nombre, 'comunidad' => DB::table('comunidades')->where('id', $data['comunidad_id'])->value('nombre'),
+                'vehiculo' => $vehiculo->codigo, 'vigente_desde' => $vigente,
+            ], 201);
+        });
+    }
+
+    /** Pasa al proveedor a la comunidad y al vehículo cuya ruta la incluye; deja el registro en proveedor_ubicaciones. */
+    private function moverProveedor(int $proveedorId, int $comunidadId, string $vigente, int $usuarioId): object
+    {
+        // con fecha futura queda programado (CambiosComunidad::aplicarProgramados)
+        return CambiosComunidad::mover($proveedorId, $comunidadId, $vigente, $usuarioId);
+    }
+
+    /** GET /api/v1/admin/proveedores/{id}/traslado — el traslado que se puede corregir (programado o reciente). */
+    public function verTraslado(int $id)
+    {
+        CambiosComunidad::aplicarProgramados();
+        $s = CambiosComunidad::trasladoEditable($id);
+        abort_if(! $s, 404, 'Este proveedor no tiene un traslado para corregir.');
+
+        return response()->json(['traslado' => [
+            'origen_id' => $s->comunidad_origen_id, 'origen' => $s->origen, 'destino_id' => $s->comunidad_destino_id,
+            'destino' => $s->destino, 'desde' => $s->vigente_desde, 'canal' => $s->canal, 'motivo' => $s->motivo,
+            'programado' => $s->programado,
+        ]]);
+    }
+
+    /** POST /api/v1/admin/proveedores/{id}/traslado { comunidad_id, desde?, canal?, motivo? } — corregir el traslado. */
+    public function editarTraslado(Request $r, int $id)
+    {
+        $d = $r->validate([
+            'comunidad_id' => ['required', 'integer', 'exists:comunidades,id'],
+            'desde' => ['nullable', 'date_format:Y-m-d'],
+            'canal' => ['nullable', 'in:APP,LLAMADA,OFICINA'],
+            'motivo' => ['nullable', 'string', 'max:300'],
+        ]);
+        abort_if(! DB::table('proveedores')->where('id', $id)->exists(), 404, 'Proveedor no encontrado');
+        $s = DB::transaction(fn () => CambiosComunidad::editarTraslado($id, $d));
+
+        return response()->json([
+            'comunidad' => DB::table('comunidades')->where('id', $s->comunidad_destino_id)->value('nombre'),
+            'desde' => $s->vigente_desde,
+        ]);
+    }
+
+    /** POST /api/v1/admin/proveedores/{id}/traslado/anular — el traslado no iba. */
+    public function anularTraslado(int $id)
+    {
+        abort_if(! DB::table('proveedores')->where('id', $id)->exists(), 404, 'Proveedor no encontrado');
+        $origen = DB::transaction(fn () => CambiosComunidad::anularTraslado($id));
+
+        return response()->json(['se_queda_en' => $origen]);
+    }
+
+    /** GET /api/v1/admin/proveedores/{id}/historial-comunidad */
+    public function historialComunidad(int $id)
+    {
+        CambiosComunidad::aplicarProgramados();
+
+        return response()->json(CambiosComunidad::historial($id));
     }
 
     /**
@@ -212,19 +355,7 @@ class AdminAppController extends Controller
                 return response()->json(['estado' => 'RECHAZADA']);
             }
 
-            $vehiculo = DB::table('vehiculos')->get()
-                ->first(fn ($v) => in_array($s->comunidad_destino_id, json_decode($v->orden_ruta ?? '[]', true)));
-            abort_if(! $vehiculo, 422, 'Ningún vehículo pasa por la comunidad destino');
-
-            DB::table('proveedor_ubicaciones')->insert([
-                'proveedor_id' => $s->proveedor_id, 'comunidad_id' => $s->comunidad_destino_id,
-                'vehiculo_id' => $vehiculo->id, 'vigente_desde' => $vigente,
-                'registrado_por' => $r->user()->id, 'created_at' => now(), 'updated_at' => now(),
-            ]);
-            DB::table('proveedores')->where('id', $s->proveedor_id)->update([
-                'comunidad_id' => $s->comunidad_destino_id, 'vehiculo_id' => $vehiculo->id,
-                'ubicacion_actualizada_en' => $vigente, 'updated_at' => now(),
-            ]);
+            $vehiculo = $this->moverProveedor($s->proveedor_id, $s->comunidad_destino_id, $vigente, $r->user()->id);
             DB::table('solicitudes_cambio_zona')->where('id', $s->id)->update([
                 'estado' => 'APROBADA', 'vigente_desde' => $vigente,
                 'resuelta_por' => $r->user()->id, 'updated_at' => now(),
