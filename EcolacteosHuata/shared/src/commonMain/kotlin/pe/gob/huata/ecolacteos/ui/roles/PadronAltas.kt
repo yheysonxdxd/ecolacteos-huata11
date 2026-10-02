@@ -233,7 +233,7 @@ private fun DialogoActivo(u: JsonObject, onCerrar: () -> Unit, onListo: (String)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun Hoja(titulo: String, onCerrar: () -> Unit, contenido: @Composable ColumnScope.() -> Unit) {
+internal fun Hoja(titulo: String, onCerrar: () -> Unit, contenido: @Composable ColumnScope.() -> Unit) {
     ModalBottomSheet(
         onDismissRequest = onCerrar, containerColor = Color(0xFF142333),
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -249,7 +249,7 @@ private fun Hoja(titulo: String, onCerrar: () -> Unit, contenido: @Composable Co
 }
 
 @Composable
-private fun coloresCampo() = OutlinedTextFieldDefaults.colors(
+internal fun coloresCampo() = OutlinedTextFieldDefaults.colors(
     focusedTextColor = Altiplano.Texto, unfocusedTextColor = Altiplano.Texto,
     focusedBorderColor = Altiplano.VerdeMarca, unfocusedBorderColor = Altiplano.Borde,
     focusedLabelColor = Altiplano.TextoSecundario, unfocusedLabelColor = Altiplano.TextoTerciario,
@@ -257,7 +257,7 @@ private fun coloresCampo() = OutlinedTextFieldDefaults.colors(
 )
 
 @Composable
-private fun Campo(
+internal fun Campo(
     valor: String, onCambio: (String) -> Unit, etiqueta: String,
     teclado: KeyboardType = KeyboardType.Text, palabras: Boolean = false,
     modifier: Modifier = Modifier.fillMaxWidth(),
@@ -285,7 +285,7 @@ private fun CampoClave(valor: String, onCambio: (String) -> Unit) {
 }
 
 @Composable
-private fun Chip(texto: String, elegido: Boolean, onClick: () -> Unit) {
+internal fun Chip(texto: String, elegido: Boolean, onClick: () -> Unit) {
     Surface(
         onClick = onClick, shape = RoundedCornerShape(12.dp),
         color = if (elegido) Altiplano.VerdeMarcaSuave else Altiplano.Superficie,

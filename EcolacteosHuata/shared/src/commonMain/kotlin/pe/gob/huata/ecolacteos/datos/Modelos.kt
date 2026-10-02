@@ -47,10 +47,28 @@ data class Proveedor(
     @SerialName("promedio_litros") val promedioLitros: Double? = null,
     @SerialName("vacas_ordeno") val vacasOrdeno: Int? = null,
     val estado: String = "ACTIVO",
+    // cambio de comunidad de los últimos 15 días (viene del bootstrap): "antes en Carata"
+    val cambioAntes: String? = null,
+    val cambioDesde: String? = null,
+    val cambioAntesVehiculoId: Long? = null,
 ) {
     val tienePromedio: Boolean get() = (promedioLitros ?: 0.0) > 0
     val deBaja: Boolean get() = estado == "BAJA"
+
+    /** Llegó hace poco a la ruta de este vehículo desde otra ruta. */
+    fun nuevoEnRuta(miVehiculo: Long?): Boolean =
+        cambioAntes != null && miVehiculo != null && vehiculoId == miVehiculo && cambioAntesVehiculoId != miVehiculo
 }
+
+/** Proveedor que se cambió a una comunidad de otra ruta: "ya no está en tu ruta". */
+@Serializable
+data class SeFue(
+    val nombre: String,
+    val deVehiculoId: Long,
+    val antes: String,
+    val ahora: String,
+    val desde: String,
+)
 
 @Serializable
 data class Entrega(

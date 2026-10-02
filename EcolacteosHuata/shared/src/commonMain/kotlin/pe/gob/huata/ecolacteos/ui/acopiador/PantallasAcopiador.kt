@@ -43,6 +43,7 @@ object Demo {
         Proveedor(5, "p5", "Feliciana Cutipa Luque", "40556677", 6, 1, promedioLitros = 10.0),
         Proveedor(6, "p6", "Gregorio Yana Ccama", "40667788", 8, 3, promedioLitros = 9.0),
     )
+    var seFueron = emptyList<SeFue>()
     fun comunidad(id: Long) = comunidades.first { it.id == id }
     fun vehiculo(id: Long) = vehiculos.first { it.id == id }
 }
@@ -88,6 +89,40 @@ fun ContenidoAcopiador(ruta: String, estado: EstadoAcopio, irA: (Int) -> Unit) {
     }
 }
 
+/** "🆕 Nuevo en tu ruta · antes en Carata" (primeros 15 días tras un cambio de comunidad). */
+@Composable
+fun EtiquetaNuevoEnRuta(p: Proveedor) {
+    Text("🆕 Nuevo en tu ruta · antes en ${p.cambioAntes}", style = Texto.Apoyo, color = Altiplano.CelesteAcento)
+}
+
+/**
+ * Quién llegó a mi ruta y quién se fue (cambios de comunidad de los últimos
+ * 15 días): para pasar a recoger al nuevo y no esperar al que ya no está.
+ */
+@Composable
+private fun TarjetaCambiosRuta(filas: List<FilaProveedor>) {
+    val mio = VehiculoElegido.id ?: return
+    val llegaron = filas.map { it.proveedor }.filter { it.nuevoEnRuta(mio) }
+    val seFueron = Demo.seFueron.filter { it.deVehiculoId == mio }
+    if (llegaron.isEmpty() && seFueron.isEmpty()) return
+
+    Tarjeta(borde = Altiplano.CelesteAcento) {
+        Text("CAMBIOS EN TU RUTA", style = Texto.Eyebrow, color = Altiplano.CelesteAcento)
+        llegaron.forEach { p ->
+            Spacer(Modifier.height(8.dp))
+            Text("🆕 ${p.nombre}", style = Texto.Fila, color = Altiplano.Texto)
+            Text("Ahora está en ${Demo.comunidad(p.comunidadId).nombre} (antes en ${p.cambioAntes}) · desde el ${fechaCorta(p.cambioDesde ?: "")}. Pasa a recoger su leche.",
+                style = Texto.Apoyo, color = Altiplano.TextoSecundario)
+        }
+        seFueron.forEach { s ->
+            Spacer(Modifier.height(8.dp))
+            Text("👋 ${s.nombre}", style = Texto.Fila, color = Altiplano.Texto)
+            Text("Ya no está en tu ruta: se cambió de ${s.antes} a ${s.ahora} desde el ${fechaCorta(s.desde)}. No lo esperes.",
+                style = Texto.Apoyo, color = Altiplano.TextoSecundario)
+        }
+    }
+}
+
 @Composable
 private fun PantallaHoy(filas: List<FilaProveedor>, estado: EstadoAcopio, irA: (Int) -> Unit) {
     val registrados = filas.count { it.entrega != null }
@@ -97,6 +132,7 @@ private fun PantallaHoy(filas: List<FilaProveedor>, estado: EstadoAcopio, irA: (
         verticalArrangement = Arrangement.spacedBy(Medidas.Hueco),
     ) {
         TarjetaMiVehiculo(filas) { irA(1) }
+        TarjetaCambiosRuta(filas)
         TarjetaDato(
             eyebrow = "LITROS ACOPIADOS HOY",
             valor = formatear(estado.litrosHoy), unidad = "L",
@@ -127,6 +163,7 @@ private fun PantallaHoy(filas: List<FilaProveedor>, estado: EstadoAcopio, irA: (
                         Column(Modifier.weight(1f)) {
                             Text(f.proveedor.nombre, style = Texto.Fila, color = Altiplano.Texto)
                             Text("${f.comunidad} · ${f.vehiculo}", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+                            if (f.proveedor.nuevoEnRuta(VehiculoElegido.id)) EtiquetaNuevoEnRuta(f.proveedor)
                         }
                         ChipEstado(Estado.FALTA)
                     }

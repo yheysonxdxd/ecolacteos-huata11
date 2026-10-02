@@ -74,6 +74,7 @@ fun PantallaRegistrar(
                                 "${fila.comunidad} · ${fila.vehiculo}",
                                 style = Texto.Apoyo, color = Altiplano.TextoTerciario,
                             )
+                            if (fila.proveedor.nuevoEnRuta(VehiculoElegido.id)) EtiquetaNuevoEnRuta(fila.proveedor)
                             // sin promedio no se muestra aviso: un aviso falso a
                             // las cinco de la mañana enseña a ignorarlos
                             fila.entrega?.takeIf { !it.ausente }?.let { e ->

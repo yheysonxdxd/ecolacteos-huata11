@@ -87,8 +87,18 @@ object Sesion {
                 promedioLitros = p.texto("promedio_litros")?.toDoubleOrNull(),
                 vacasOrdeno = p.texto("vacas_ordeno")?.toIntOrNull(),
                 estado = p.texto("estado") ?: "ACTIVO",
+                cambioAntes = (p["cambio_reciente"] as? JsonObject)?.texto("antes"),
+                cambioDesde = (p["cambio_reciente"] as? JsonObject)?.texto("desde"),
+                cambioAntesVehiculoId = (p["cambio_reciente"] as? JsonObject)?.texto("antes_vehiculo_id")?.toDoubleOrNull()?.toLong(),
             )
         }
+        // las copias guardadas antes de este cambio no traen "se_fueron"
+        Demo.seFueron = (b["se_fueron"] as? JsonArray)?.map { it.jsonObject }?.map { s ->
+            SeFue(
+                nombre = s.texto("nombre") ?: "", deVehiculoId = s.long("de_vehiculo_id"),
+                antes = s.texto("antes") ?: "", ahora = s.texto("ahora") ?: "", desde = s.texto("desde") ?: "",
+            )
+        } ?: emptyList()
         desdeServidor = true
     }
 

@@ -12,13 +12,51 @@ import pe.gob.huata.ecolacteos.datos.Sesion
 import pe.gob.huata.ecolacteos.tema.*
 import pe.gob.huata.ecolacteos.ui.componentes.*
 
-/** Admin con datos de la base: las seis pestañas leen las rutas /api/v1/admin/... */
+/** Pestaña elegida dentro de cada opción del menú del admin (como en la web de oficina). */
+object AdminPestanas {
+    var acopio by mutableStateOf(0)
+    var dinero by mutableStateOf(0)
+    var padron by mutableStateOf(0)
+    var planta by mutableStateOf(0)
+}
+
+/**
+ * Admin con datos de la base. Pocas opciones abajo y pestañas arriba:
+ * Acopio (Totales · Conciliación), Dinero (Ventas y pagos · Costos),
+ * Padrón (Proveedores · Trabajadores · Cambios de comunidad), Calidad y
+ * Planta (Fórmulas · Lotes · Almacén · Pérdidas · Kardex · Órdenes · Vender · Últimas ventas).
+ */
 @Composable
 fun ContenidoAdminReal(ruta: String, e: EstadoAdmin) {
+    val a = AdminPestanas
     when (ruta) {
+        "admin/acopio" -> ConPestanas(listOf("Totales", "Conciliación"), a.acopio, { a.acopio = it }) {
+            if (a.acopio == 0) TotalesReal(e) else ConciliacionReal()
+        }
+        "admin/dinero" -> ConPestanas(listOf("Ventas y pagos", "Costos"), a.dinero, { a.dinero = it }) {
+            if (a.dinero == 0) DineroReal(e) else CostosReal()
+        }
+        "admin/padron" -> ConPestanas(listOf("Proveedores", "Trabajadores", "Cambios"), a.padron, { a.padron = it }) {
+            if (a.padron == 2) SolicitudesReal() else PadronReal(a.padron == 1)
+        }
+        "admin/planta" -> ConPestanas(
+            listOf("Fórmulas", "Lotes", "Almacén", "Pérdidas", "Kardex", "Órdenes", "Vender", "Últimas ventas"), a.planta, { a.planta = it },
+        ) {
+            when (a.planta) {
+                0 -> FormulasReal(puedeAceptar = true) { a.planta = 1 } // al iniciar un lote, a Lotes
+                1 -> LotesReal()
+                2 -> ContenidoComprasReal("compras/inventario") { a.planta = 4 } // tocar un insumo: su kardex
+                3 -> PerdidasReal("compras")
+                4 -> KardexCompleto()
+                5 -> ContenidoComprasReal("compras/orden") {}
+                6 -> ContenidoComprasReal("compras/ventas-nueva") { a.planta = 7 } // después de vender: la nota
+                else -> ContenidoComprasReal("compras/movimientos") {}
+            }
+        }
+        // rutas anteriores (por si alguna pantalla las usa todavía)
         "admin/totales" -> TotalesReal(e)
         "admin/negocio" -> DineroReal(e)
-        "admin/padron" -> PadronReal()
+        "admin/padron-old" -> PadronReal(false)
         "admin/calidad" -> CalidadAdminReal()
         "admin/solicitudes" -> SolicitudesReal()
         "admin/conciliacion" -> ConciliacionReal()
@@ -67,32 +105,15 @@ private fun TotalesReal(e: EstadoAdmin) {
 }
 
 @Composable
-private fun PadronReal() {
-    var verTrabajadores by remember { mutableStateOf(false) }
-    CargaServidor("/api/v1/admin/padron") { d, recargar ->
+private fun PadronReal(verTrabajadores: Boolean) {
+    CargaServidor("/api/v1/admin/padron", clave = PadronUi.version) { d, recargar ->
         val provs = d.lista("proveedores")
         val trab = d.lista("trabajadores")
         PantallaScroll {
-            Segmentos(listOf("Proveedores · ${provs.size}", "Trabajadores · ${trab.size}"), if (verTrabajadores) 1 else 0) {
-                verTrabajadores = it == 1
-            }
             AltasPadron(verTrabajadores, recargar)
             if (!verTrabajadores) {
-                provs.groupBy { it.txt("vehiculo") }.forEach { (vehiculo, lista) ->
-                    Seccion("$vehiculo · ${lista.size}")
-                    lista.forEach { p ->
-                        val estado = p.txt("estado")
-                        FilaLista(
-                            p.txt("nombre"),
-                            "DNI ${p.txt("dni")} · ${p.txt("comunidad")}" +
-                                (p.num("promedio").takeIf { it > 0 }?.let { " · prom. ${formatear(it)} L" } ?: " · sin promedio") +
-                                (p.txt("motivo_baja").takeIf { it.isNotEmpty() }?.let { " · $it" } ?: ""),
-                            borde = if (estado == "ACTIVO") Altiplano.Borde else Altiplano.AlertaBorde,
-                        ) {
-                            ChipEstado(if (estado == "ACTIVO") Estado.ACEPTADO else Estado.RECHAZADO)
-                        }
-                    }
-                }
+                // tocar al proveedor: su ficha; en la fila, cambiar comunidad o editar su traslado
+                ProveedoresPadron(provs)
             } else {
                 trab.forEach { u ->
                     FilaLista(u.txt("nombre"), "DNI ${u.txt("dni")} · ${u.txt("rol").lowercase().replaceFirstChar { it.uppercase() }}", onClick = { TrabajadorElegido.valor = u }) {
@@ -105,8 +126,20 @@ private fun PadronReal() {
     }
 }
 
+/** Calidad: promedios por vehículo y, en la otra pestaña, los sancionados por adulteración. */
 @Composable
 private fun CalidadAdminReal() {
+    var verAdulteraciones by remember { mutableStateOf(false) }
+    Column {
+        Box(Modifier.padding(start = Medidas.Pantalla, end = Medidas.Pantalla, top = Medidas.Pantalla)) {
+            Segmentos(listOf("Por vehículo", "Adulteraciones"), if (verAdulteraciones) 1 else 0) { verAdulteraciones = it == 1 }
+        }
+        if (verAdulteraciones) AdulteracionesReal() else CalidadVehiculosReal()
+    }
+}
+
+@Composable
+private fun CalidadVehiculosReal() {
     CargaServidor("/api/v1/admin/calidad") { d, _ ->
         PantallaScroll {
             Text("Promedios de los últimos 30 días por vehículo.", style = Texto.Cuerpo, color = Altiplano.TextoTerciario)
@@ -154,11 +187,14 @@ private fun SolicitudesReal() {
         }
     }
 
-    CargaServidor("/api/v1/admin/solicitudes", clave = version) { d, _ ->
+    CargaServidor("/api/v1/admin/solicitudes", clave = version + PadronUi.version * 1000) { d, _ ->
         val lista = d.lista("solicitudes")
         PantallaScroll {
+            // los productores casi no tienen internet: llaman o vienen a Huata y aquí se registra
+            BotonPrimario("+ Registrar cambio (llamó o vino a Huata)") { PadronUi.traslado = null to false }
+            PadronUi.mensaje?.let { AvisoCampo(it, esAlerta = it.startsWith("No se pudo")) }
             mensaje?.let { AvisoCampo(it, esAlerta = it.startsWith("No se pudo")) }
-            if (lista.isEmpty()) AvisoCampo("No hay solicitudes de cambio de zona.")
+            if (lista.isEmpty()) AvisoCampo("Todavía no hay cambios de comunidad.")
             lista.forEach { s ->
                 val estado = s.txt("estado")
                 Tarjeta(borde = if (estado == "PENDIENTE") Altiplano.VerdeBorde else Altiplano.Borde) {
@@ -169,7 +205,12 @@ private fun SolicitudesReal() {
                     Spacer(Modifier.height(6.dp))
                     Text("${s.txt("origen")}  →  ${s.txt("destino")}", style = Texto.Cuerpo, color = Altiplano.TextoSecundario)
                     s.txt("motivo").takeIf { it.isNotEmpty() }?.let { Text("“$it”", style = Texto.Apoyo, color = Altiplano.TextoTerciario) }
-                    Text("Pedida para el ${fechaCorta(s.txt("solicitada_para"))}", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+                    Text(
+                        (when (s.txt("canal")) { "LLAMADA" -> "📞 Llamó"; "OFICINA" -> "🏠 Vino a Huata"; else -> "📱 Por la app" }) +
+                            (s.txt("registrada_por").takeIf { it.isNotEmpty() }?.let { " · registró $it" } ?: "") +
+                            " · para el ${fechaCorta(s.txt("solicitada_para"))}",
+                        style = Texto.Apoyo, color = Altiplano.TextoTerciario,
+                    )
                     when {
                         estado == "PENDIENTE" && enviando == s.txt("id") -> {
                             Spacer(Modifier.height(12.dp)); LinearProgressIndicator(Modifier.fillMaxWidth(), color = Altiplano.Exito)
@@ -185,6 +226,7 @@ private fun SolicitudesReal() {
                     }
                 }
             }
+            HojasPadron()
         }
     }
 }

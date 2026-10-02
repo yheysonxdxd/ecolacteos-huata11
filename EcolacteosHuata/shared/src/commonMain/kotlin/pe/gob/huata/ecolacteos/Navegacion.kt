@@ -29,7 +29,35 @@ import pe.gob.huata.ecolacteos.ui.acopiador.*
  */
 data class Destino(val ruta: String, val etiqueta: String, val subtitulo: String = "", val icono: ImageVector = Icons.Outlined.Circle)
 
-fun destinosDe(rol: Rol): List<Destino> = when (rol) {
+/**
+ * Con el servidor (datos reales) el menú es como el de la web de oficina: pocas
+ * opciones abajo y pestañas arriba. El modo demo sigue con su menú de siempre.
+ */
+fun destinosDe(rol: Rol, real: Boolean = Sesion.desdeServidor): List<Destino> = if (!real) destinosDemo(rol) else when (rol) {
+    Rol.OPERARIO -> listOf(
+        Destino("operario/recetas", "Recetas", "Queso y yogurt", Icons.Outlined.MenuBook),
+        Destino("operario/nueva", "Nueva orden", "Cuántos hacer, insumos y pasos", Icons.Outlined.AddCircleOutline),
+        Destino("operario/lotes", "Lotes", "Esperado vs. real", Icons.Outlined.Layers),
+        Destino("operario/perdidas", "Pérdidas", "Leche cortada, queso vencido…", Icons.Outlined.ReportProblem),
+    )
+    Rol.COMPRAS -> listOf(
+        Destino("compras/formulas", "Fórmulas", "Cuánto hacer y qué falta", Icons.Outlined.MenuBook),
+        Destino("compras/ventas", "Ventas", "Vender y notas de venta", Icons.Outlined.Sell),
+        Destino("compras/almacen", "Almacén", "Stock, avisos y pérdidas", Icons.Outlined.Inventory2),
+        Destino("compras/kardex", "Kardex", "Insumos, queso, yogurt y leche", Icons.Outlined.SwapHoriz),
+        Destino("compras/orden", "Orden", "Órdenes de compra", Icons.Outlined.ShoppingCart),
+    )
+    Rol.ADMIN -> listOf(
+        Destino("admin/acopio", "Acopio", "Totales y conciliación", Icons.Outlined.PieChart),
+        Destino("admin/dinero", "Dinero", "Ventas, pagos y costos", Icons.Outlined.Savings),
+        Destino("admin/padron", "Padrón", "Proveedores, trabajadores y cambios", Icons.Outlined.People),
+        Destino("admin/calidad", "Calidad", "Promedios y adulteraciones", Icons.Outlined.Science),
+        Destino("admin/planta", "Planta", "Fórmulas, lotes, almacén y kardex", Icons.Outlined.Inventory2),
+    )
+    else -> destinosDemo(rol)
+}
+
+private fun destinosDemo(rol: Rol): List<Destino> = when (rol) {
     Rol.ACOPIADOR -> listOf(
         Destino("acopiador/hoy", "Hoy", "Ruta del día · 3 carros y 1 motocar", Icons.Outlined.WbSunny),
         Destino("acopiador/registrar", "Registrar", "Toca un proveedor para anotar litros", Icons.Outlined.AddCircleOutline),
@@ -63,7 +91,7 @@ fun destinosDe(rol: Rol): List<Destino> = when (rol) {
         Destino("admin/totales", "Totales", "Acopio, aceptación y ranking", Icons.Outlined.PieChart),
         Destino("admin/negocio", "Dinero", "Ventas y pagos a proveedores", Icons.Outlined.Savings),
         Destino("admin/padron", "Padrón", "Proveedores y trabajadores", Icons.Outlined.People),
-        Destino("admin/calidad", "Calidad", "Promedios por acopiador", Icons.Outlined.Science),
+        Destino("admin/calidad", "Calidad", "Promedios y adulteraciones", Icons.Outlined.Science),
         Destino("admin/solicitudes", "Solicitudes", "Cambios de zona", Icons.Outlined.Notifications),
         Destino("admin/conciliacion", "Conciliación", "Campo vs. planta · Fase 2", Icons.Outlined.CompareArrows),
         Destino("admin/costos", "Costos", "Costo por litro y rendimiento", Icons.Outlined.Payments),

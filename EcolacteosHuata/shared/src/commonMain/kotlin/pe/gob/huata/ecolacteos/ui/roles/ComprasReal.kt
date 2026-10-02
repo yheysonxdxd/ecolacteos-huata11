@@ -22,31 +22,51 @@ object ComprasReal {
     var cantidadVenta by mutableStateOf(10.0)
     var mensaje by mutableStateOf<String?>(null)
     var version by mutableStateOf(0)
+    var pestanaVentas by mutableStateOf(0)  // Nueva venta · Últimas ventas
+    var pestanaAlmacen by mutableStateOf(0) // Stock y avisos · Pérdidas
 }
 
 private val NOMBRE_CANAL = mapOf("MAYORISTA" to "Mayorista", "DIRECTO" to "Vecino de Huata", "PLANTA" to "Proveedor de leche")
 
-/** Compras con la base: inventario, órdenes de compra, ventas y movimientos. */
+/**
+ * Compras con la base, como en la web de oficina: Fórmulas · Ventas (nueva y
+ * últimas con su nota) · Almacén (stock y pérdidas) · Kardex · Orden.
+ * [irA] cambia de opción del menú; desde Almacén, tocar algo abre su kardex (opción 3).
+ */
 @Composable
 fun ContenidoComprasReal(ruta: String, irA: (Int) -> Unit) {
+    val c = ComprasReal
     when (ruta) {
-        "compras/inventario" -> InventarioReal()
+        "compras/formulas" -> FormulasReal(puedeAceptar = false)
+        "compras/ventas" -> ConPestanas(listOf("Nueva venta", "Últimas ventas"), c.pestanaVentas, { c.pestanaVentas = it }) {
+            if (c.pestanaVentas == 0) VentaReal { c.pestanaVentas = 1 } else MovimientosReal()
+        }
+        "compras/almacen" -> ConPestanas(listOf("Stock y avisos", "Pérdidas"), c.pestanaAlmacen, { c.pestanaAlmacen = it }) {
+            if (c.pestanaAlmacen == 0) InventarioReal { irA(3) } else PerdidasReal("compras")
+        }
+        "compras/kardex" -> KardexCompleto()
+        "compras/ventas-nueva" -> VentaReal { irA(0) }
+        "compras/inventario" -> InventarioReal { irA(0) }
         "compras/orden" -> OrdenReal(irA)
-        "compras/ventas" -> VentaReal(irA)
         else -> MovimientosReal()
     }
 }
 
+/** Stock de insumos y productos; tocar uno abre su kardex ([alKardex]). */
 @Composable
-private fun InventarioReal() {
-    CargaServidor("/api/v1/compras/inventario", clave = ComprasReal.version) { d, _ ->
+private fun InventarioReal(alKardex: () -> Unit) {
+    CargaServidor("/api/v1/compras/inventario", clave = ComprasReal.version + Perdidas.version * 1000) { d, _ ->
         PantallaScroll {
-            val bajos = d.lista("insumos").count { it.num("stock") < it.num("minimo") }
-            if (bajos > 0) AvisoCampo("$bajos insumos bajo el mínimo. Emite una orden de compra.", esAlerta = true)
-            Seccion("Insumos")
+            // "falta azúcar para el yogurt", "cuajo bajo el mínimo"…
+            d.lista("avisos").forEach { a ->
+                AvisoCampo(a.txt("texto") + " Comprar al menos ${formatear(a.num("comprar"), 2)} ${a.txt("unidad")}.", esAlerta = a.txt("nivel") == "FALTA")
+            }
+            Seccion("Insumos · toca uno para ver su kardex")
             d.lista("insumos").forEach { i ->
                 val bajo = i.num("stock") < i.num("minimo")
-                Tarjeta(borde = if (bajo) Altiplano.AlertaBorde else Altiplano.Borde) {
+                Tarjeta(borde = if (bajo) Altiplano.AlertaBorde else Altiplano.Borde, onClick = {
+                    KardexElegido.tipo = "insumo"; KardexElegido.id = i.num("id").toLong(); alKardex()
+                }) {
                     Row {
                         Text(i.txt("nombre"), style = Texto.Fila, color = Altiplano.Texto, modifier = Modifier.weight(1f))
                         Text("${formatear(i.num("stock"), 2)} ${i.txt("unidad")}", style = Texto.Fila, color = if (bajo) Altiplano.Alerta else Altiplano.Texto)
@@ -60,9 +80,11 @@ private fun InventarioReal() {
                     )
                 }
             }
-            Seccion("Producto terminado")
+            Seccion("Producto terminado · toca uno para ver su kardex")
             d.lista("productos").forEach { p ->
-                FilaLista(p.txt("nombre"), p.txt("unidad")) {
+                FilaLista(p.txt("nombre"), p.txt("unidad"), onClick = {
+                    KardexElegido.tipo = "producto"; KardexElegido.id = p.num("id").toLong(); alKardex()
+                }) {
                     Text(formatear(p.num("stock"), 0), style = Texto.Fila, color = Altiplano.Texto)
                 }
             }
