@@ -180,6 +180,11 @@ object Sesion {
         pe.gob.huata.ecolacteos.ui.roles.CalidadReal.mensaje = null
     }
 
+    /** true si el servidor contesta (para la franja de conexión). */
+    suspend fun servidorResponde(): Boolean = kotlinx.coroutines.withTimeoutOrNull(4_000) {
+        runCatching { http.get(ConfigServidor.baseUrl).status.value < 500 }.getOrDefault(false)
+    } ?: false
+
     private suspend fun get(ruta: String): JsonObject {
         val r = http.get("${ConfigServidor.baseUrl}$ruta") {
             accept(ContentType.Application.Json)

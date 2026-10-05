@@ -118,6 +118,14 @@ fun AppEcolacteos(rolInicial: Rol = Rol.ACOPIADOR, pendientes: Int = 0, hayRed: 
         val destinos = destinosDe(r)
         var activo by remember(r) { mutableStateOf(0) }
         val pend = if (r == Rol.ACOPIADOR) acopio.pendientes else pendientes
+        // estado real del servidor (en modo demo no hay token y queda "sin conexión")
+        var conectado by remember(r) { mutableStateOf(hayRed) }
+        LaunchedEffect(r) {
+            while (Sesion.token != null) {
+                conectado = Sesion.servidorResponde()
+                kotlinx.coroutines.delay(10_000)
+            }
+        }
 
         Scaffold(
             containerColor = Altiplano.Fondo,
@@ -142,7 +150,7 @@ fun AppEcolacteos(rolInicial: Rol = Rol.ACOPIADOR, pendientes: Int = 0, hayRed: 
             },
         ) { padding ->
             Column(Modifier.padding(padding)) {
-                BarraSinConexion(pend, hayRed)
+                BarraSinConexion(pend, conectado)
                 CabeceraPantalla(
                     rolTexto = nombreRol(r).uppercase(),
                     titulo = destinos[activo].etiqueta,
