@@ -80,7 +80,7 @@ function oficina() {
           pestanas: [{ id: 'inventario', nombre: 'Stock y avisos' }, { id: 'mermas', nombre: 'Pérdidas (mermas)' }] },
         { id: 'kardex', nombre: 'Kardex', grupo: 'Compras y almacén', pestanas: [{ id: 'kardex', nombre: 'Kardex' }] },
         { id: 'ordenes-grupo', nombre: 'Compras de insumos', grupo: 'Compras y almacén',
-          pestanas: [{ id: 'ordenes', nombre: 'Órdenes y comprobantes' }, { id: 'vendedores', nombre: 'Vendedores' }] },
+          pestanas: [{ id: 'ordenes', nombre: 'Compras de insumos' }] }, // órdenes y vendedores en una sola pantalla
       ];
       if (!admin) return compras;
       return [
@@ -170,10 +170,13 @@ function oficina() {
             this.d = await this.api('/admin/' + this.seccion); break;
           case 'vender': this.d = await this.api('/compras/ventas-datos'); this.nuevaVenta(); break;
           case 'inventario': this.d = await this.api('/compras/inventario'); break;
-          case 'ordenes':
-            this.d = { ...(await this.api('/compras/ordenes')), inv: await this.api('/compras/inventario') };
+          case 'ordenes': {
+            // d.vendedores: los activos, para elegir en la orden · todosVendedores: la lista de abajo, con sus compras
+            const [ordenes, inv, vend] = await Promise.all([
+              this.api('/compras/ordenes'), this.api('/compras/inventario'), this.api('/compras/vendedores')]);
+            this.d = { ...ordenes, inv, todosVendedores: vend.vendedores };
             break;
-          case 'vendedores': this.d = await this.api('/compras/vendedores'); break;
+          }
           case 'movimientos': this.d = await this.api('/compras/movimientos'); break;
           case 'formulas': this.d = await this.api('/compras/formulas'); break;
           case 'mermas': this.d = await this.api('/compras/mermas'); break;
@@ -705,7 +708,8 @@ function oficina() {
           telefono: f.telefono.trim() || null, direccion: f.direccion.trim() || null, ...(f.id ? { activo: f.activo } : {}) };
         const r = await this.api('/compras/vendedores' + (f.id ? '/' + f.id : ''), cuerpo);
         if (this.fOrden) {
-          this.d = { ...this.d, ...(await this.api('/compras/ordenes')) };
+          const [ordenes, vend] = await Promise.all([this.api('/compras/ordenes'), this.api('/compras/vendedores')]);
+          this.d = { ...this.d, ...ordenes, todosVendedores: vend.vendedores };
           this.f = this.fOrden; this.fOrden = null; this.f.vendedor_id = r.id; this.ventana = 'orden';
         } else {
           this.ventana = null;

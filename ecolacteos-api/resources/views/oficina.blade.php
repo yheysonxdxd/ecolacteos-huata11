@@ -644,7 +644,7 @@
 
         {{-- ---------------------------------------------------- ÓRDENES --}}
         <section x-show="seccion === 'ordenes' && !cargando && !error">
-            <div class="fila"><h1>Órdenes y comprobantes</h1><div class="espacio"></div><button class="btn" @click="abrirOrden()">+ Nueva orden</button></div>
+            <div class="fila"><h1>Compras de insumos</h1><div class="espacio"></div><button class="btn" @click="abrirOrden()">+ Nueva orden</button></div>
             <p class="sub">A quién se le compró cada insumo y con qué comprobante. Cuando llegue lo pedido, toca <strong>Llegó</strong> y registra la factura, boleta o recibo.</p>
             <table class="lista"><tr><th>Código</th><th>Vendedor</th><th>Insumos</th><th>Comprobante</th><th class="num">Monto</th><th>Estado</th><th></th></tr>
                 <template x-for="o in d.ordenes || []" :key="o.id"><tr>
@@ -666,13 +666,10 @@
                             <input type="file" accept="image/*" style="display:none" @change="agregarFoto(o, $event)"></label>
                     </td></tr></template>
             </table>
-        </section>
-
-        <section x-show="seccion === 'vendedores' && !cargando && !error">
-            <div class="fila"><h1>Vendedores de insumos</h1><div class="espacio"></div><button class="btn" @click="abrirVendedor()">+ Nuevo vendedor</button></div>
+            <div class="fila" style="margin-top:28px"><h2 style="margin:0">Vendedores</h2><div class="espacio"></div><button class="btn gris" @click="abrirVendedor()">+ Nuevo vendedor</button></div>
             <p class="sub">Personas (DNI) y empresas (RUC) que nos venden insumos. No son los proveedores de leche: esos están en el Padrón.</p>
             <table class="lista"><tr><th>Nombre o razón social</th><th>DNI / RUC</th><th>Teléfono</th><th class="num">Compras</th><th class="num">Pagado</th><th>Última</th><th></th></tr>
-                <template x-for="v in d.vendedores || []" :key="v.id"><tr :class="v.activo ? '' : 'tenue'">
+                <template x-for="v in d.todosVendedores || []" :key="v.id"><tr :class="v.activo ? '' : 'tenue'">
                     <td><span x-text="v.nombre"></span><div class="sub" style="margin:0" x-show="v.direccion" x-text="v.direccion"></div></td>
                     <td x-text="v.tipo_documento + ' ' + v.documento"></td><td x-text="v.telefono || '—'"></td>
                     <td class="num" x-text="v.compras"></td><td class="num" x-text="soles(v.pagado)"></td>
@@ -680,7 +677,7 @@
                     <td class="acciones"><span class="chip mal" x-show="!v.activo">desactivado</span>
                         <button class="btn chico gris" @click="abrirVendedor(v)">Editar</button></td></tr></template>
             </table>
-            <p class="sub" x-show="!(d.vendedores || []).length">Todavía no hay vendedores. Agrega el primero con <strong>+ Nuevo vendedor</strong>.</p>
+            <p class="sub" x-show="!(d.todosVendedores || []).length">Todavía no hay vendedores. Agrega el primero con <strong>+ Nuevo vendedor</strong>.</p>
         </section>
 
         {{-- ---------------------------------------------------- MOVIMIENTOS --}}
