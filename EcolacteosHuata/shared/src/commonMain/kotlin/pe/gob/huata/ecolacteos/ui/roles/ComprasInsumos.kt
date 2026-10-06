@@ -25,6 +25,7 @@ object CompraInsumos {
     val lineas = mutableStateMapOf<Long, Double>() // insumo → cantidad
     var nuevoVendedor by mutableStateOf(false)
     var recibiendo by mutableStateOf<JsonObject?>(null)
+    var anulando by mutableStateOf<JsonObject?>(null)
     var mensaje by mutableStateOf<String?>(null)
     var version by mutableStateOf(0)
 }
@@ -47,10 +48,11 @@ private fun resumen(o: JsonObject) = o.lista("items").joinToString(" · ") { "${
 @Composable
 fun ComprasInsumosReal() {
     val c = CompraInsumos
-    ConPestanas(listOf("Por llegar", "Nueva orden", "Recibidas"), c.pestana, { c.pestana = it; c.recibiendo = null }) {
+    ConPestanas(listOf("Por llegar", "Nueva orden", "Recibidas"), c.pestana, { c.pestana = it; c.recibiendo = null; c.anulando = null }) {
         CargaServidor("/api/v1/compras/ordenes", clave = c.version + ComprasReal.version * 1000) { d, _ ->
             when {
                 c.recibiendo != null -> RecibirOrden(c.recibiendo!!, d)
+                c.anulando != null -> AnularOrden(c.anulando!!)
                 c.pestana == 0 -> PorLlegar(d)
                 c.pestana == 1 -> NuevaOrden(d)
                 else -> Recibidas(d)
@@ -73,10 +75,46 @@ private fun PorLlegar(d: JsonObject) {
                         Text(resumen(o), style = Texto.Apoyo, color = Altiplano.TextoSecundario)
                         Text("estimado ${soles(o.num("costo_estimado"))} · ${fechaCorta(o.txt("created_at"))}", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
                     }
-                    TextButton(onClick = { CompraInsumos.mensaje = null; CompraInsumos.recibiendo = o }) { Text("Llegó", color = Altiplano.Exito) }
+                    Column(horizontalAlignment = Alignment.End) {
+                        TextButton(onClick = { CompraInsumos.mensaje = null; CompraInsumos.recibiendo = o }) { Text("Llegó", color = Altiplano.Exito) }
+                        TextButton(onClick = { CompraInsumos.mensaje = null; CompraInsumos.anulando = o }) { Text("Anular", color = Altiplano.Alerta) }
+                    }
                 }
             }
         }
+    }
+}
+
+/** Anular una orden que no llegó (se pidió mal): no mueve stock. */
+@Composable
+private fun AnularOrden(o: JsonObject) {
+    val c = CompraInsumos
+    val scope = rememberCoroutineScope()
+    var motivo by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    var enviando by remember { mutableStateOf(false) }
+
+    PantallaScroll {
+        Tarjeta(borde = Altiplano.AlertaBorde) {
+            Text("Anular ${o.txt("codigo")}", style = Texto.Fila, color = Altiplano.Texto)
+            Text("${o.txt("proveedor")} · ${resumen(o)}", style = Texto.Apoyo, color = Altiplano.TextoSecundario)
+        }
+        AvisoCampo("La orden deja de estar «por llegar». El stock no cambia porque todavía no llegó nada.")
+        CampoTexto(motivo, { motivo = it.take(255) }, "¿Por qué se anula?")
+        error?.let { AvisoCampo(it, esAlerta = true) }
+        BotonPrimario(if (enviando) "Guardando…" else "Anular orden", !enviando) {
+            error = if (motivo.trim().length < 5) "Escribe por qué se anula la orden" else null
+            if (error == null) scope.launch {
+                enviando = true
+                try {
+                    Sesion.enviar("/api/v1/compras/ordenes/${o.txt("id")}/anular", buildJsonObject { put("motivo", motivo.trim()) })
+                    c.mensaje = "✓ Orden ${o.txt("codigo")} anulada"
+                    c.anulando = null; c.version++; ComprasReal.version++
+                } catch (t: Throwable) { error = t.message }
+                enviando = false
+            }
+        }
+        TextButton(onClick = { c.anulando = null }, modifier = Modifier.fillMaxWidth()) { Text("Volver", color = Altiplano.TextoSecundario) }
     }
 }
 

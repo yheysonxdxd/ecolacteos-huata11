@@ -157,6 +157,51 @@ class ComprasComprobanteTest extends TestCase
         $this->assertCount(1, Storage::disk('local')->allFiles('comprobantes'));
     }
 
+    public function test_si_no_se_pudo_recibir_no_queda_foto_suelta(): void
+    {
+        Storage::fake('local');
+        $persona = $this->vendedor('DNI', '41234567', 'Rosa Mamani');
+        [$id, $items] = $this->orden($persona);
+
+        // factura a una persona con DNI: falla, y la foto no se queda guardada
+        $this->recibir($id, $items, ['comprobante_tipo' => 'FACTURA', 'comprobante_serie' => 'F001', 'comprobante_numero' => '5', 'foto' => self::FOTO])
+            ->assertStatus(422);
+        $this->assertSame([], Storage::disk('local')->allFiles('comprobantes'));
+
+        $this->recibir($id, $items, ['comprobante_tipo' => 'BOLETA', 'comprobante_serie' => 'B001', 'comprobante_numero' => '7', 'foto' => self::FOTO])
+            ->assertOk();
+        $this->assertCount(1, Storage::disk('local')->allFiles('comprobantes'));
+    }
+
+    public function test_anular_orden_que_no_llego(): void
+    {
+        [$id, $items] = $this->orden($this->vendedor('RUC', '20448811223', 'Comercial Puno SAC'));
+
+        $this->postJson("/api/v1/compras/ordenes/$id/anular", [])->assertStatus(422)->assertJsonValidationErrors('motivo');
+        $this->postJson("/api/v1/compras/ordenes/$id/anular", ['motivo' => 'Se pidió al vendedor equivocado'])
+            ->assertOk()->assertJsonPath('estado', 'ANULADA');
+
+        $o = DB::table('ordenes_compra')->find($id);
+        $this->assertSame('Se pidió al vendedor equivocado', $o->anulada_motivo);
+        $this->assertEquals($this->usuarios['COMPRAS']->id, $o->anulada_por);
+        $this->assertSame('Se pidió al vendedor equivocado',
+            collect($this->getJson('/api/v1/compras/ordenes')->json('ordenes'))->firstWhere('id', $id)['anulada_motivo']);
+
+        // anulada: ya no se recibe ni se vuelve a anular, y el stock no se movió
+        $this->recibir($id, $items, ['comprobante_tipo' => 'RECIBO'])->assertStatus(422);
+        $this->postJson("/api/v1/compras/ordenes/$id/anular", ['motivo' => 'otra vez'])->assertStatus(422);
+        $this->assertEquals(5, DB::table('insumos')->where('id', $this->sal)->value('stock'));
+    }
+
+    public function test_no_se_anula_lo_que_ya_llego(): void
+    {
+        [$id, $items] = $this->orden($this->vendedor('DNI', '41234567', 'Rosa Mamani'));
+        $this->recibir($id, $items, ['comprobante_tipo' => 'RECIBO'])->assertOk();
+
+        $this->postJson("/api/v1/compras/ordenes/$id/anular", ['motivo' => 'Me equivoqué de cantidad'])->assertStatus(422);
+        $this->assertSame('RECIBIDA', DB::table('ordenes_compra')->where('id', $id)->value('estado'));
+    }
+
     public function test_solo_compras_y_admin(): void
     {
         Sanctum::actingAs($this->usuarios['OPERARIO']);

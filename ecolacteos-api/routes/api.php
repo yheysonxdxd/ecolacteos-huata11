@@ -79,7 +79,8 @@ Route::prefix('v1')->group(function () {
         Route::get('compras/ordenes',             [Api\OrdenesCompraController::class, 'index']);
         Route::post('compras/ordenes',            [Api\OrdenesCompraController::class, 'emitir']);
         Route::post('compras/ordenes/{id}/recibir', [Api\OrdenesCompraController::class, 'recibir'])->whereNumber('id');
-        Route::post('compras/ordenes/{id}/foto',  [Api\OrdenesCompraController::class, 'subirFoto'])->whereNumber('id');
+        Route::post('compras/ordenes/{id}/anular', [Api\OrdenesCompraController::class, 'anular'])->whereNumber('id');
+        Route::post('compras/ordenes/{id}/foto',[Api\OrdenesCompraController::class, 'subirFoto'])->whereNumber('id');
         Route::get('compras/ordenes/{id}/foto',   [Api\OrdenesCompraController::class, 'enlaceFoto'])->whereNumber('id');
         Route::get('compras/vendedores',          [Api\VendedoresInsumoController::class, 'index']);
         Route::post('compras/vendedores',         [Api\VendedoresInsumoController::class, 'guardar']);

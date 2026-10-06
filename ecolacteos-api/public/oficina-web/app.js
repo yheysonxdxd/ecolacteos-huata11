@@ -578,6 +578,15 @@ function oficina() {
         this.aviso = { error: true, texto: 'No se pudo abrir la foto: ' + e.message };
       }
     },
+    abrirAnularOrden(o) {
+      this.f = { orden: o, motivo: '', error: null, enviando: false };
+      this.ventana = 'anularOrden';
+    },
+    async anularOrden() {
+      const f = this.f;
+      if (f.motivo.trim().length < 5) return (f.error = 'Escribe por qué se anula la orden');
+      await this.enviar(`/compras/ordenes/${f.orden.id}/anular`, { motivo: f.motivo.trim() }, `✓ Orden ${f.orden.codigo} anulada`);
+    },
     resumenItems(o) { return o.items.map((it) => `${num(it.cantidad, 3)} ${it.unidad} ${it.insumo}`).join(' · '); },
 
     // ------------------------------------------------------------ vendedores

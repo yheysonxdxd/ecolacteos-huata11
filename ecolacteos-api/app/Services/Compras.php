@@ -68,10 +68,28 @@ class Compras
         if (! $ext) throw ValidationException::withMessages(['foto' => 'La foto no es una imagen válida (JPG, PNG o WEBP).']);
         if (strlen($datos) > self::FOTO_MAX) throw ValidationException::withMessages(['foto' => 'La foto pesa más de 5 MB.']);
 
-        if ($orden->foto) Storage::disk('local')->delete($orden->foto);
         $ruta = "comprobantes/{$orden->codigo}-".now()->format('YmdHis').".$ext";
         Storage::disk('local')->put($ruta, $datos);
 
         return $ruta;
+    }
+
+    /**
+     * Cambia la foto de la orden sin perder ninguna: guarda la nueva, corre
+     * $guardar (que la anota en la base) y recién ahí borra la vieja. Si
+     * $guardar falla, se borra la nueva y la vieja queda como estaba.
+     */
+    public static function conFotoNueva(object $orden, ?string $base64, callable $guardar): mixed
+    {
+        $nueva = $base64 ? self::guardarFoto($orden, $base64) : null;
+        try {
+            $resultado = $guardar($nueva);
+        } catch (\Throwable $e) {
+            if ($nueva) Storage::disk('local')->delete($nueva);
+            throw $e;
+        }
+        if ($nueva && $orden->foto && $orden->foto !== $nueva) Storage::disk('local')->delete($orden->foto);
+
+        return $resultado;
     }
 }

@@ -53,6 +53,7 @@ class OrdenesCompraController extends Controller
                 'igv' => $o->igv !== null ? (float) $o->igv : null,
                 'total' => $o->total !== null ? (float) $o->total : null,
                 'tiene_foto' => (bool) $o->foto, 'recibida_en' => $o->recibida_en,
+                'anulada_motivo' => $o->anulada_motivo, 'anulada_en' => $o->anulada_en,
             ]),
             'vendedores' => self::vendedores(),
             'comprobantes' => Compras::COMPROBANTES,
@@ -138,9 +139,11 @@ class OrdenesCompraController extends Controller
             'items.*.costo_real.min' => 'Lo pagado no puede ser negativo.',
         ]);
 
-        return DB::transaction(function () use ($r, $id, $data) {
+        $o = DB::table('ordenes_compra')->find($id);
+        abort_if(! $o, 404, 'Orden no encontrada');
+
+        return Compras::conFotoNueva($o, $data['foto'] ?? null, fn ($foto) => DB::transaction(function () use ($r, $id, $data, $foto) {
             $o = DB::table('ordenes_compra')->lockForUpdate()->find($id);
-            abort_if(! $o, 404, 'Orden no encontrada');
             abort_if($o->estado !== 'EMITIDA', 422, 'La orden ya fue recibida o anulada');
 
             $items = DB::table('orden_compra_items')->where('orden_compra_id', $id)->get()->keyBy('id');
@@ -172,7 +175,7 @@ class OrdenesCompraController extends Controller
                 'subtotal' => $subtotal, 'igv' => $subtotal !== null ? round($total - $subtotal, 2) : null, 'total' => $total,
                 'recibida_en' => now(), 'recibida_por' => $r->user()->id, 'updated_at' => now(),
             ];
-            if (! empty($data['foto'])) $cambios['foto'] = Compras::guardarFoto($o, $data['foto']);
+            if ($foto) $cambios['foto'] = $foto;
             DB::table('ordenes_compra')->where('id', $id)->update($cambios);
 
             $comprobante = Compras::textoComprobante($tipo, $serie, $numero);
@@ -187,6 +190,32 @@ class OrdenesCompraController extends Controller
             }
 
             return response()->json(['codigo' => $o->codigo, 'estado' => 'RECIBIDA', 'total' => $total, 'comprobante' => $comprobante]);
+        }));
+    }
+
+    /**
+     * POST /api/v1/compras/ordenes/{id}/anular { motivo }
+     * Solo si todavía no llegó: no mueve stock, solo deja de estar "por recibir".
+     */
+    public function anular(Request $r, int $id)
+    {
+        $data = $r->validate(['motivo' => ['required', 'string', 'min:5', 'max:255']], [
+            'motivo.required' => 'Escribe por qué se anula la orden.',
+            'motivo.min' => 'Explica un poco más por qué se anula.',
+        ]);
+
+        return DB::transaction(function () use ($r, $id, $data) {
+            $o = DB::table('ordenes_compra')->lockForUpdate()->find($id);
+            abort_if(! $o, 404, 'Orden no encontrada');
+            abort_if($o->estado === 'RECIBIDA', 422, 'Esa orden ya llegó: no se puede anular. Si hubo un error, corrígelo con un ajuste en el kardex.');
+            abort_if($o->estado === 'ANULADA', 422, 'Esa orden ya estaba anulada.');
+
+            DB::table('ordenes_compra')->where('id', $id)->update([
+                'estado' => 'ANULADA', 'anulada_motivo' => trim($data['motivo']),
+                'anulada_en' => now(), 'anulada_por' => $r->user()->id, 'updated_at' => now(),
+            ]);
+
+            return response()->json(['codigo' => $o->codigo, 'estado' => 'ANULADA']);
         });
     }
 
@@ -196,7 +225,7 @@ class OrdenesCompraController extends Controller
         $r->validate(['foto' => ['required', 'string']], ['foto.required' => 'Elige la foto del comprobante.']);
         $o = DB::table('ordenes_compra')->find($id);
         abort_if(! $o, 404, 'Orden no encontrada');
-        DB::table('ordenes_compra')->where('id', $id)->update(['foto' => Compras::guardarFoto($o, $r->input('foto')), 'updated_at' => now()]);
+        Compras::conFotoNueva($o, $r->input('foto'), fn ($foto) => DB::table('ordenes_compra')->where('id', $id)->update(['foto' => $foto, 'updated_at' => now()]));
 
         return response()->json(['codigo' => $o->codigo, 'tiene_foto' => true]);
     }

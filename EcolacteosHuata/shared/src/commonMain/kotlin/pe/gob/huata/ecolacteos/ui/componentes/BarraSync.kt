@@ -1,7 +1,5 @@
 package pe.gob.huata.ecolacteos.ui.componentes
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -13,31 +11,24 @@ import androidx.compose.ui.unit.dp
 import pe.gob.huata.ecolacteos.tema.*
 
 /**
- * Franja de estado de red. Siempre visible cuando hay algo sin enviar: el
- * acopiador nunca debe quedarse con la duda de si lo que registró ya salió.
+ * Franja de conexión, siempre visible: "Conectado" o "Desconectado" según
+ * si el servidor responde. Lo que falta enviar se ve en el contador de la
+ * cabecera (BotonSync).
  */
 @Composable
-fun BarraSinConexion(pendientes: Int, hayRed: Boolean, modifier: Modifier = Modifier) {
-    AnimatedVisibility(
-        visible = !hayRed || pendientes > 0,
-        enter = slideInVertically { -it },
+fun BarraSinConexion(hayRed: Boolean, modifier: Modifier = Modifier) {
+    val color = if (hayRed) Altiplano.Exito else Altiplano.Alerta
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = if (hayRed) Altiplano.ExitoFondo else Altiplano.AlertaFondo,
     ) {
-        Surface(
-            modifier = modifier.fillMaxWidth(),
-            color = Altiplano.AvisoFondo,
+        Row(
+            Modifier.padding(horizontal = Medidas.Pantalla, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Row(
-                Modifier.padding(horizontal = Medidas.Pantalla, vertical = 9.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(9.dp),
-            ) {
-                Text(if (hayRed) "◒" else "⃠", color = Altiplano.Aviso, style = Texto.Fila)
-                Text(
-                    text = if (hayRed) "Enviando $pendientes registros…"
-                           else "Sin conexión · $pendientes registros sin enviar",
-                    style = Texto.Cuerpo, color = Altiplano.Aviso,
-                )
-            }
+            Text("●", color = color, style = Texto.Apoyo)
+            Text(if (hayRed) "Conectado" else "Desconectado", style = Texto.Cuerpo, color = color)
         }
     }
 }

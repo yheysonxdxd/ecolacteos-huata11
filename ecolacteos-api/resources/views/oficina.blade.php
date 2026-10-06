@@ -602,12 +602,14 @@
                         <div class="sub" style="margin:0" x-text="o.vendedor ? o.vendedor.tipo_documento + ' ' + o.vendedor.documento : 'sin DNI/RUC (orden antigua)'"></div></td>
                     <td x-text="resumenItems(o)"></td>
                     <td><span x-text="o.comprobante || '—'"></span>
-                        <div class="sub" style="margin:0" x-show="o.comprobante_fecha" x-text="'del ' + fechaCorta(o.comprobante_fecha)"></div></td>
+                        <div class="sub" style="margin:0" x-show="o.comprobante_fecha" x-text="'del ' + fechaCorta(o.comprobante_fecha)"></div>
+                        <div class="sub" style="margin:0" x-show="o.anulada_motivo" x-text="'Anulada: ' + o.anulada_motivo"></div></td>
                     <td class="num"><span x-text="soles(o.total ?? o.costo_estimado)"></span>
                         <div class="sub" style="margin:0" x-text="o.total === null ? 'estimado' : (o.igv !== null ? 'IGV ' + soles(o.igv) : 'pagado')"></div></td>
                     <td><span class="chip" :class="o.estado === 'RECIBIDA' ? 'ok' : (o.estado === 'EMITIDA' ? 'ojo' : 'mal')" x-text="o.estado === 'EMITIDA' ? 'por llegar' : o.estado.toLowerCase()"></span></td>
                     <td class="acciones">
                         <button class="btn chico" x-show="o.estado === 'EMITIDA'" @click="abrirRecibir(o)">Llegó</button>
+                        <button class="btn chico rojo" x-show="o.estado === 'EMITIDA'" @click="abrirAnularOrden(o)">Anular</button>
                         <button class="btn chico gris" x-show="o.tiene_foto" @click="verFoto(o)">Ver foto</button>
                         <label class="btn chico gris" x-show="o.estado === 'RECIBIDA' && !o.tiene_foto" style="cursor:pointer">+ Foto
                             <input type="file" accept="image/*" style="display:none" @change="agregarFoto(o, $event)"></label>
@@ -729,6 +731,17 @@
             <button class="btn" :disabled="!!f.enviando" @click="confirmarPago('YAPE')">Yape</button></div>
         <div class="aviso error" x-show="f.error" x-text="f.error"></div>
         <div class="pie"><button class="btn gris" @click="ventana = null">Cancelar</button></div>
+    </div>
+
+    {{-- anular una orden de compra que no llegó --}}
+    <div class="ventana" x-show="ventana === 'anularOrden'">
+        <h3 x-text="'Anular ' + (f.orden?.codigo || '')"></h3>
+        <p class="sub" x-text="f.orden ? f.orden.proveedor + ' · ' + resumenItems(f.orden) : ''"></p>
+        <p class="sub">La orden deja de estar "por llegar". El stock no cambia porque todavía no llegó nada.</p>
+        <label>¿Por qué se anula?</label><input x-model="f.motivo" placeholder="Ej. se pidió al vendedor equivocado">
+        <div class="aviso error" x-show="f.error" x-text="f.error"></div>
+        <div class="pie"><button class="btn gris" @click="ventana = null">Cancelar</button>
+            <button class="btn rojo" @click="anularOrden()" :disabled="!!f.enviando" x-text="f.enviando ? 'Guardando…' : 'Anular orden'"></button></div>
     </div>
 
     {{-- enviar nota por correo --}}

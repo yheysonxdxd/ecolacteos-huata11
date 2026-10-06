@@ -150,7 +150,7 @@ fun AppEcolacteos(rolInicial: Rol = Rol.ACOPIADOR, pendientes: Int = 0, hayRed: 
             },
         ) { padding ->
             Column(Modifier.padding(padding)) {
-                BarraSinConexion(pend, conectado)
+                BarraSinConexion(conectado)
                 CabeceraPantalla(
                     rolTexto = nombreRol(r).uppercase(),
                     titulo = destinos[activo].etiqueta,
