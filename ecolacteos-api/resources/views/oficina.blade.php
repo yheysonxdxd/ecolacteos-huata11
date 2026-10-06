@@ -14,10 +14,10 @@
 
 {{-- ============================================================ LOGIN --}}
 <div class="login" x-show="!usuario" x-cloak>
-    {{-- foto real: una productora recoge forraje para sus vacas (Samán, Puno) --}}
+    {{-- foto real: vaca Brown Swiss (la raza lechera más común en Puno) en el pasto --}}
     <div class="escena" aria-hidden="true"></div>
-    <a class="credito" href="https://commons.wikimedia.org/wiki/File:Recojo_de_forraje_para_las_vacas.jpg"
-       target="_blank" rel="noopener">Foto: RutsíAndante · CC BY-SA 4.0</a>
+    <a class="credito" href="https://commons.wikimedia.org/wiki/File:Braunvieh_am_Simplonpass,_Wallis_(Schweiz).jpg"
+       target="_blank" rel="noopener">Foto: Olga Ernst · CC BY-SA 4.0</a>
 
     <div class="login-intro">
         <div class="marca grande">Ecolácteos <em>Huata</em></div>

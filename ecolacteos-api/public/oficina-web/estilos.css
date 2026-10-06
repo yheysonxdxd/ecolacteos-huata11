@@ -18,7 +18,7 @@ h2 { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: v
 /* foto real de fondo; a la izquierda la presentación y a la derecha el formulario */
 .login { position: relative; overflow: hidden; min-height: 100vh; display: grid; grid-template-columns: 1fr 400px;
   align-items: center; gap: 48px; padding: 32px clamp(16px, 6vw, 96px); background: #0b1622; }
-.login .escena { position: absolute; inset: 0; z-index: 0; background: url("img/forraje-saman.jpg") center 38% / cover no-repeat;
+.login .escena { position: absolute; inset: 0; z-index: 0; background: url("img/vaca-brown-swiss.jpg") center 28% / cover no-repeat;
   animation: acercar 40s ease-in-out infinite alternate; }
 /* velo verde suave (la foto ya es verde): más oscuro arriba a la izquierda, donde va el texto,
    y a la derecha, detrás del formulario; la productora queda a la vista en el centro */
