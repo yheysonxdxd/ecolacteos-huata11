@@ -548,7 +548,7 @@
 
         {{-- ---------------------------------------------------- PÉRDIDAS --}}
         <section x-show="seccion === 'mermas' && !cargando && !error">
-            <div class="fila"><h1>Pérdidas (mermas)</h1><div class="espacio"></div>
+            <div class="fila"><h1>Pérdidas</h1><div class="espacio"></div>
                 <button class="btn rojo" @click="abrirMerma('LECHE')">+ Leche perdida</button>
                 <button class="btn rojo" @click="abrirMerma('PRODUCTO')">+ Queso o yogurt perdido</button></div>
             <p class="sub">La leche que se corta o se derrama, el queso que se pasa, el yogurt que se malogra. Se descuenta del stock y sale en el kardex.</p>
