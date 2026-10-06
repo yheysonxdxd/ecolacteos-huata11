@@ -665,7 +665,22 @@
         {{-- ---------------------------------------------------- ÓRDENES --}}
         <section x-show="seccion === 'ordenes' && !cargando && !error">
             <div class="fila"><h1>Compras de insumos</h1><div class="espacio"></div><button class="btn" @click="abrirOrden()">+ Nueva orden</button></div>
-            <p class="sub">A quién se le compró cada insumo y con qué comprobante. Cuando llegue lo pedido, toca <strong>Llegó</strong> y registra la factura, boleta o recibo.</p>
+            <p class="sub">A quién se le compró cada insumo y con qué comprobante. Cuando llegue lo pedido, toca <strong>Llegó</strong> y registra la factura, boleta o recibo.
+                Se ve mes por mes; lo que está <strong>por llegar</strong> sale siempre arriba, sea del mes que sea.</p>
+            <div class="fila" style="margin-bottom: 14px; gap: 8px">
+                <button class="btn chico gris" @click="cambiar('mesCompras', d.periodo.anterior)" title="Mes anterior">◀</button>
+                <label class="btn chico gris" style="position: relative; cursor: pointer; min-width: 140px; text-align: center" title="Elegir otro mes">
+                    <span x-text="nombreMes(d.periodo?.mes)"></span>
+                    <input type="month" :max="hoy().slice(0, 7)" :value="d.periodo?.mes"
+                           @change="$event.target.value && cambiar('mesCompras', $event.target.value)" @click="$event.target.showPicker?.()"
+                           style="position: absolute; inset: 0; opacity: 0; cursor: pointer"></label>
+                <button class="btn chico gris" @click="cambiar('mesCompras', d.periodo.siguiente)" :disabled="!d.periodo?.siguiente" title="Mes siguiente">▶</button>
+            </div>
+            <div class="tarjetas" x-show="d.periodo">
+                <div class="tarjeta destacada"><div class="eti" x-text="'Gastado en ' + nombreMes(d.periodo?.mes).toLowerCase()"></div><div class="valor" x-text="soles(d.periodo?.gastado)"></div>
+                    <div class="apoyo" x-text="(d.periodo?.compras || 0) + ' compra(s) recibidas'"></div></div>
+                <div class="tarjeta"><div class="eti">Por llegar</div><div class="valor" x-text="(d.ordenes || []).filter(o => o.estado === 'EMITIDA').length"></div></div>
+            </div>
             <table class="lista"><tr><th>Código</th><th>Vendedor</th><th>Insumos</th><th>Comprobante</th><th class="num">Monto</th><th>Estado</th><th></th></tr>
                 <template x-for="o in d.ordenes || []" :key="o.id"><tr>
                     <td style="white-space: nowrap"><span x-text="o.codigo"></span><div class="sub" style="margin:0" x-text="fechaCorta(o.created_at)"></div></td>
@@ -685,11 +700,18 @@
                         <label class="btn chico gris" x-show="o.estado === 'RECIBIDA' && !o.tiene_foto" style="cursor:pointer">+ Foto
                             <input type="file" accept="image/*" style="display:none" @change="agregarFoto(o, $event)"></label>
                     </td></tr></template>
+                <tr x-show="!(d.ordenes || []).length"><td colspan="7" x-text="'No hubo compras en ' + nombreMes(d.periodo?.mes).toLowerCase() + '.'"></td></tr>
             </table>
             <div class="fila" style="margin-top:28px"><h2 style="margin:0">Vendedores</h2><div class="espacio"></div><button class="btn gris" @click="abrirVendedor()">+ Nuevo vendedor</button></div>
             <p class="sub">Personas (DNI) y empresas (RUC) que nos venden insumos. No son los proveedores de leche: esos están en el Padrón.</p>
+            <div class="fila" style="margin-bottom: 10px; gap: 12px">
+                <input type="search" x-model="buscarVendedor" placeholder="Buscar por nombre, DNI o RUC" style="max-width: 320px">
+                <label style="display: flex; align-items: center; gap: 6px; margin: 0; white-space: nowrap; cursor: pointer"
+                       x-show="(d.todosVendedores || []).some(v => !v.activo)">
+                    <input type="checkbox" x-model="verDesactivados" style="width: auto"> Ver desactivados</label>
+            </div>
             <table class="lista"><tr><th>Nombre o razón social</th><th>DNI / RUC</th><th>Teléfono</th><th class="num">Compras</th><th class="num">Pagado</th><th>Última</th><th></th></tr>
-                <template x-for="v in d.todosVendedores || []" :key="v.id"><tr :class="v.activo ? '' : 'tenue'">
+                <template x-for="v in vendedoresVisibles()" :key="v.id"><tr :class="v.activo ? '' : 'tenue'">
                     <td><span x-text="v.nombre"></span><div class="sub" style="margin:0" x-show="v.direccion" x-text="v.direccion"></div></td>
                     <td x-text="v.tipo_documento + ' ' + v.documento"></td><td x-text="v.telefono || '—'"></td>
                     <td class="num" x-text="v.compras"></td><td class="num" x-text="soles(v.pagado)"></td>
@@ -697,13 +719,27 @@
                     <td class="acciones"><span class="chip mal" x-show="!v.activo">desactivado</span>
                         <button class="btn chico gris" @click="abrirVendedor(v)">Editar</button></td></tr></template>
             </table>
+            <p class="sub" x-show="(d.todosVendedores || []).length && !vendedoresVisibles().length">Ningún vendedor coincide con lo que buscas.</p>
             <p class="sub" x-show="!(d.todosVendedores || []).length">Todavía no hay vendedores. Agrega el primero con <strong>+ Nuevo vendedor</strong>.</p>
         </section>
 
         {{-- ---------------------------------------------------- MOVIMIENTOS --}}
         <section x-show="seccion === 'movimientos' && !cargando && !error">
-            <h1>Últimas ventas</h1>
+            <h1>Ventas</h1>
             <p class="sub">Toca el número para ver o imprimir la nota de venta, o mándala por correo. (Las entradas y salidas de cada producto están en Kardex.)</p>
+            <div class="fila" style="margin-bottom: 14px; gap: 8px">
+                <button class="btn chico gris" @click="cambiar('mesVentas', d.periodo.anterior)" title="Mes anterior">◀</button>
+                <label class="btn chico gris" style="position: relative; cursor: pointer; min-width: 140px; text-align: center" title="Elegir otro mes">
+                    <span x-text="nombreMes(d.periodo?.mes)"></span>
+                    <input type="month" :max="hoy().slice(0, 7)" :value="d.periodo?.mes"
+                           @change="$event.target.value && cambiar('mesVentas', $event.target.value)" @click="$event.target.showPicker?.()"
+                           style="position: absolute; inset: 0; opacity: 0; cursor: pointer"></label>
+                <button class="btn chico gris" @click="cambiar('mesVentas', d.periodo.siguiente)" :disabled="!d.periodo?.siguiente" title="Mes siguiente">▶</button>
+            </div>
+            <div class="tarjetas" x-show="d.periodo">
+                <div class="tarjeta destacada"><div class="eti" x-text="'Vendido en ' + nombreMes(d.periodo?.mes).toLowerCase()"></div><div class="valor" x-text="soles(d.periodo?.vendido)"></div>
+                    <div class="apoyo" x-text="(d.periodo?.ventas || 0) + ' venta(s)'"></div></div>
+            </div>
             <table class="lista"><tr><th>Fecha</th><th>Producto</th><th>Cliente y total</th><th class="num">Cantidad</th><th>Nota de venta</th></tr>
                 <template x-for="(m, k) in (d.movimientos || []).filter((m) => m.venta_id)" :key="k"><tr>
                     <td x-text="fechaCorta(m.fecha) + ' ' + hora(m.fecha)"></td><td x-text="m.que"></td><td x-text="m.ref"></td>
@@ -711,6 +747,7 @@
                     <td><template x-if="m.venta_id"><span>
                         <button class="btn chico gris" @click="verNota(m.venta_id)" x-text="m.numero"></button>
                         <button class="btn chico gris" @click="abrirCorreo(m.venta_id, m.numero)">Correo</button></span></template></td></tr></template>
+                <tr x-show="!(d.movimientos || []).length"><td colspan="5" x-text="'No hubo ventas en ' + nombreMes(d.periodo?.mes).toLowerCase() + '.'"></td></tr>
             </table>
         </section>
     </main>

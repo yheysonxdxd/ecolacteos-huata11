@@ -56,6 +56,10 @@ function oficina() {
     kardex: { tipo: 'insumo', id: null, desde: '', hasta: '' }, // tipo: insumo | producto | leche
     quiero: {},     // producto => cuántos quesos / litros de yogurt se quieren hacer
     mapaFecha: '',  // vacío = hoy
+    mesCompras: '', // vacío = mes actual (2026-10)
+    mesVentas: '',
+    buscarVendedor: '',
+    verDesactivados: false,
     concFecha: '',  // vacío = último día con acopio
     concLitros: {}, // vehiculo_id => litros que llegaron a planta (lo que se está escribiendo)
     mapaEditar: false, // arrastrar comunidades a su lugar real
@@ -77,7 +81,7 @@ function oficina() {
           // los lotes son de planta: los ve e inicia/cierra el administrador (Compras solo ve las fórmulas)
           pestanas: [{ id: 'formulas', nombre: 'Fórmulas' }, ...(admin ? [{ id: 'lotes', nombre: 'Lotes en producción' }] : [])] },
         { id: 'vender', nombre: 'Vender', grupo: 'Compras y almacén',
-          pestanas: [{ id: 'vender', nombre: 'Nueva venta' }, { id: 'movimientos', nombre: 'Últimas ventas y notas' }] },
+          pestanas: [{ id: 'vender', nombre: 'Nueva venta' }, { id: 'movimientos', nombre: 'Ventas y notas' }] },
         { id: 'almacen', nombre: 'Almacén', grupo: 'Compras y almacén',
           pestanas: [{ id: 'inventario', nombre: 'Stock y avisos' }, { id: 'mermas', nombre: 'Pérdidas (mermas)' }] },
         { id: 'kardex', nombre: 'Kardex', grupo: 'Compras y almacén', pestanas: [{ id: 'kardex', nombre: 'Kardex' }] },
@@ -180,11 +184,15 @@ function oficina() {
           case 'ordenes': {
             // d.vendedores: los activos, para elegir en la orden · todosVendedores: la lista de abajo, con sus compras
             const [ordenes, inv, vend] = await Promise.all([
-              this.api('/compras/ordenes'), this.api('/compras/inventario'), this.api('/compras/vendedores')]);
+              this.api('/compras/ordenes?mes=' + (this.mesCompras || 'actual')), this.api('/compras/inventario'), this.api('/compras/vendedores')]);
             this.d = { ...ordenes, inv, todosVendedores: vend.vendedores };
+            this.mesCompras = ordenes.periodo.mes;
             break;
           }
-          case 'movimientos': this.d = await this.api('/compras/movimientos'); break;
+          case 'movimientos':
+            this.d = await this.api('/compras/movimientos?mes=' + (this.mesVentas || 'actual'));
+            this.mesVentas = this.d.periodo.mes;
+            break;
           case 'formulas': this.d = await this.api('/compras/formulas'); break;
           case 'mermas': this.d = await this.api('/compras/mermas'); break;
           case 'lotes': this.d = await this.api('/planta/lotes'); this.cierre = {}; break;
@@ -622,6 +630,18 @@ function oficina() {
 
     // al recibir: comprobante, lo pagado por cada insumo y la foto
     hoy() { return new Date().toLocaleDateString('en-CA'); },
+    /** '2026-10' → 'Octubre 2026' */
+    nombreMes(ym) {
+      if (!ym) return '';
+      const t = new Date(ym + '-15T12:00:00').toLocaleDateString('es-PE', { month: 'long', year: 'numeric' }).replace(' de ', ' ');
+      return t.charAt(0).toUpperCase() + t.slice(1);
+    },
+    /** Vendedores que coinciden con lo buscado (nombre o DNI/RUC); los desactivados solo si se piden. */
+    vendedoresVisibles() {
+      const q = this.buscarVendedor.trim().toLowerCase();
+      return (this.d.todosVendedores || []).filter((v) => (v.activo || this.verDesactivados)
+        && (!q || v.nombre.toLowerCase().includes(q) || v.documento.includes(q)));
+    },
     abrirRecibir(o) {
       const pagos = {};
       o.items.forEach((it) => { pagos[it.id] = it.costo_estimado; });

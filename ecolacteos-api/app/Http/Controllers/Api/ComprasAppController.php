@@ -97,8 +97,19 @@ class ComprasAppController extends Controller
     }
 
     /** GET /api/v1/compras/movimientos — insumos y ventas, lo más reciente primero. */
-    public function movimientos()
+    public function movimientos(Request $r)
     {
+        if ($r->filled('mes')) {
+            // la web: todas las ventas del mes, con su total
+            [$desde, $hasta, $mes] = Compras::mes($r->query('mes'));
+            $ventas = $this->ventas()->whereBetween(DB::raw('DATE(v.vendida_en)'), [$desde, $hasta])->get();
+
+            return response()->json([
+                'movimientos' => $ventas->map(fn ($v) => $this->filaVenta($v))->values(),
+                'periodo' => $mes + ['vendido' => round((float) $ventas->sum('total'), 2), 'ventas' => $ventas->count()],
+            ]);
+        }
+
         $ins = DB::table('movimientos_insumo as m')->join('insumos as i', 'i.id', '=', 'm.insumo_id')
             ->orderByDesc('m.created_at')->limit(40)
             ->get(['i.nombre as que', 'm.referencia as ref', 'm.cantidad', 'i.unidad', 'm.created_at as fecha'])
@@ -106,19 +117,27 @@ class ComprasAppController extends Controller
                 'que' => $m->que, 'ref' => $m->ref, 'fecha' => $m->fecha, 'entrada' => $m->cantidad > 0,
                 'delta' => ($m->cantidad > 0 ? '+' : '−').rtrim(rtrim(number_format(abs($m->cantidad), 3, '.', ''), '0'), '.').' '.$m->unidad,
             ]);
-        $ventas = DB::table('ventas as v')->join('productos as p', 'p.id', '=', 'v.producto_id')
-            ->join('clientes as c', 'c.id', '=', 'v.cliente_id')
-            ->orderByDesc('v.vendida_en')->limit(40)
-            ->get(['v.id', 'p.nombre as que', 'c.nombre as cliente', 'v.total', 'v.cantidad', 'v.vendida_en as fecha'])
-            ->map(fn ($v) => [
-                'venta_id' => $v->id, 'numero' => NotaVentaController::numero($v->id),
-                'que' => $v->que, 'ref' => "Venta · {$v->cliente} · S/ ".number_format($v->total, 2),
-                'fecha' => $v->fecha, 'entrada' => false,
-                'delta' => '−'.rtrim(rtrim(number_format($v->cantidad, 2, '.', ''), '0'), '.'),
-            ]);
+        $ventas = $this->ventas()->limit(40)->get()->map(fn ($v) => $this->filaVenta($v));
 
         return response()->json([
             'movimientos' => $ins->concat($ventas)->sortByDesc('fecha')->take(50)->values(),
         ]);
+    }
+
+    private function ventas()
+    {
+        return DB::table('ventas as v')->join('productos as p', 'p.id', '=', 'v.producto_id')
+            ->join('clientes as c', 'c.id', '=', 'v.cliente_id')->orderByDesc('v.vendida_en')
+            ->select(['v.id', 'p.nombre as que', 'c.nombre as cliente', 'v.total', 'v.cantidad', 'v.vendida_en as fecha']);
+    }
+
+    private function filaVenta(object $v): array
+    {
+        return [
+            'venta_id' => $v->id, 'numero' => NotaVentaController::numero($v->id),
+            'que' => $v->que, 'ref' => "Venta · {$v->cliente} · S/ ".number_format($v->total, 2),
+            'fecha' => $v->fecha, 'entrada' => false,
+            'delta' => '−'.rtrim(rtrim(number_format($v->cantidad, 2, '.', ''), '0'), '.'),
+        ];
     }
 }

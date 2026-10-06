@@ -23,11 +23,22 @@ use Illuminate\Validation\Rule;
 class OrdenesCompraController extends Controller
 {
     /** GET /api/v1/compras/ordenes — últimas 30, las por recibir primero. */
-    public function index()
+    public function index(Request $r)
     {
-        $ordenes = DB::table('ordenes_compra as o')->leftJoin('vendedores_insumo as v', 'v.id', '=', 'o.vendedor_id')
-            ->orderByRaw("o.estado = 'EMITIDA' DESC")->orderByDesc('o.created_at')->orderByDesc('o.id')->limit(30)
-            ->get(['o.*', 'v.nombre as v_nombre', 'v.tipo_documento as v_tipo', 'v.documento as v_doc']);
+        $q = DB::table('ordenes_compra as o')->leftJoin('vendedores_insumo as v', 'v.id', '=', 'o.vendedor_id')
+            ->orderByRaw("o.estado = 'EMITIDA' DESC")->orderByDesc('o.created_at')->orderByDesc('o.id');
+        $mes = null;
+        if ($r->filled('mes')) {
+            // la web va mes por mes; lo que está por llegar se ve siempre, sea del mes que sea
+            [$desde, $hasta, $mes] = Compras::mes($r->query('mes'));
+            $fecha = 'COALESCE(o.comprobante_fecha, DATE(o.created_at))';
+            $q->where(fn ($w) => $w->where('o.estado', 'EMITIDA')->orWhereRaw("$fecha BETWEEN ? AND ?", [$desde, $hasta]));
+            $delMes = DB::table('ordenes_compra as o')->where('o.estado', 'RECIBIDA')->whereRaw("$fecha BETWEEN ? AND ?", [$desde, $hasta]);
+            $mes += ['gastado' => round((float) (clone $delMes)->sum('o.total'), 2), 'compras' => $delMes->count()];
+        } else {
+            $q->limit(30); // la app del celular: las últimas
+        }
+        $ordenes = $q->get(['o.*', 'v.nombre as v_nombre', 'v.tipo_documento as v_tipo', 'v.documento as v_doc']);
         $items = DB::table('orden_compra_items as it')->join('insumos as i', 'i.id', '=', 'it.insumo_id')
             ->whereIn('it.orden_compra_id', $ordenes->pluck('id'))->orderBy('it.id')
             ->get(['it.id', 'it.orden_compra_id', 'it.insumo_id', 'it.cantidad', 'it.costo_estimado', 'it.costo_real', 'i.nombre as insumo', 'i.unidad'])
@@ -57,7 +68,7 @@ class OrdenesCompraController extends Controller
             ]),
             'vendedores' => self::vendedores(),
             'comprobantes' => Compras::COMPROBANTES,
-        ]);
+        ] + ($mes ? ['periodo' => $mes] : []));
     }
 
     public static function vendedores()

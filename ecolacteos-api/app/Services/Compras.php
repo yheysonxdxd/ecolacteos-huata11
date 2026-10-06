@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -13,6 +14,26 @@ class Compras
     public const IGV = 0.18;
 
     public const COMPROBANTES = ['FACTURA' => 'Factura', 'BOLETA' => 'Boleta', 'RECIBO' => 'Recibo / sin comprobante'];
+
+    /**
+     * Mes que se mira en la web (?mes=2026-10, por defecto el actual) y sus vecinos para las flechitas.
+     *
+     * @return array{0: string, 1: string, 2: array} [primer día, último día, datos para la web]
+     */
+    public static function mes(?string $mes): array
+    {
+        $actual = Carbon::today('America/Lima')->startOfMonth();
+        $m = $mes && preg_match('/^\d{4}-\d{2}$/', $mes) ? Carbon::createFromFormat('!Y-m', $mes) : $actual->copy();
+        if ($m->gt($actual)) {
+            $m = $actual->copy();
+        }
+
+        return [$m->toDateString(), $m->copy()->endOfMonth()->toDateString(), [
+            'mes'       => $m->format('Y-m'),
+            'anterior'  => $m->copy()->subMonth()->format('Y-m'),
+            'siguiente' => $m->lt($actual) ? $m->copy()->addMonth()->format('Y-m') : null,
+        ]];
+    }
 
     /** Fotos de hasta 5 MB (la app y la web ya las achican antes de mandarlas). */
     private const FOTO_MAX = 5 * 1024 * 1024;
