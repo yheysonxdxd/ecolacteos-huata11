@@ -60,6 +60,7 @@ function oficina() {
     mesVentas: '',
     buscarVendedor: '',
     verDesactivados: false,
+    vendedoresAbiertos: (() => { try { return localStorage.getItem('vendedoresAbiertos') === '1'; } catch { return false; } })(),
     concFecha: '',  // vacío = último día con acopio
     concLitros: {}, // vehiculo_id => litros que llegaron a planta (lo que se está escribiendo)
     mapaEditar: false, // arrastrar comunidades a su lugar real
@@ -636,6 +637,11 @@ function oficina() {
       if (ym === 'todo') return 'Todo';
       const t = new Date(ym + '-15T12:00:00').toLocaleDateString('es-PE', { month: 'long', year: 'numeric' }).replace(' de ', ' ');
       return t.charAt(0).toUpperCase() + t.slice(1);
+    },
+    /** Abre o pliega la lista de vendedores; la compu lo recuerda para la próxima vez. */
+    plegarVendedores(abrir) {
+      this.vendedoresAbiertos = abrir;
+      try { localStorage.setItem('vendedoresAbiertos', abrir ? '1' : '0'); } catch { /* sin almacenamiento: solo por ahora */ }
     },
     /** Vendedores que coinciden con lo buscado (nombre o DNI/RUC); los desactivados solo si se piden. */
     vendedoresVisibles() {

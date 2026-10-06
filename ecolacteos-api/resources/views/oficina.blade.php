@@ -707,7 +707,12 @@
                     </td></tr></template>
                 <tr x-show="!(d.ordenes || []).length"><td colspan="7" x-text="d.periodo?.mes === 'todo' ? 'Todavía no hay compras.' : 'No hubo compras en ' + nombreMes(d.periodo?.mes).toLowerCase() + '.'"></td></tr>
             </table>
-            <div class="fila" style="margin-top:28px"><h2 style="margin:0">Vendedores</h2><div class="espacio"></div><button class="btn gris" @click="abrirVendedor()">+ Nuevo vendedor</button></div>
+            {{-- plegados: el día a día son las compras; se abren con un clic --}}
+            <div class="fila" style="margin-top:28px">
+                <h2 style="margin:0; cursor: pointer; user-select: none" @click="plegarVendedores(!vendedoresAbiertos)"
+                    x-text="(vendedoresAbiertos ? '▾ ' : '▸ ') + 'Vendedores (' + (d.todosVendedores || []).filter(v => v.activo).length + ')'"></h2>
+                <div class="espacio"></div><button class="btn gris" @click="abrirVendedor()">+ Nuevo vendedor</button></div>
+            <div x-show="vendedoresAbiertos">
             <p class="sub">Personas (DNI) y empresas (RUC) que nos venden insumos. No son los proveedores de leche: esos están en el Padrón.</p>
             <div class="fila" style="margin-bottom: 10px; gap: 12px">
                 <input type="search" x-model="buscarVendedor" placeholder="Buscar por nombre, DNI o RUC" style="max-width: 320px">
@@ -726,6 +731,7 @@
             </table>
             <p class="sub" x-show="(d.todosVendedores || []).length && !vendedoresVisibles().length">Ningún vendedor coincide con lo que buscas.</p>
             <p class="sub" x-show="!(d.todosVendedores || []).length">Todavía no hay vendedores. Agrega el primero con <strong>+ Nuevo vendedor</strong>.</p>
+            </div>
         </section>
 
         {{-- ---------------------------------------------------- MOVIMIENTOS --}}
