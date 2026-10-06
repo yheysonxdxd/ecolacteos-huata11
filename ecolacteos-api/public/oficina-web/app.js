@@ -85,7 +85,7 @@ function oficina() {
           pestanas: [{ id: 'vender', nombre: 'Nueva venta' }, { id: 'movimientos', nombre: 'Ventas y notas' }] },
         { id: 'almacen', nombre: 'Almacén', grupo: 'Compras y almacén',
           pestanas: [{ id: 'inventario', nombre: 'Stock y avisos' }, { id: 'mermas', nombre: 'Pérdidas (mermas)' }] },
-        { id: 'kardex', nombre: 'Kardex', grupo: 'Compras y almacén', pestanas: [{ id: 'kardex', nombre: 'Kardex' }] },
+        { id: 'kardex', nombre: 'Kardex · entradas y salidas', grupo: 'Compras y almacén', pestanas: [{ id: 'kardex', nombre: 'Kardex · entradas y salidas' }] },
         { id: 'ordenes-grupo', nombre: 'Compras de insumos', grupo: 'Compras y almacén',
           pestanas: [{ id: 'ordenes', nombre: 'Compras de insumos' }] }, // órdenes y vendedores en una sola pantalla
       ];

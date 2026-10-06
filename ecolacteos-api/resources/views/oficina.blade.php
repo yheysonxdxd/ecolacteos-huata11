@@ -469,7 +469,7 @@
 
         {{-- ---------------------------------------------------- KARDEX --}}
         <section x-show="seccion === 'kardex' && !cargando && !error">
-            <div class="fila no-imprimir"><h1>Kardex</h1><div class="espacio"></div>
+            <div class="fila no-imprimir"><h1>Kardex · entradas y salidas</h1><div class="espacio"></div>
                 <button class="btn gris" @click="window.print()">Imprimir</button>
                 <button class="btn" @click="abrirAjuste()" x-show="d.item?.tipo === 'insumo'">+ Ajuste (merma, vencido, conteo)</button>
                 <button class="btn rojo" @click="abrirMerma(kardex.tipo === 'leche' ? 'LECHE' : 'PRODUCTO', kardex.id)"
