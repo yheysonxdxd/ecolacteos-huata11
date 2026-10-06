@@ -14,10 +14,10 @@
 
 {{-- ============================================================ LOGIN --}}
 <div class="login" x-show="!usuario" x-cloak>
-    {{-- foto real: amanecer sobre los totorales del lago Titicaca, en Puno --}}
+    {{-- foto real: una productora recoge forraje para sus vacas (Samán, Puno) --}}
     <div class="escena" aria-hidden="true"></div>
-    <a class="credito" href="https://commons.wikimedia.org/wiki/File:Amanecer_en_el_lago_Titicaca,_Puno,_Per%C3%BA,_2015-08-01,_DD_01.JPG"
-       target="_blank" rel="noopener">Foto: Diego Delso · CC BY-SA 4.0</a>
+    <a class="credito" href="https://commons.wikimedia.org/wiki/File:Recojo_de_forraje_para_las_vacas.jpg"
+       target="_blank" rel="noopener">Foto: RutsíAndante · CC BY-SA 4.0</a>
 
     <div class="login-intro">
         <div class="marca grande">Ecolácteos <em>Huata</em></div>

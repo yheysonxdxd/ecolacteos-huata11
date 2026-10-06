@@ -18,17 +18,19 @@ h2 { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: v
 /* foto real de fondo; a la izquierda la presentación y a la derecha el formulario */
 .login { position: relative; overflow: hidden; min-height: 100vh; display: grid; grid-template-columns: 1fr 400px;
   align-items: center; gap: 48px; padding: 32px clamp(16px, 6vw, 96px); background: #0b1622; }
-.login .escena { position: absolute; inset: 0; z-index: 0; background: url("img/amanecer-titicaca.jpg") center 62% / cover no-repeat;
+.login .escena { position: absolute; inset: 0; z-index: 0; background: url("img/forraje-saman.jpg") center 38% / cover no-repeat;
   animation: acercar 40s ease-in-out infinite alternate; }
-/* tiñe toda la foto con el verde de la marca: más oscuro a la izquierda (texto) y abajo (totorales) */
+/* velo verde suave (la foto ya es verde): más oscuro arriba a la izquierda, donde va el texto,
+   y a la derecha, detrás del formulario; la productora queda a la vista en el centro */
 .login::before { content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
-  background: linear-gradient(90deg, rgba(6,32,20,.86) 0%, rgba(12,58,36,.55) 45%, rgba(20,86,52,.38) 70%, rgba(6,32,20,.6) 100%),
-              linear-gradient(0deg, rgba(4,22,13,.75) 0%, rgba(4,22,13,0) 45%); }
+  background: radial-gradient(ellipse 60% 55% at 18% 22%, rgba(5,28,17,.88), rgba(5,28,17,0) 100%),
+              linear-gradient(90deg, rgba(6,32,20,.45) 0%, rgba(10,48,30,.12) 45%, rgba(6,32,20,.55) 85%),
+              linear-gradient(0deg, rgba(4,22,13,.55) 0%, rgba(4,22,13,0) 35%); }
 .login .credito { position: absolute; right: 14px; bottom: 10px; z-index: 2; font-size: 11px; color: rgba(255,255,255,.55);
   text-decoration: none; }
 .login .credito:hover { color: #fff; text-decoration: underline; }
 .login-intro, .login form { position: relative; z-index: 2; }
-.login-intro { max-width: 560px; }
+.login-intro { max-width: 560px; align-self: start; margin-top: 4vh; }
 .login-intro .marca.grande { font-size: clamp(34px, 4.4vw, 56px); text-align: left; line-height: 1.05;
   text-shadow: 0 2px 18px rgba(0,0,0,.5); }
 .login-intro p { font-size: 18px; color: #d7e1e9; margin: 16px 0 22px; text-shadow: 0 1px 10px rgba(0,0,0,.6); }
