@@ -20,10 +20,10 @@ h2 { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: v
   align-items: center; gap: 48px; padding: 32px clamp(16px, 6vw, 96px); background: #0b1622; }
 .login .escena { position: absolute; inset: 0; z-index: 0; background: url("img/amanecer-titicaca.jpg") center 62% / cover no-repeat;
   animation: acercar 40s ease-in-out infinite alternate; }
-/* oscurece la izquierda (texto) y abajo (totorales), deja el amanecer a la vista */
+/* tiñe toda la foto con el verde de la marca: más oscuro a la izquierda (texto) y abajo (totorales) */
 .login::before { content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
-  background: linear-gradient(90deg, rgba(8,14,22,.78) 0%, rgba(8,14,22,.35) 45%, rgba(8,14,22,.1) 70%, rgba(8,14,22,.35) 100%),
-              linear-gradient(0deg, rgba(8,14,22,.55) 0%, rgba(8,14,22,0) 40%); }
+  background: linear-gradient(90deg, rgba(6,32,20,.86) 0%, rgba(12,58,36,.55) 45%, rgba(20,86,52,.38) 70%, rgba(6,32,20,.6) 100%),
+              linear-gradient(0deg, rgba(4,22,13,.75) 0%, rgba(4,22,13,0) 45%); }
 .login .credito { position: absolute; right: 14px; bottom: 10px; z-index: 2; font-size: 11px; color: rgba(255,255,255,.55);
   text-decoration: none; }
 .login .credito:hover { color: #fff; text-decoration: underline; }
@@ -43,20 +43,20 @@ h2 { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: v
 @keyframes acercar { from { transform: scale(1); } to { transform: scale(1.08) translateX(-1.5%); } }
 @media (prefers-reduced-motion: reduce) { .login .escena { animation: none; } }
 
-/* colores de la foto: sol naranja, cielo violeta y agua oscura (solo en la entrada) */
-.login { --sol: #f6a25a; --oro: #ffd08a; --rosa: #e88a7a; --violeta: #9a82b4; --noche: rgba(22,16,30,.66); }
-.login .marca em { background: linear-gradient(90deg, var(--oro), var(--sol) 55%, var(--rosa));
+/* verde de la marca en toda la entrada: menta, verde hoja y un toque dorado del amanecer */
+.login { --menta: #9ff0c3; --verde: #4cc38a; --hoja: #2e8b57; --noche: rgba(6,30,19,.7); }
+.login .marca em { background: linear-gradient(90deg, #e7f5a8, var(--menta) 45%, var(--verde));
   -webkit-background-clip: text; background-clip: text; color: transparent; }
-.login .marca-sub { color: var(--oro); opacity: .85; }
-.login-intro .chips span { background: rgba(30,20,36,.55); border-color: rgba(255,200,140,.28); color: #ffe9d2; }
-.login form { background: var(--noche); border-color: rgba(255,190,130,.22);
-  box-shadow: 0 24px 60px rgba(10,6,16,.55), inset 0 1px 0 rgba(255,210,160,.12); }
-.login label { color: #f2d9c4; }
-.login input { background: rgba(14,10,20,.6); border-color: rgba(255,200,150,.18); color: #fff3e6; }
-.login input:focus { outline: 2px solid var(--sol); border-color: transparent; }
-.login .btn.gris { background: rgba(14,10,20,.6); border-color: rgba(255,200,150,.22); color: #ffe9d2; }
-.login .btn.ancho { background: linear-gradient(90deg, #e9874f, #d9707a 60%, #a07ab5); border: none; color: #fff;
-  font-weight: 600; box-shadow: 0 8px 22px rgba(217,112,122,.35); }
+.login .marca-sub { color: var(--menta); opacity: .85; }
+.login-intro .chips span { background: rgba(8,36,23,.6); border-color: rgba(127,224,168,.3); color: #e2f8ea; }
+.login form { background: var(--noche); border-color: rgba(127,224,168,.25);
+  box-shadow: 0 24px 60px rgba(2,14,8,.6), inset 0 1px 0 rgba(160,240,195,.12); }
+.login label { color: #cdeedb; }
+.login input { background: rgba(3,20,12,.62); border-color: rgba(127,224,168,.2); color: #effaf3; }
+.login input:focus { outline: 2px solid var(--verde); border-color: transparent; }
+.login .btn.gris { background: rgba(3,20,12,.62); border-color: rgba(127,224,168,.25); color: #e2f8ea; }
+.login .btn.ancho { background: linear-gradient(90deg, var(--hoja), #3fae74 55%, #6fd49c); border: none; color: #fff;
+  font-weight: 600; box-shadow: 0 8px 22px rgba(46,139,87,.4); }
 .login .btn.ancho:hover { filter: brightness(1.08); }
 .login .aviso.error { background: rgba(60,18,26,.75); }
 
