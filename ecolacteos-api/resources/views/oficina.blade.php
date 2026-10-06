@@ -199,11 +199,23 @@
             <div x-show="dinero === 'pagos'">
                 <template x-if="d.boletas">
                     <div>
-                        <div class="opciones" style="margin-bottom: 14px">
-                            <template x-for="s in d.semanas" :key="s.inicio">
-                                <button :class="{ activo: s.inicio === d.inicio }" @click="cambiar('semana', s.inicio)"
-                                        x-text="fechaCorta(s.inicio) + ' – ' + fechaCorta(s.fin) + (s.pendientes ? ' · ' + s.pendientes : ' ✓')"></button>
-                            </template>
+                        {{-- una sola semana a la vista: flechitas, calendario y aviso de las que quedaron sin pagar --}}
+                        <div class="fila" style="margin-bottom: 14px; gap: 8px; flex-wrap: wrap">
+                            <button class="btn chico gris" @click="cambiar('semana', d.anterior)" title="Semana anterior">◀</button>
+                            <label class="btn chico gris" style="position: relative; cursor: pointer" title="Elegir otra semana">
+                                <span x-text="'Semana ' + fechaCorta(d.inicio) + ' – ' + fechaCorta(d.fin)"></span>
+                                <input type="date" :max="d.hasta" :value="d.inicio"
+                                       @change="$event.target.value && cambiar('semana', $event.target.value)"
+                                       @click="$event.target.showPicker?.()"
+                                       style="position: absolute; inset: 0; opacity: 0; cursor: pointer">
+                            </label>
+                            <button class="btn chico gris" @click="cambiar('semana', d.siguiente)" :disabled="!d.siguiente" title="Semana siguiente">▶</button>
+                            <div class="espacio"></div>
+                            <span class="chip ojo" x-show="(d.otras_con_pendientes || []).length"
+                                  x-text="'⚠ ' + (d.otras_con_pendientes || []).length + ' semana(s) más con pagos pendientes'"></span>
+                            <button class="btn chico" x-show="(d.otras_con_pendientes || []).length"
+                                    @click="cambiar('semana', d.otras_con_pendientes[0].inicio)"
+                                    x-text="'Ir a la más antigua (' + fechaCorta((d.otras_con_pendientes || [])[0]?.inicio) + ')'"></button>
                         </div>
                         <div class="tarjetas">
                             <div class="tarjeta destacada"><div class="eti">Por pagar</div><div class="valor" x-text="soles(d.pendiente)"></div>

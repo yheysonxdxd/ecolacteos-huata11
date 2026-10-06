@@ -47,10 +47,17 @@ class AdminPagosController extends Controller
 
         $total = (float) $boletas->sum('monto');
         $pagado = (float) $boletas->where('estado', 'PAGADO')->sum('monto');
+        $ultima = $cerradas[0];
 
         return response()->json([
             'inicio'     => $inicio->toDateString(),
             'fin'        => $inicio->copy()->endOfWeek(Carbon::SUNDAY)->toDateString(),
+            // para las flechitas de la web: null cuando no hay semana cerrada después
+            'anterior'   => $inicio->copy()->subWeek()->toDateString(),
+            'siguiente'  => $inicio->lt($ultima) ? $inicio->copy()->addWeek()->toDateString() : null,
+            'hasta'      => $ultima->copy()->endOfWeek(Carbon::SUNDAY)->toDateString(), // último día que se puede elegir
+            'otras_con_pendientes' => $this->semanasConPendientes($ultima)
+                ->reject(fn ($s) => $s['inicio'] === $inicio->toDateString())->values(),
             'total'      => round($total, 2),
             'pagado'     => round($pagado, 2),
             'pendiente'  => round($total - $pagado, 2),
@@ -105,6 +112,29 @@ class AdminPagosController extends Controller
         $lunes = Carbon::today('America/Lima')->startOfWeek(Carbon::MONDAY)->subWeek();
 
         return array_map(fn ($i) => $lunes->copy()->subWeeks($i), range(0, self::SEMANAS - 1));
+    }
+
+    /**
+     * Semanas cerradas con boletas sin pagar (la más antigua primero). Antes genera las
+     * boletas de las semanas con entregas que nadie abrió todavía, para no olvidar ninguna.
+     */
+    private function semanasConPendientes(Carbon $ultima)
+    {
+        $finUltima = $ultima->copy()->endOfWeek(Carbon::SUNDAY)->toDateString();
+        $abiertas = DB::table('pagos_semanales')->selectRaw('DISTINCT DATE(inicio) as d')->pluck('d')->all();
+        DB::table('entregas')->where('fecha', '<=', $finUltima)->distinct()->pluck('fecha')
+            ->map(fn ($f) => Carbon::parse($f)->startOfWeek(Carbon::MONDAY)->toDateString())->unique()
+            ->reject(fn ($lunes) => in_array($lunes, $abiertas, true))
+            ->each(fn ($lunes) => $this->generar(Carbon::parse($lunes)));
+
+        return DB::table('pagos_semanales')->where('estado', 'PENDIENTE')->where('monto', '>', 0)
+            ->whereDate('inicio', '<=', $ultima->toDateString())
+            ->groupByRaw('DATE(inicio)')->orderByRaw('DATE(inicio)')
+            ->selectRaw('DATE(inicio) as inicio, COUNT(*) as pendientes, ROUND(SUM(monto), 2) as monto')->get()
+            ->map(fn ($s) => [
+                'inicio' => $s->inicio, 'fin' => Carbon::parse($s->inicio)->endOfWeek(Carbon::SUNDAY)->toDateString(),
+                'pendientes' => (int) $s->pendientes, 'monto' => (float) $s->monto,
+            ]);
     }
 
     /** Boletas de la semana para quien entregó; las ya pagadas no se tocan. */
