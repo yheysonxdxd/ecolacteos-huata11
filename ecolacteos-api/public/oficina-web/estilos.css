@@ -43,6 +43,23 @@ h2 { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: v
 @keyframes acercar { from { transform: scale(1); } to { transform: scale(1.08) translateX(-1.5%); } }
 @media (prefers-reduced-motion: reduce) { .login .escena { animation: none; } }
 
+/* colores de la foto: sol naranja, cielo violeta y agua oscura (solo en la entrada) */
+.login { --sol: #f6a25a; --oro: #ffd08a; --rosa: #e88a7a; --violeta: #9a82b4; --noche: rgba(22,16,30,.66); }
+.login .marca em { background: linear-gradient(90deg, var(--oro), var(--sol) 55%, var(--rosa));
+  -webkit-background-clip: text; background-clip: text; color: transparent; }
+.login .marca-sub { color: var(--oro); opacity: .85; }
+.login-intro .chips span { background: rgba(30,20,36,.55); border-color: rgba(255,200,140,.28); color: #ffe9d2; }
+.login form { background: var(--noche); border-color: rgba(255,190,130,.22);
+  box-shadow: 0 24px 60px rgba(10,6,16,.55), inset 0 1px 0 rgba(255,210,160,.12); }
+.login label { color: #f2d9c4; }
+.login input { background: rgba(14,10,20,.6); border-color: rgba(255,200,150,.18); color: #fff3e6; }
+.login input:focus { outline: 2px solid var(--sol); border-color: transparent; }
+.login .btn.gris { background: rgba(14,10,20,.6); border-color: rgba(255,200,150,.22); color: #ffe9d2; }
+.login .btn.ancho { background: linear-gradient(90deg, #e9874f, #d9707a 60%, #a07ab5); border: none; color: #fff;
+  font-weight: 600; box-shadow: 0 8px 22px rgba(217,112,122,.35); }
+.login .btn.ancho:hover { filter: brightness(1.08); }
+.login .aviso.error { background: rgba(60,18,26,.75); }
+
 /* pantallas angostas: solo el formulario sobre el paisaje */
 @media (max-width: 900px) {
   .login { grid-template-columns: 1fr; place-items: center; }
