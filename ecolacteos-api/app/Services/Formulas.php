@@ -23,6 +23,7 @@ class Formulas
             ['Cuajo líquido', 0.02], ['Sal industrial', 2.0],
         ],
         'Yogurt natural' => [
+            // azúcar: las guías ponen 4–10 %; 95 L de yogurt por cada 100 L de leche
             ['Azúcar blanca', 8], ['Cultivo láctico', 0.01],
             ['Saborizante fresa', 0.3], ['Envase 1 L', 95], // 95 L de yogurt por cada 100 L
         ],
@@ -42,7 +43,7 @@ class Formulas
             'Filtrar la leche aceptada y disolver el azúcar mientras se calienta.',
             'Pasteurizar a 85 °C por 10 minutos.',
             'Enfriar a 42–45 °C y agregar el cultivo láctico.',
-            'Incubar a 42 °C por 4–6 horas, sin mover, hasta que quede firme (pH 4,6).',
+            'Incubar a 42–45 °C por 4–5 horas, sin mover, hasta que quede firme (pH 4,4–4,6).',
             'Enfriar a 4–6 °C, batir y agregar el saborizante.',
             'Envasar en botellas de 1 L y guardar en frío.',
         ],
