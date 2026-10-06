@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ecolácteos Huata · Oficina</title>
+<link rel="stylesheet" href="/oficina-web/vendor/leaflet/leaflet.css">
+<script src="/oficina-web/vendor/leaflet/leaflet.js"></script>
 <link rel="stylesheet" href="/oficina-web/estilos.css">
 <script src="/oficina-web/app.js"></script>
 <script defer src="/oficina-web/vendor/alpine.min.js"></script>
@@ -83,6 +85,42 @@
                         <td class="num" x-text="num(v.litros, 0) + ' L'"></td>
                         <td><div class="barra"><span :style="'width:' + (v.litros / maximo(d.vehiculos, 'litros') * 100) + '%'"></span></div></td></tr>
                 </template>
+            </table>
+        </section>
+
+        {{-- ---------------------------------------------------- MAPA DE HUATA --}}
+        {{-- x-show sin "cargando": el mapa no se borra ni se vuelve a medir al recargar --}}
+        <section x-show="seccion === 'mapa' && !error">
+            <div class="fila"><h1>Mapa de Huata</h1><div class="espacio"></div>
+                <input type="date" x-model="mapaFecha" @change="cargar()" style="width:auto" title="Día">
+                <button class="btn" :class="mapaEditar ? '' : 'gris'" @click="alternarEdicionMapa()"
+                        x-text="mapaEditar ? '✓ Listo' : 'Corregir ubicaciones'"></button></div>
+            <p class="sub" x-show="!mapaEditar">Avance del acopio por comunidad y la ruta de cada vehículo. Toca un pin para ver el detalle.</p>
+            <div class="aviso" x-show="mapaEditar">Arrastra cada comunidad a su lugar real sobre el satélite. Se guarda al soltarla. Cuando termines, toca <strong>Listo</strong>.</div>
+            <div class="aviso" x-show="!mapaEditar && resumenMapa().aproximadas"
+                 x-text="resumenMapa().aproximadas + ' comunidades tienen ubicación aproximada (borde punteado). Usa «Corregir ubicaciones» para ponerlas en su lugar real.'"></div>
+            <div class="tarjetas">
+                <div class="tarjeta destacada"><div class="eti" x-text="mapaFecha ? 'Litros del ' + fechaCorta(mapaFecha) : 'Litros de hoy'"></div>
+                    <div class="valor" x-text="num(resumenMapa().litros, 0) + ' L'"></div></div>
+                <div class="tarjeta"><div class="eti">Proveedores registrados</div>
+                    <div class="valor" x-text="resumenMapa().registrados + ' / ' + resumenMapa().proveedores"></div></div>
+            </div>
+            <div class="mapa-caja">
+                <div id="mapa-huata"></div>
+                <div class="mapa-leyenda">
+                    <span><i class="pto ok"></i>Todos registrados</span>
+                    <span><i class="pto parcial"></i>Faltan algunos</span>
+                    <span><i class="pto nada"></i>Ninguno aún</span>
+                    <template x-for="v in d.vehiculos || []" :key="v.id">
+                        <span><i class="linea" :style="'background:' + colorRuta(v.codigo)"></i><span x-text="v.codigo"></span></span>
+                    </template>
+                </div>
+            </div>
+            <h2>Rutas</h2>
+            <table class="lista"><tr><th>Vehículo</th><th>Acopiador</th><th>Recorrido</th></tr>
+                <template x-for="v in d.vehiculos || []" :key="v.id"><tr>
+                    <td><i class="linea" :style="'background:' + colorRuta(v.codigo)"></i> <span x-text="v.codigo"></span></td>
+                    <td x-text="v.acopiador || 'sin acopiador'"></td><td x-text="rutaTexto(v)"></td></tr></template>
             </table>
         </section>
 

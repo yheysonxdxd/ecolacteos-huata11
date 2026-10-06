@@ -23,6 +23,12 @@ const TIPO_CLIENTE = { MAYORISTA: 'Mayorista', DIRECTO: 'Vecino de Huata', PLANT
 const ROLES = { ACOPIADOR: 'Acopiador', CALIDAD: 'Calidad', OPERARIO: 'Operario', COMPRAS: 'Compras', ADMIN: 'Administrador', PRODUCTOR: 'Productor' };
 const esCorreo = (s) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(s || '').trim());
 
+// mapa de Huata (Leaflet): fuera del estado de Alpine para que no lo envuelva en proxies
+const MAPA = { m: null, capa: null, encuadrado: false };
+// en el satélite hacen falta colores bien distintos (en la app son tonos de verde)
+const COLOR_RUTA = { 'C-01': '#4cc38a', 'C-02': '#5fb3ff', 'C-03': '#e8b44c', 'M-01': '#f07ad8' };
+const colorRuta = (codigo) => COLOR_RUTA[codigo] || '#ffffff';
+
 function oficina() {
   return {
     // --------------------------------------------------------------- sesión
@@ -49,6 +55,8 @@ function oficina() {
     buscar: '',
     kardex: { tipo: 'insumo', id: null, desde: '', hasta: '' }, // tipo: insumo | producto | leche
     quiero: {},     // producto => cuántos quesos / litros de yogurt se quieren hacer
+    mapaFecha: '',  // vacío = hoy
+    mapaEditar: false, // arrastrar comunidades a su lugar real
 
     soles, num, fechaCorta, hora, TIPO_CLIENTE, ROLES, esCorreo,
 
@@ -77,7 +85,8 @@ function oficina() {
       if (!admin) return compras;
       return [
         { id: 'acopio', nombre: 'Acopio', grupo: 'Administración',
-          pestanas: [{ id: 'totales', nombre: 'Totales' }, { id: 'conciliacion', nombre: 'Conciliación campo vs. planta' }] },
+          pestanas: [{ id: 'totales', nombre: 'Totales' }, { id: 'mapa', nombre: 'Mapa de Huata' },
+            { id: 'conciliacion', nombre: 'Conciliación campo vs. planta' }] },
         { id: 'dinero-grupo', nombre: 'Dinero', grupo: 'Administración',
           pestanas: [{ id: 'dinero', nombre: 'Ventas y pagos' }, { id: 'costos', nombre: 'Costos y rendimiento' }] },
         { id: 'padron-grupo', nombre: 'Padrón', grupo: 'Administración',
@@ -156,6 +165,7 @@ function oficina() {
               : await this.api('/admin/pagos' + (this.semana ? '?semana=' + this.semana : ''));
             break;
           case 'padron': this.d = await this.api('/admin/padron'); break;
+          case 'mapa': this.d = await this.api('/admin/mapa' + (this.mapaFecha ? '?fecha=' + this.mapaFecha : '')); break;
           case 'calidad': case 'adulteraciones': case 'solicitudes': case 'conciliacion': case 'costos': case 'sesiones':
             this.d = await this.api('/admin/' + this.seccion); break;
           case 'vender': this.d = await this.api('/compras/ventas-datos'); this.nuevaVenta(); break;
@@ -187,10 +197,91 @@ function oficina() {
       } finally {
         this.cargando = false;
       }
+      // Leaflet necesita que el contenedor ya se vea para medirlo
+      if (this.seccion === 'mapa' && !this.error) this.$nextTick(() => this.dibujarMapa());
     },
 
     cambiar(campo, valor) { this[campo] = valor; this.cargar(); },
     maximo(lista, campo) { return Math.max(1, ...lista.map((x) => Number(x[campo]) || 0)); },
+
+    // ---------------------------------------------------------- mapa de Huata
+    /** ok: todos registrados · parcial: algunos · nada: ninguno · vacia: sin proveedores */
+    estadoComunidad(c) {
+      if (!c.proveedores) return 'vacia';
+      if (c.registrados >= c.proveedores) return 'ok';
+      return c.registrados > 0 ? 'parcial' : 'nada';
+    },
+    resumenMapa() {
+      const cs = this.d.comunidades || [];
+      return {
+        registrados: cs.reduce((t, c) => t + c.registrados, 0), proveedores: cs.reduce((t, c) => t + c.proveedores, 0),
+        litros: cs.reduce((t, c) => t + c.litros, 0), aproximadas: cs.filter((c) => c.aproximada).length,
+      };
+    },
+    rutaTexto(v) {
+      const porId = Object.fromEntries((this.d.comunidades || []).map((c) => [c.id, c.nombre]));
+      return v.ruta.map((id) => porId[id] || '?').join(' → ') + (v.circular ? ' → (vuelve)' : '');
+    },
+    colorRuta,
+    dibujarMapa() {
+      const el = document.getElementById('mapa-huata');
+      if (!el || !window.L || !this.d.comunidades) return;
+      if (!MAPA.m) {
+        MAPA.m = L.map(el);
+        const satelite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+          { maxZoom: 18, attribution: 'Imágenes © Esri' });
+        const calles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' });
+        satelite.addTo(MAPA.m);
+        L.control.layers({ 'Satélite': satelite, 'Calles': calles }, null, { position: 'topright' }).addTo(MAPA.m);
+        L.control.scale({ imperial: false }).addTo(MAPA.m);
+        MAPA.capa = L.layerGroup().addTo(MAPA.m);
+      }
+      MAPA.capa.clearLayers();
+      const porId = Object.fromEntries(this.d.comunidades.map((c) => [c.id, c]));
+
+      // rutas de los vehículos (con un borde oscuro para que se vean sobre el satélite)
+      this.d.vehiculos.forEach((v) => {
+        const pts = v.ruta.map((id) => porId[id]).filter(Boolean).map((c) => [c.latitud, c.longitud]);
+        if (v.circular && pts.length > 2) pts.push(pts[0]);
+        if (pts.length < 2) return;
+        L.polyline(pts, { color: '#0b141c', weight: 8, opacity: 0.55, interactive: false }).addTo(MAPA.capa);
+        L.polyline(pts, { color: colorRuta(v.codigo), weight: 4, opacity: 0.95, dashArray: v.circular ? '10 7' : null })
+          .bindTooltip(v.codigo + (v.acopiador ? ' · ' + v.acopiador : ''), { sticky: true }).addTo(MAPA.capa);
+      });
+
+      // comunidades
+      this.d.comunidades.forEach((c) => {
+        const clases = ['pin', this.estadoComunidad(c), c.aproximada ? 'aprox' : '', this.mapaEditar ? 'editando' : ''].join(' ');
+        const icon = L.divIcon({
+          className: 'pin-huata', iconSize: [40, 40], iconAnchor: [20, 20],
+          html: '<div class="' + clases + '">' + (c.proveedores ? c.registrados + '/' + c.proveedores : '') + '</div>',
+        });
+        const m = L.marker([c.latitud, c.longitud], { icon, draggable: this.mapaEditar, autoPan: true }).addTo(MAPA.capa);
+        m.bindTooltip(c.nombre, { permanent: true, direction: 'bottom', offset: [0, 18], className: 'nombre-huata' });
+        m.bindPopup('<b>' + c.nombre + '</b><br>' +
+          (c.proveedores ? c.registrados + ' de ' + c.proveedores + ' proveedores registrados<br>' + num(c.litros) + ' L acopiados' : 'Sin proveedores') +
+          (c.vias ? '<br><span class="gris">Vías: ' + c.vias + '</span>' : '') +
+          (c.aproximada ? '<br><span class="ojo">Ubicación aproximada: corrígela con «Corregir ubicaciones».</span>' : ''));
+        m.on('dragend', () => this.ubicarComunidad(c, m.getLatLng()));
+      });
+
+      if (!MAPA.encuadrado) {
+        MAPA.m.fitBounds(this.d.comunidades.map((c) => [c.latitud, c.longitud]), { padding: [50, 50] });
+        MAPA.encuadrado = true;
+      }
+      setTimeout(() => MAPA.m.invalidateSize(), 60);
+    },
+    alternarEdicionMapa() { this.mapaEditar = !this.mapaEditar; this.dibujarMapa(); },
+    async ubicarComunidad(c, ll) {
+      try {
+        await this.api(`/admin/comunidades/${c.id}/ubicacion`, { latitud: ll.lat, longitud: ll.lng });
+        c.latitud = ll.lat; c.longitud = ll.lng; c.aproximada = false;
+        this.aviso = { texto: `✓ ${c.nombre} quedó en su nuevo lugar` };
+      } catch (e) {
+        this.aviso = { error: true, texto: 'No se pudo guardar la ubicación: ' + e.message };
+      }
+      this.dibujarMapa();
+    },
 
     // --------------------------------------------------------------- padrón
     proveedoresFiltrados() {
