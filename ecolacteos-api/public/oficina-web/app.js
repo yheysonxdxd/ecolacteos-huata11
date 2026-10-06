@@ -77,30 +77,32 @@ function oficina() {
      */
     menu() {
       const admin = this.usuario?.rol === 'ADMIN';
+      // en el orden del día de la planta: comprar → guardar → producir → vender; el kardex (para revisar) al final
       const compras = [
+        { id: 'ordenes-grupo', nombre: 'Compras de insumos', grupo: 'Compras y almacén',
+          pestanas: [{ id: 'ordenes', nombre: 'Compras de insumos' }] }, // órdenes y vendedores en una sola pantalla
+        { id: 'almacen', nombre: 'Almacén', grupo: 'Compras y almacén',
+          pestanas: [{ id: 'inventario', nombre: 'Stock y avisos' }, { id: 'mermas', nombre: 'Pérdidas' }] },
         { id: 'formulas-grupo', nombre: 'Fórmulas y producción', grupo: 'Compras y almacén',
           // los lotes son de planta: los ve e inicia/cierra el administrador (Compras solo ve las fórmulas)
           pestanas: [{ id: 'formulas', nombre: 'Fórmulas' }, ...(admin ? [{ id: 'lotes', nombre: 'Lotes en producción' }] : [])] },
         { id: 'vender', nombre: 'Vender', grupo: 'Compras y almacén',
           pestanas: [{ id: 'vender', nombre: 'Nueva venta' }, { id: 'movimientos', nombre: 'Ventas y notas' }] },
-        { id: 'almacen', nombre: 'Almacén', grupo: 'Compras y almacén',
-          pestanas: [{ id: 'inventario', nombre: 'Stock y avisos' }, { id: 'mermas', nombre: 'Pérdidas' }] },
         { id: 'kardex', nombre: 'Kardex · entradas y salidas', grupo: 'Compras y almacén', pestanas: [{ id: 'kardex', nombre: 'Kardex · entradas y salidas' }] },
-        { id: 'ordenes-grupo', nombre: 'Compras de insumos', grupo: 'Compras y almacén',
-          pestanas: [{ id: 'ordenes', nombre: 'Compras de insumos' }] }, // órdenes y vendedores en una sola pantalla
       ];
       if (!admin) return compras;
       return [
         { id: 'acopio', nombre: 'Acopio', grupo: 'Administración',
           pestanas: [{ id: 'totales', nombre: 'Totales' }, { id: 'mapa', nombre: 'Mapa de Huata' },
             { id: 'conciliacion', nombre: 'Conciliación campo vs. planta' }] },
+        // llega la leche → se analiza → se paga; el padrón (se toca poco) al final
+        { id: 'calidad-grupo', nombre: 'Calidad', grupo: 'Administración',
+          pestanas: [{ id: 'calidad', nombre: 'Por vehículo' }, { id: 'adulteraciones', nombre: 'Adulteraciones' }] },
         { id: 'dinero-grupo', nombre: 'Dinero', grupo: 'Administración',
           pestanas: [{ id: 'dinero', nombre: 'Ventas y pagos' }, { id: 'costos', nombre: 'Costos y rendimiento' }] },
         { id: 'padron-grupo', nombre: 'Padrón', grupo: 'Administración',
           pestanas: [{ id: 'padron', nombre: 'Proveedores y trabajadores' }, { id: 'solicitudes', nombre: 'Cambios de comunidad' },
             { id: 'sesiones', nombre: 'Sesiones abiertas' }] },
-        { id: 'calidad-grupo', nombre: 'Calidad', grupo: 'Administración',
-          pestanas: [{ id: 'calidad', nombre: 'Por vehículo' }, { id: 'adulteraciones', nombre: 'Adulteraciones' }] },
         ...compras,
       ];
     },
