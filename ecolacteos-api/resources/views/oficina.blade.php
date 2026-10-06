@@ -335,13 +335,21 @@
 
         {{-- ---------------------------------------------------- CONCILIACIÓN --}}
         <section x-show="seccion === 'conciliacion' && !cargando && !error">
-            <h1>Conciliación campo vs. planta</h1>
-            <p class="sub" x-text="d.fecha ? 'Último día registrado: ' + fechaCorta(d.fecha) + ' · tolerancia ±' + num(d.tolerancia) + ' %' : 'Todavía no hay recepciones registradas en planta.'"></p>
-            <table class="lista" x-show="d.fecha"><tr><th>Vehículo</th><th class="num">Litros en campo</th><th class="num">Litros en planta</th><th class="num">Diferencia</th><th></th></tr>
-                <template x-for="v in d.vehiculos || []" :key="v.codigo"><tr>
-                    <td x-text="v.codigo"></td><td class="num" x-text="num(v.litros_campo) + ' L'"></td><td class="num" x-text="num(v.litros_planta) + ' L'"></td>
-                    <td class="num" :class="v.fuera_tolerancia ? 'mal' : ''" x-text="num(v.diferencia_pct, 2) + ' %'"></td>
-                    <td><span class="chip" :class="v.fuera_tolerancia ? 'mal' : 'ok'" x-text="v.fuera_tolerancia ? 'Fuera de tolerancia' : 'Dentro'"></span></td></tr></template>
+            <div class="fila"><h1>Conciliación campo vs. planta</h1><div class="espacio"></div>
+                <input type="date" x-model="concFecha" @change="cargar()" :max="hoy()" style="width:auto" title="Día"></div>
+            <p class="sub">Compara lo que el acopiador anotó en las casas (campo) con lo que se midió al descargar en la tina (planta).
+                Escribe los litros que llegaron de cada vehículo y la diferencia se calcula sola · tolerancia ±<span x-text="num(d.tolerancia)"></span> %.</p>
+            <table class="lista"><tr><th>Vehículo</th><th class="num">Litros en campo</th><th class="num">Litros en planta</th><th class="num">Diferencia</th><th></th></tr>
+                <template x-for="f in d.filas || []" :key="f.vehiculo_id"><tr>
+                    <td x-text="f.codigo"></td><td class="num" x-text="num(f.litros_campo) + ' L'"></td>
+                    <td class="num"><input type="number" min="0" step="0.1" x-model="concLitros[f.vehiculo_id]" @keydown.enter="guardarPlanta(f)"
+                        style="width: 110px; text-align: right" placeholder="L"></td>
+                    <td class="num" :class="f.fuera_tolerancia ? 'mal' : ''" x-text="f.litros_planta === null ? '—' : num(f.diferencia_pct, 2) + ' %'"></td>
+                    <td class="num"><span class="chip" x-show="f.litros_planta !== null" :class="f.fuera_tolerancia ? 'mal' : 'ok'"
+                            x-text="f.fuera_tolerancia ? 'Fuera de tolerancia' : 'Dentro'"></span>
+                        <span class="chip ojo" x-show="f.litros_planta === null">Falta anotar</span>
+                        <button class="btn chico" @click="guardarPlanta(f)" x-text="f.litros_planta === null ? 'Guardar' : 'Corregir'"></button></td></tr></template>
+                <tr x-show="!(d.filas || []).length"><td colspan="5">Ese día no hubo acopio en campo.</td></tr>
             </table>
         </section>
 

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\AcopioService;
 use App\Services\CambiosComunidad;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -365,17 +366,54 @@ class AdminAppController extends Controller
         });
     }
 
-    /** GET /api/v1/admin/conciliacion — campo vs. planta del último día registrado. */
-    public function conciliacion()
+    /**
+     * GET /api/v1/admin/conciliacion?fecha= — campo vs. planta de un día (sin fecha: el último día con acopio).
+     * "vehiculos" son los ya medidos en planta (lo que lee la app); "filas" incluye además los que faltan anotar.
+     */
+    public function conciliacion(Request $r)
     {
-        $fecha = DB::table('recepciones_planta')->max('fecha');
-        $filas = DB::table('recepciones_planta as r')->join('vehiculos as v', 'v.id', '=', 'r.vehiculo_id')
+        $fecha = $r->query('fecha')
+            ?: DB::table('entregas')->where('fecha', '<=', $this->hoy()->toDateString())->max('fecha')
+            ?: $this->hoy()->toDateString();
+        $fecha = Carbon::parse($fecha)->toDateString();
+
+        $registradas = DB::table('recepciones_planta as r')->join('vehiculos as v', 'v.id', '=', 'r.vehiculo_id')
             ->where('r.fecha', $fecha)->orderBy('v.codigo')
-            ->select('v.codigo', 'r.litros_campo', 'r.litros_planta', 'r.diferencia_pct', 'r.fuera_tolerancia')
+            ->select('r.vehiculo_id', 'v.codigo', 'r.litros_campo', 'r.litros_planta', 'r.diferencia_pct', 'r.fuera_tolerancia')
             ->get();
+        $campo = DB::table('entregas as e')->join('vehiculos as v', 'v.id', '=', 'e.vehiculo_id')
+            ->where('e.fecha', $fecha)->where('e.ausente', false)
+            ->groupBy('e.vehiculo_id', 'v.codigo')
+            ->select('e.vehiculo_id', 'v.codigo', DB::raw('ROUND(SUM(e.litros), 2) as litros_campo'))
+            ->get();
+
+        $filas = $campo->whereNotIn('vehiculo_id', $registradas->pluck('vehiculo_id'))
+            ->map(fn ($c) => (object) [...(array) $c, 'litros_planta' => null, 'diferencia_pct' => null, 'fuera_tolerancia' => null])
+            ->concat($registradas)->sortBy('codigo')->values();
         $tol = (float) (DB::table('parametros')->where('clave', 'conciliacion.tolerancia_pct')->value('valor') ?? 1.5);
 
-        return response()->json(['fecha' => $fecha, 'tolerancia' => $tol, 'vehiculos' => $filas]);
+        return response()->json(['fecha' => $fecha, 'tolerancia' => $tol, 'vehiculos' => $registradas, 'filas' => $filas]);
+    }
+
+    /** POST /api/v1/admin/conciliacion — anota los litros que llegaron a planta de un vehículo en un día. */
+    public function registrarConciliacion(Request $r, AcopioService $acopio)
+    {
+        $d = $r->validate([
+            'fecha'         => ['required', 'date', 'before_or_equal:' . $this->hoy()->toDateString()],
+            'vehiculo_id'   => ['required', 'integer', 'exists:vehiculos,id'],
+            'litros_planta' => ['required', 'numeric', 'min:0', 'max:99999'],
+        ]);
+        $fecha = Carbon::parse($d['fecha']);
+        $hubo = DB::table('entregas')->where('vehiculo_id', $d['vehiculo_id'])->where('fecha', $fecha->toDateString())
+            ->where('ausente', false)->exists();
+        abort_unless($hubo, 422, 'Ese vehículo no tiene acopio registrado en campo ese día.');
+
+        $rec = $acopio->conciliar($d['vehiculo_id'], $fecha, (float) $d['litros_planta']);
+
+        return response()->json([
+            'litros_campo' => $rec->litros_campo, 'litros_planta' => $rec->litros_planta,
+            'diferencia_pct' => $rec->diferencia_pct, 'fuera_tolerancia' => $rec->fuera_tolerancia,
+        ]);
     }
 
     /** GET /api/v1/admin/costos — últimos 30 días: costo por litro, rendimiento y ventas. */

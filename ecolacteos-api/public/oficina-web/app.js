@@ -56,6 +56,8 @@ function oficina() {
     kardex: { tipo: 'insumo', id: null, desde: '', hasta: '' }, // tipo: insumo | producto | leche
     quiero: {},     // producto => cuántos quesos / litros de yogurt se quieren hacer
     mapaFecha: '',  // vacío = hoy
+    concFecha: '',  // vacío = último día con acopio
+    concLitros: {}, // vehiculo_id => litros que llegaron a planta (lo que se está escribiendo)
     mapaEditar: false, // arrastrar comunidades a su lugar real
 
     soles, num, fechaCorta, hora, TIPO_CLIENTE, ROLES, esCorreo,
@@ -166,7 +168,12 @@ function oficina() {
             break;
           case 'padron': this.d = await this.api('/admin/padron'); break;
           case 'mapa': this.d = await this.api('/admin/mapa' + (this.mapaFecha ? '?fecha=' + this.mapaFecha : '')); break;
-          case 'calidad': case 'adulteraciones': case 'solicitudes': case 'conciliacion': case 'costos': case 'sesiones':
+          case 'conciliacion':
+            this.d = await this.api('/admin/conciliacion' + (this.concFecha ? '?fecha=' + this.concFecha : ''));
+            this.concFecha = this.d.fecha;
+            this.concLitros = Object.fromEntries(this.d.filas.map((f) => [f.vehiculo_id, f.litros_planta ?? '']));
+            break;
+          case 'calidad': case 'adulteraciones': case 'solicitudes': case 'costos': case 'sesiones':
             this.d = await this.api('/admin/' + this.seccion); break;
           case 'vender': this.d = await this.api('/compras/ventas-datos'); this.nuevaVenta(); break;
           case 'inventario': this.d = await this.api('/compras/inventario'); break;
@@ -488,6 +495,17 @@ function oficina() {
         this.aviso = { texto: aprobar
           ? `✓ ${s.proveedor} pasa a ${s.destino} (vehículo ${r.vehiculo}) desde el ${fechaCorta(r.vigente_desde)}`
           : `Se rechazó el cambio de ${s.proveedor}` };
+        await this.cargar();
+      } catch (e) { this.aviso = { error: true, texto: e.message }; }
+    },
+
+    // ---------------------------------------------------------- conciliación
+    async guardarPlanta(f) {
+      const litros = Number(this.concLitros[f.vehiculo_id]);
+      if (this.concLitros[f.vehiculo_id] === '' || !(litros >= 0)) { this.aviso = { error: true, texto: 'Escribe los litros que llegaron a planta de ' + f.codigo }; return; }
+      try {
+        const r = await this.api('/admin/conciliacion', { fecha: this.concFecha, vehiculo_id: f.vehiculo_id, litros_planta: litros });
+        this.aviso = { texto: `✓ ${f.codigo}: ${num(r.litros_planta)} L en planta · diferencia ${num(r.diferencia_pct, 2)} %` + (r.fuera_tolerancia ? ' (fuera de tolerancia)' : '') };
         await this.cargar();
       } catch (e) { this.aviso = { error: true, texto: e.message }; }
     },

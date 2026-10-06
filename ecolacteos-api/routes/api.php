@@ -56,6 +56,7 @@ Route::prefix('v1')->group(function () {
         Route::post('admin/proveedores/{id}/traslado',         [Api\AdminAppController::class, 'editarTraslado'])->whereNumber('id');
         Route::post('admin/proveedores/{id}/traslado/anular',  [Api\AdminAppController::class, 'anularTraslado'])->whereNumber('id');
         Route::get('admin/conciliacion', [Api\AdminAppController::class, 'conciliacion']);
+        Route::post('admin/conciliacion', [Api\AdminAppController::class, 'registrarConciliacion']);
         Route::get('admin/costos',       [Api\AdminAppController::class, 'costos']);
         Route::get('admin/mapa',         [Api\MapaController::class, 'ver']);
         Route::post('admin/comunidades/{id}/ubicacion', [Api\MapaController::class, 'ubicar'])->whereNumber('id');
