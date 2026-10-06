@@ -48,11 +48,57 @@ class ComprasAppController extends Controller
     /** GET /api/v1/compras/ventas-datos — productos con stock y precios, y clientes. */
     public function datosVenta()
     {
+        $clientes = DB::table('clientes')->orderBy('tipo')->orderBy('nombre')
+            ->get(['id', 'nombre', 'tipo', 'ruc', 'telefono', 'email', 'activo']);
+
         return response()->json([
             'productos' => $this->productos(),
-            'clientes' => DB::table('clientes')->where('activo', true)->orderBy('tipo')->orderBy('nombre')
-                ->get(['id', 'nombre', 'tipo', 'email']),
+            'clientes' => $clientes->where('activo', true)->values(),
+            'inactivos' => $clientes->where('activo', false)->values(), // la web los muestra si se piden
         ]);
+    }
+
+    /**
+     * POST /api/v1/compras/clientes[/{id}] { nombre, tipo: MAYORISTA|DIRECTO, documento?, telefono?, email?, activo? }
+     * A quién le vendemos. El documento (DNI u RUC) es opcional y se guarda en "ruc".
+     */
+    public function guardarCliente(Request $r, ?int $id = null)
+    {
+        if ($id) {
+            $c = DB::table('clientes')->find($id);
+            abort_unless($c, 404, 'Cliente no encontrado.');
+            abort_if($c->tipo === 'PLANTA', 422, 'Ese cliente es del sistema y no se edita.');
+        }
+        $r->merge(['documento' => preg_replace('/\D/', '', (string) $r->input('documento')) ?: null]);
+        $d = $r->validate([
+            'nombre'    => ['required', 'string', 'min:3', 'max:255'],
+            'tipo'      => ['required', 'in:MAYORISTA,DIRECTO'],
+            'documento' => ['nullable', 'string'],
+            'telefono'  => ['nullable', 'regex:/^[0-9 +]{6,20}$/'],
+            'email'     => ['nullable', 'email', 'max:120'],
+        ], [
+            'nombre.required' => 'Escribe el nombre del cliente o de su negocio.',
+            'nombre.min'      => 'El nombre es muy corto.',
+            'tipo.required'   => 'Elige si es mayorista o cliente directo.',
+            'telefono.regex'  => 'El teléfono solo lleva números.',
+            'email.email'     => 'Ese correo no es válido.',
+        ]);
+        $doc = $d['documento'];
+        abort_if($doc && ! Compras::documentoValido(strlen($doc) === 8 ? 'DNI' : 'RUC', $doc), 422,
+            'El DNI lleva 8 dígitos y el RUC 11 (empieza en 10, 15, 16, 17 o 20).');
+        abort_if($doc && DB::table('clientes')->where('ruc', $doc)->when($id, fn ($q) => $q->where('id', '!=', $id))->exists(), 422,
+            'Ya hay un cliente con ese DNI/RUC.');
+
+        $fila = ['nombre' => trim($d['nombre']), 'tipo' => $d['tipo'], 'ruc' => $doc,
+            'telefono' => $d['telefono'] ?? null, 'email' => $d['email'] ?? null, 'updated_at' => now()];
+        if ($id) {
+            if ($r->has('activo')) $fila['activo'] = $r->boolean('activo');
+            DB::table('clientes')->where('id', $id)->update($fila);
+        } else {
+            $id = DB::table('clientes')->insertGetId($fila + ['activo' => true, 'created_at' => now()]);
+        }
+
+        return response()->json(['id' => $id, 'nombre' => $fila['nombre']], 201);
     }
 
     /** POST /api/v1/compras/ventas { cliente_id, producto_id, cantidad } — precio según el tipo de cliente. */

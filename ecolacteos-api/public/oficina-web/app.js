@@ -19,7 +19,7 @@ const fechaCorta = (iso) => {
   return `${Number(d)} ${MESES[Number(m) - 1]}`;
 };
 const hora = (iso) => String(iso || '').slice(11, 16);
-const TIPO_CLIENTE = { MAYORISTA: 'Mayorista', DIRECTO: 'Vecino de Huata', PLANTA: 'Proveedor de leche' };
+const TIPO_CLIENTE = { MAYORISTA: 'Mayorista', DIRECTO: 'Cliente directo', PLANTA: 'Proveedor de leche' };
 const ROLES = { ACOPIADOR: 'Acopiador', CALIDAD: 'Calidad', OPERARIO: 'Operario', COMPRAS: 'Compras', ADMIN: 'Administrador', PRODUCTOR: 'Productor' };
 const esCorreo = (s) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(s || '').trim());
 
@@ -59,6 +59,9 @@ function oficina() {
     mesCompras: '', // vacío = mes actual (2026-10)
     mesVentas: '',
     buscarVendedor: '',
+    buscarCliente: '',
+    verClientesInactivos: false,
+    fVenta: null,   // la venta a medias mientras se agrega o edita un cliente
     verDesactivados: false,
     vendedoresAbiertos: (() => { try { return localStorage.getItem('vendedoresAbiertos') === '1'; } catch { return false; } })(),
     concFecha: '',  // vacío = último día con acopio
@@ -68,6 +71,8 @@ function oficina() {
     soles, num, fechaCorta, hora, TIPO_CLIENTE, ROLES, esCorreo,
 
     iniciar() {
+      // si la ventana del cliente se cierra con Esc o clic afuera, se vuelve a la venta a medias
+      this.$watch('ventana', (v) => { if (!v && this.fVenta) { this.f = this.fVenta; this.fVenta = null; } });
       if (this.usuario) this.ir(this.menu()[0].pestanas[0].id);
     },
 
@@ -563,6 +568,40 @@ function oficina() {
       return p && c ? Number(p.precios?.[c.tipo] || 0) : 0;
     },
     elegirCliente(c) { this.f.cliente = c.id; this.f.correo = c.email || ''; },
+    /** Clientes que coinciden con lo buscado (nombre, DNI/RUC o teléfono); los desactivados solo si se piden. */
+    clientesVisibles() {
+      const q = this.buscarCliente.trim().toLowerCase();
+      const todos = [...(this.d.clientes || []), ...(this.verClientesInactivos ? this.d.inactivos || [] : [])];
+      return todos.filter((c) => !q || c.nombre.toLowerCase().includes(q) || (c.ruc || '').includes(q) || (c.telefono || '').includes(q));
+    },
+    abrirCliente(c = null) {
+      this.fVenta = this.f; // se guarda la venta a medias y se vuelve a ella al terminar
+      this.f = c
+        ? { id: c.id, nombre: c.nombre, tipo: c.tipo, documento: c.ruc || '', telefono: c.telefono || '', email: c.email || '',
+            activo: !!Number(c.activo), error: null, enviando: false }
+        : { id: null, nombre: '', tipo: 'MAYORISTA', documento: '', telefono: '', email: '', activo: true, error: null, enviando: false };
+      this.ventana = 'cliente';
+    },
+    cerrarCliente() { this.f = this.fVenta; this.fVenta = null; this.ventana = null; },
+    async guardarCliente() {
+      const f = this.f;
+      const doc = f.documento.replace(/\D/g, '');
+      if (f.nombre.trim().length < 3) return (f.error = 'Escribe el nombre del cliente o de su negocio');
+      if (doc && !/^\d{8}$/.test(doc) && !/^(10|15|16|17|20)\d{9}$/.test(doc)) return (f.error = 'El DNI lleva 8 dígitos y el RUC 11 (empieza en 10, 15, 16, 17 o 20)');
+      if (f.email && !esCorreo(f.email)) return (f.error = 'Ese correo no es válido');
+      f.enviando = true; f.error = null;
+      try {
+        const r = await this.api('/compras/clientes' + (f.id ? '/' + f.id : ''), {
+          nombre: f.nombre.trim(), tipo: f.tipo, documento: doc || null, telefono: f.telefono.trim() || null,
+          email: f.email.trim() || null, ...(f.id ? { activo: f.activo } : {}) });
+        const datos = await this.api('/compras/ventas-datos');
+        this.d = { ...this.d, clientes: datos.clientes, inactivos: datos.inactivos };
+        this.f = this.fVenta; this.fVenta = null; this.ventana = null;
+        const c = datos.clientes.find((x) => x.id === r.id);
+        if (c) this.elegirCliente(c); else if (this.f.cliente === r.id) this.f.cliente = null; // desactivado: ya no se puede elegir
+        this.aviso = { texto: `✓ ${r.nombre} ${f.id ? 'actualizado' : 'agregado'}` + (c && !f.id ? ' y elegido para esta venta' : '') };
+      } catch (e) { f.error = e.message; } finally { f.enviando = false; }
+    },
     async registrarVenta() {
       const f = this.f; const p = this.productoVenta(); const c = this.clienteVenta();
       if (!p) return (f.error = 'Elige el producto');

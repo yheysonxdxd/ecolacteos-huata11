@@ -415,11 +415,23 @@
                                     x-text="p.nombre + ' · stock ' + num(p.stock, 0) + ' ' + p.unidad"></button>
                         </template>
                     </div>
-                    <label>Cliente</label>
+                    <div class="fila" style="margin-top: 14px"><label style="margin: 0">Cliente</label><div class="espacio"></div>
+                        <button class="btn chico" @click="abrirCliente()">+ Nuevo cliente</button></div>
+                    <div class="fila" style="margin: 8px 0; gap: 12px">
+                        <input type="search" x-model="buscarCliente" placeholder="Buscar por nombre, DNI/RUC o teléfono">
+                        <label style="display: flex; align-items: center; gap: 6px; margin: 0; white-space: nowrap; cursor: pointer" x-show="(d.inactivos || []).length">
+                            <input type="checkbox" x-model="verClientesInactivos" style="width: auto"> Ver desactivados</label>
+                    </div>
                     <table class="lista">
-                        <template x-for="c in d.clientes || []" :key="c.id"><tr class="clic" @click="elegirCliente(c)" :style="f.cliente === c.id ? 'outline: 2px solid var(--verde)' : ''">
-                            <td x-text="c.nombre"></td><td x-text="TIPO_CLIENTE[c.tipo] || c.tipo"></td>
-                            <td class="num" x-text="productoVenta() ? soles(productoVenta().precios?.[c.tipo]) : ''"></td></tr></template>
+                        <template x-for="c in clientesVisibles()" :key="c.id">
+                            <tr :class="Number(c.activo) ? 'clic' : 'tenue'" @click="Number(c.activo) && elegirCliente(c)" :style="f.cliente === c.id ? 'outline: 2px solid var(--verde)' : ''">
+                                <td><span x-text="c.nombre"></span><div class="sub" style="margin: 0; font-size: 12px" x-show="c.ruc || c.telefono"
+                                        x-text="[c.ruc ? (c.ruc.length === 8 ? 'DNI ' : 'RUC ') + c.ruc : '', c.telefono ? 'Tel. ' + c.telefono : ''].filter(Boolean).join(' · ')"></div></td>
+                                <td x-text="TIPO_CLIENTE[c.tipo] || c.tipo"></td>
+                                <td class="num" x-text="productoVenta() && Number(c.activo) ? soles(productoVenta().precios?.[c.tipo]) : ''"></td>
+                                <td class="acciones"><span class="chip mal" x-show="!Number(c.activo)">desactivado</span>
+                                    <button class="btn chico gris" x-show="c.tipo !== 'PLANTA'" @click.stop="abrirCliente(c)">Editar</button></td></tr></template>
+                        <tr x-show="!clientesVisibles().length"><td colspan="4">Ningún cliente coincide. Agrégalo con <strong>+ Nuevo cliente</strong>.</td></tr>
                     </table>
                 </div>
                 <div>
@@ -1248,6 +1260,27 @@
         <div class="aviso error" x-show="f.error" x-text="f.error"></div>
         <div class="pie"><button class="btn gris" @click="ventana = null">Cancelar</button>
             <button class="btn" @click="recibirOrden()" :disabled="!!f.enviando" x-text="f.enviando ? 'Guardando…' : 'Registrar y subir stock'"></button></div>
+    </div>
+
+    {{-- cliente (a quién le vendemos) --}}
+    <div class="ventana" x-show="ventana === 'cliente'">
+        <h3 x-text="f.id ? 'Editar cliente' : 'Nuevo cliente'"></h3>
+        <label>¿Qué tipo de cliente es?</label>
+        <div class="opciones">
+            <button :class="{ activo: f.tipo === 'MAYORISTA' }" @click="f.tipo = 'MAYORISTA'">Mayorista (compra para revender)</button>
+            <button :class="{ activo: f.tipo === 'DIRECTO' }" @click="f.tipo = 'DIRECTO'">Cliente directo (para su casa)</button></div>
+        <p class="sub" style="margin: 6px 0 0">El precio de cada venta sale solo según este tipo.</p>
+        <label>Nombre de la persona o del negocio</label><input x-model="f.nombre" placeholder="Ej.: Puesto Mercado Túpac Amaru">
+        <label>DNI o RUC (opcional)</label>
+        <input x-model="f.documento" maxlength="11" @input="f.documento = f.documento.replace(/\D/g, '')" placeholder="8 dígitos (DNI) u 11 (RUC)">
+        <div class="dos">
+            <div><label>Teléfono (opcional)</label><input x-model="f.telefono"></div>
+            <div><label>Correo (opcional)</label><input type="email" x-model="f.email" placeholder="Para mandarle la nota de venta"></div>
+        </div>
+        <label style="display:flex; gap:8px; align-items:center" x-show="f.id"><input type="checkbox" x-model="f.activo" style="width:auto"> Activo (si no, ya no sale para vender; sus ventas antiguas se quedan)</label>
+        <div class="aviso error" x-show="f.error" x-text="f.error"></div>
+        <div class="pie"><button class="btn gris" @click="cerrarCliente()">Cancelar</button>
+            <button class="btn" @click="guardarCliente()" :disabled="!!f.enviando" x-text="f.enviando ? 'Guardando…' : 'Guardar'"></button></div>
     </div>
 
     {{-- vendedor de insumos --}}

@@ -89,6 +89,8 @@ Route::prefix('v1')->group(function () {
         Route::post('compras/vendedores',         [Api\VendedoresInsumoController::class, 'guardar']);
         Route::post('compras/vendedores/{id}',    [Api\VendedoresInsumoController::class, 'editar'])->whereNumber('id');
         Route::get('compras/ventas-datos',        [Api\ComprasAppController::class, 'datosVenta']);
+        Route::post('compras/clientes',           [Api\ComprasAppController::class, 'guardarCliente']);
+        Route::post('compras/clientes/{id}',      [Api\ComprasAppController::class, 'guardarCliente'])->whereNumber('id');
         Route::post('compras/ventas',             [Api\ComprasAppController::class, 'vender']);
         Route::get('compras/movimientos',         [Api\ComprasAppController::class, 'movimientos']);
         Route::get('compras/formulas',            [Api\FormulasController::class, 'index']);
