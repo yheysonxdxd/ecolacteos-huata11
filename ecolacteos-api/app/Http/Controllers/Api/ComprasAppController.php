@@ -102,7 +102,8 @@ class ComprasAppController extends Controller
         if ($r->filled('mes')) {
             // la web: todas las ventas del mes, con su total
             [$desde, $hasta, $mes] = Compras::mes($r->query('mes'));
-            $ventas = $this->ventas()->whereBetween(DB::raw('DATE(v.vendida_en)'), [$desde, $hasta])->get();
+            $ventas = $this->ventas()
+                ->when($desde, fn ($q) => $q->whereBetween(DB::raw('DATE(v.vendida_en)'), [$desde, $hasta]))->get();
 
             return response()->json([
                 'movimientos' => $ventas->map(fn ($v) => $this->filaVenta($v))->values(),

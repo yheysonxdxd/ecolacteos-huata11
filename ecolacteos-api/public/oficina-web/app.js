@@ -633,6 +633,7 @@ function oficina() {
     /** '2026-10' → 'Octubre 2026' */
     nombreMes(ym) {
       if (!ym) return '';
+      if (ym === 'todo') return 'Todo';
       const t = new Date(ym + '-15T12:00:00').toLocaleDateString('es-PE', { month: 'long', year: 'numeric' }).replace(' de ', ' ');
       return t.charAt(0).toUpperCase() + t.slice(1);
     },

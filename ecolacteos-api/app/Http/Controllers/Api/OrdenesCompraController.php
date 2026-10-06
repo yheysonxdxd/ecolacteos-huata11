@@ -32,8 +32,11 @@ class OrdenesCompraController extends Controller
             // la web va mes por mes; lo que está por llegar se ve siempre, sea del mes que sea
             [$desde, $hasta, $mes] = Compras::mes($r->query('mes'));
             $fecha = 'COALESCE(o.comprobante_fecha, DATE(o.created_at))';
-            $q->where(fn ($w) => $w->where('o.estado', 'EMITIDA')->orWhereRaw("$fecha BETWEEN ? AND ?", [$desde, $hasta]));
-            $delMes = DB::table('ordenes_compra as o')->where('o.estado', 'RECIBIDA')->whereRaw("$fecha BETWEEN ? AND ?", [$desde, $hasta]);
+            $delMes = DB::table('ordenes_compra as o')->where('o.estado', 'RECIBIDA');
+            if ($desde) { // "todo" no filtra
+                $q->where(fn ($w) => $w->where('o.estado', 'EMITIDA')->orWhereRaw("$fecha BETWEEN ? AND ?", [$desde, $hasta]));
+                $delMes->whereRaw("$fecha BETWEEN ? AND ?", [$desde, $hasta]);
+            }
             $mes += ['gastado' => round((float) (clone $delMes)->sum('o.total'), 2), 'compras' => $delMes->count()];
         } else {
             $q->limit(30); // la app del celular: las últimas

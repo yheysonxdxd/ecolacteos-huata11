@@ -17,11 +17,15 @@ class Compras
 
     /**
      * Mes que se mira en la web (?mes=2026-10, por defecto el actual) y sus vecinos para las flechitas.
+     * ?mes=todo: sin límite de fechas (primer y último día en null).
      *
-     * @return array{0: string, 1: string, 2: array} [primer día, último día, datos para la web]
+     * @return array{0: ?string, 1: ?string, 2: array} [primer día, último día, datos para la web]
      */
     public static function mes(?string $mes): array
     {
+        if ($mes === 'todo') {
+            return [null, null, ['mes' => 'todo', 'anterior' => null, 'siguiente' => null]];
+        }
         $actual = Carbon::today('America/Lima')->startOfMonth();
         $m = $mes && preg_match('/^\d{4}-\d{2}$/', $mes) ? Carbon::createFromFormat('!Y-m', $mes) : $actual->copy();
         if ($m->gt($actual)) {
