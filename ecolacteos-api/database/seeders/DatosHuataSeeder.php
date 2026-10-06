@@ -107,6 +107,7 @@ class DatosHuataSeeder extends Seeder
             ['Sal industrial', 'kg', 40, 15],    ['Cloruro de calcio', 'kg', 0.3, 0.4],
             ['Azúcar blanca', 'kg', 60, 25],     ['Saborizante fresa', 'L', 4, 3],
             ['Envase 1 L', 'un', 380, 200],      ['Film termoencogible', 'un', 90, 120],
+            ['Sorbato de potasio', 'kg', 1, 0.2],
         ] as [$nombre, $unidad, $stock, $min]) {
             Insumo::create([
                 'nombre' => $nombre, 'unidad' => $unidad,

@@ -259,9 +259,10 @@ class HistorialPruebaSeeder extends Seeder
         $prod = DB::table('productos')->pluck('id', 'nombre');
         $filas = [
             ['Queso Paria', 'Cuajo líquido', 0.02], ['Queso Paria', 'Cloruro de calcio', 0.02],
-            ['Queso Paria', 'Sal industrial', 1.5], ['Queso Paria', 'Cultivo láctico', 0.005],
+            ['Queso Paria', 'Sal industrial', 2.0], ['Queso Paria', 'Cultivo láctico', 0.005],
             ['Yogurt natural', 'Cultivo láctico', 0.01], ['Yogurt natural', 'Azúcar blanca', 8],
-            ['Yogurt natural', 'Saborizante fresa', 0.3],
+            ['Yogurt natural', 'Saborizante fresa', 0.3], ['Yogurt natural', 'Envase 1 L', 95],
+            ['Yogurt natural', 'Sorbato de potasio', 0.05],
         ];
         foreach ($filas as [$p, $i, $c]) {
             if (! isset($prod[$p], $ins[$i])) continue;
