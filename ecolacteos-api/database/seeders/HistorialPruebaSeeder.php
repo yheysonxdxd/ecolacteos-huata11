@@ -275,31 +275,62 @@ class HistorialPruebaSeeder extends Seeder
     private function ordenesCompra(int $compras, Carbon $inicio): void
     {
         $ins = DB::table('insumos')->pluck('id', 'nombre');
-        $ordenes = [
-            // [código, insumo, cantidad, proveedor comercial, costo, estado, días desde el inicio]
-            ['OC-101', 'Sal industrial',      50,  'Comercial Puno SAC',        95.00,  'RECIBIDA', 1],
-            ['OC-102', 'Cultivo láctico',     1,   'Lácteos Insumos Arequipa',  380.00, 'RECIBIDA', 3],
-            ['OC-103', 'Azúcar blanca',       50,  'Distribuidora Juliaca',     190.00, 'RECIBIDA', 8],
-            ['OC-104', 'Cuajo líquido',       1,   'Lácteos Insumos Arequipa',  145.00, 'RECIBIDA', 12],
-            ['OC-105', 'Envase 1 L',          300, 'Plásticos del Sur EIRL',    270.00, 'RECIBIDA', 15],
-            ['OC-106', 'Cloruro de calcio',   1,   'Lácteos Insumos Arequipa',  42.00,  'EMITIDA',  19],
-            ['OC-107', 'Film termoencogible', 200, 'Plásticos del Sur EIRL',    160.00, 'EMITIDA',  20],
-        ];
-        foreach ($ordenes as [$cod, $insumo, $cant, $prov, $costo, $estado, $dia]) {
-            if (! isset($ins[$insumo])) continue;
-            $cuando = $inicio->copy()->addDays($dia)->setTime(10, 0);
-            $id = DB::table('ordenes_compra')->insertGetId([
-                'uuid' => (string) Str::uuid(), 'codigo' => $cod, 'insumo_id' => $ins[$insumo],
-                'cantidad' => $cant, 'proveedor_comercial' => $prov, 'costo_estimado' => $costo,
-                'estado' => $estado, 'emitida_por' => $compras, 'created_at' => $cuando, 'updated_at' => $cuando,
+        $vend = [];
+        foreach ([
+            // [RUC/DNI, nombre, teléfono, dirección]
+            ['20448811223', 'Comercial Puno SAC',       '951100200', 'Jr. Lima 455, Puno'],
+            ['20512233445', 'Lácteos Insumos Arequipa SRL', '954300400', 'Av. Parra 120, Arequipa'],
+            ['10411223344', 'Distribuidora Juliaca',    '950500600', 'Jr. Mariano Núñez 210, Juliaca'],
+            ['20600998877', 'Plásticos del Sur EIRL',   '953700800', 'Parque Industrial Taparachi, Juliaca'],
+            ['41234567',    'Rosa Mamani Quispe',       '987654321', 'Mercado Central de Puno, puesto 18'],
+        ] as [$doc, $nombre, $tel, $dir]) {
+            $vend[$nombre] = DB::table('vendedores_insumo')->insertGetId([
+                'tipo_documento' => strlen($doc) === 11 ? 'RUC' : 'DNI', 'documento' => $doc, 'nombre' => $nombre,
+                'telefono' => $tel, 'direccion' => $dir, 'activo' => true, 'created_at' => $inicio, 'updated_at' => $inicio,
             ]);
-            if ($estado === 'RECIBIDA') {
-                DB::table('movimientos_insumo')->insert([
-                    'uuid' => (string) Str::uuid(), 'insumo_id' => $ins[$insumo], 'cantidad' => $cant,
-                    'referencia' => "$cod · recepción de compra", 'origen_type' => 'orden_compra', 'origen_id' => $id,
-                    'registrado_por' => $compras,
-                    'created_at' => $cuando->copy()->addDays(2), 'updated_at' => $cuando->copy()->addDays(2),
+        }
+
+        $ordenes = [
+            // [código, vendedor, [[insumo, cantidad, costo]], estado, días desde el inicio, [tipo, serie, número] del comprobante]
+            ['OC-101', 'Comercial Puno SAC', [['Sal industrial', 50, 95.00]], 'RECIBIDA', 1, ['FACTURA', 'F001', '1532']],
+            ['OC-102', 'Lácteos Insumos Arequipa SRL', [['Cultivo láctico', 1, 380.00], ['Cuajo líquido', 1, 145.00]], 'RECIBIDA', 3, ['FACTURA', 'F002', '8841']],
+            ['OC-103', 'Distribuidora Juliaca', [['Azúcar blanca', 50, 190.00]], 'RECIBIDA', 8, ['BOLETA', 'B001', '20417']],
+            ['OC-104', 'Rosa Mamani Quispe', [['Sal industrial', 10, 20.00]], 'RECIBIDA', 12, ['RECIBO', null, null]],
+            ['OC-105', 'Plásticos del Sur EIRL', [['Envase 1 L', 300, 270.00]], 'RECIBIDA', 15, ['FACTURA', 'F001', '602']],
+            ['OC-106', 'Lácteos Insumos Arequipa SRL', [['Cloruro de calcio', 1, 42.00]], 'EMITIDA', 19, null],
+            ['OC-107', 'Plásticos del Sur EIRL', [['Film termoencogible', 200, 160.00], ['Envase 1 L', 100, 90.00]], 'EMITIDA', 20, null],
+        ];
+        foreach ($ordenes as [$cod, $vendedor, $lineas, $estado, $dia, $comp]) {
+            $lineas = array_values(array_filter($lineas, fn ($l) => isset($ins[$l[0]])));
+            if (! $lineas) continue;
+            $cuando = $inicio->copy()->addDays($dia)->setTime(10, 0);
+            $llego = $cuando->copy()->addDays(2);
+            $total = round(array_sum(array_column($lineas, 2)), 2);
+            $factura = $comp && $comp[0] === 'FACTURA';
+            $id = DB::table('ordenes_compra')->insertGetId([
+                'uuid' => (string) Str::uuid(), 'codigo' => $cod, 'vendedor_id' => $vend[$vendedor],
+                'proveedor_comercial' => $vendedor, 'costo_estimado' => $total, 'estado' => $estado, 'emitida_por' => $compras,
+                'comprobante_tipo' => $comp[0] ?? null, 'comprobante_serie' => $comp[1] ?? null, 'comprobante_numero' => $comp[2] ?? null,
+                'comprobante_fecha' => $comp ? $llego->toDateString() : null,
+                'subtotal' => $factura ? round($total / 1.18, 2) : null,
+                'igv' => $factura ? round($total - round($total / 1.18, 2), 2) : null,
+                'total' => $comp ? $total : null,
+                'recibida_en' => $comp ? $llego : null, 'recibida_por' => $comp ? $compras : null,
+                'created_at' => $cuando, 'updated_at' => $cuando,
+            ]);
+            foreach ($lineas as [$insumo, $cant, $costo]) {
+                DB::table('orden_compra_items')->insert([
+                    'orden_compra_id' => $id, 'insumo_id' => $ins[$insumo], 'cantidad' => $cant,
+                    'costo_estimado' => $costo, 'costo_real' => $comp ? $costo : null, 'created_at' => $cuando, 'updated_at' => $cuando,
                 ]);
+                if ($estado === 'RECIBIDA') {
+                    DB::table('movimientos_insumo')->insert([
+                        'uuid' => (string) Str::uuid(), 'insumo_id' => $ins[$insumo], 'cantidad' => $cant,
+                        'referencia' => "$cod · ".\App\Services\Compras::textoComprobante($comp[0], $comp[1], $comp[2]),
+                        'origen_type' => 'orden_compra', 'origen_id' => $id, 'registrado_por' => $compras,
+                        'created_at' => $llego, 'updated_at' => $llego,
+                    ]);
+                }
             }
         }
     }

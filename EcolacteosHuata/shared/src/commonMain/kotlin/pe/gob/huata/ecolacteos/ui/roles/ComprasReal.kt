@@ -14,9 +14,6 @@ import pe.gob.huata.ecolacteos.ui.componentes.*
 
 /** Estado de Compras con datos reales. */
 object ComprasReal {
-    var insumoSel by mutableStateOf(0)
-    var cantidadOc by mutableStateOf(1.0)
-    var proveedorSel by mutableStateOf(0)
     var productoSel by mutableStateOf(0)
     var clienteSel by mutableStateOf(0)
     var cantidadVenta by mutableStateOf(10.0)
@@ -30,7 +27,7 @@ private val NOMBRE_CANAL = mapOf("MAYORISTA" to "Mayorista", "DIRECTO" to "Vecin
 
 /**
  * Compras con la base, como en la web de oficina: Fórmulas · Ventas (nueva y
- * últimas con su nota) · Almacén (stock y pérdidas) · Kardex · Orden.
+ * últimas con su nota) · Almacén (stock y pérdidas) · Kardex · Compras de insumos.
  * [irA] cambia de opción del menú; desde Almacén, tocar algo abre su kardex (opción 3).
  */
 @Composable
@@ -47,7 +44,7 @@ fun ContenidoComprasReal(ruta: String, irA: (Int) -> Unit) {
         "compras/kardex" -> KardexCompleto()
         "compras/ventas-nueva" -> VentaReal { irA(0) }
         "compras/inventario" -> InventarioReal { irA(0) }
-        "compras/orden" -> OrdenReal(irA)
+        "compras/orden" -> ComprasInsumosReal()
         else -> MovimientosReal()
     }
 }
@@ -86,80 +83,6 @@ private fun InventarioReal(alKardex: () -> Unit) {
                     KardexElegido.tipo = "producto"; KardexElegido.id = p.num("id").toLong(); alKardex()
                 }) {
                     Text(formatear(p.num("stock"), 0), style = Texto.Fila, color = Altiplano.Texto)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun OrdenReal(irA: (Int) -> Unit) {
-    val scope = rememberCoroutineScope()
-    var enviando by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-
-    CargaServidor("/api/v1/compras/inventario", clave = ComprasReal.version) { inv, _ ->
-        CargaServidor("/api/v1/compras/ordenes", clave = ComprasReal.version) { ords, _ ->
-            val insumos = inv.lista("insumos")
-            val proveedores = (ords["proveedores"] as? JsonArray)?.map { it.jsonPrimitive.content } ?: emptyList()
-            val i = insumos.getOrNull(ComprasReal.insumoSel) ?: return@CargaServidor
-            val proveedor = proveedores.getOrNull(ComprasReal.proveedorSel) ?: "Sin proveedor"
-
-            fun recibir(id: String) {
-                scope.launch {
-                    try {
-                        val r = Sesion.enviar("/api/v1/compras/ordenes/$id/recibir", JsonObject(emptyMap()))
-                        ComprasReal.mensaje = "✓ ${r.txt("codigo")} recibida: el stock ya subió"
-                        ComprasReal.version++
-                    } catch (t: Throwable) { error = t.message }
-                }
-            }
-
-            PantallaScroll {
-                ComprasReal.mensaje?.let { AvisoCampo(it) }
-                val pendientes = ords.lista("ordenes").filter { it.txt("estado") == "EMITIDA" }
-                if (pendientes.isNotEmpty()) {
-                    Seccion("Órdenes por recibir")
-                    pendientes.forEach { o ->
-                        Tarjeta(borde = Altiplano.VerdeBorde) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f)) {
-                                    Text("${o.txt("codigo")} · ${o.txt("insumo")}", style = Texto.Fila, color = Altiplano.Texto)
-                                    Text("${formatear(o.num("cantidad"), 2)} ${o.txt("unidad")} · ${o.txt("proveedor_comercial")} · ${soles(o.num("costo_estimado"))}", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
-                                }
-                                TextButton(onClick = { recibir(o.txt("id")) }) { Text("Recibir", color = Altiplano.Exito) }
-                            }
-                        }
-                    }
-                }
-                Seccion("Nueva orden · insumo")
-                insumos.forEachIndexed { k, x ->
-                    val bajo = x.num("stock") < x.num("minimo")
-                    Opcion(x.txt("nombre"), "stock ${formatear(x.num("stock"), 2)} ${x.txt("unidad")}" + if (bajo) " · bajo el mínimo" else "", ComprasReal.insumoSel == k) { ComprasReal.insumoSel = k }
-                }
-                Seccion("Proveedor")
-                proveedores.forEachIndexed { k, p -> Opcion(p, seleccionado = ComprasReal.proveedorSel == k) { ComprasReal.proveedorSel = k } }
-                Tarjeta {
-                    StepperGrande(ComprasReal.cantidadOc, { ComprasReal.cantidadOc = it ?: 1.0 }, paso = 1.0, minimo = 1.0, decimales = 0, unidad = i.txt("unidad"))
-                    HorizontalDivider(Modifier.padding(vertical = 12.dp), color = Altiplano.BordeSuave)
-                    FilaValor("Proveedor", proveedor)
-                    FilaValor("Costo estimado", soles(ComprasReal.cantidadOc * i.num("costo")))
-                }
-                error?.let { AvisoCampo("No se pudo guardar: $it", esAlerta = true) }
-                BotonPrimario(if (enviando) "Emitiendo…" else "Emitir orden de compra", !enviando && proveedores.isNotEmpty()) {
-                    scope.launch {
-                        enviando = true; error = null
-                        try {
-                            val r = Sesion.enviar("/api/v1/compras/ordenes", buildJsonObject {
-                                put("insumo_id", i.num("id").toLong())
-                                put("cantidad", ComprasReal.cantidadOc)
-                                put("proveedor_comercial", proveedor)
-                            })
-                            ComprasReal.mensaje = "✓ ${r.txt("codigo")} emitida por ${soles(r.num("costo_estimado"))}. Márcala como recibida cuando llegue."
-                            ComprasReal.version++
-                        } catch (t: Throwable) { error = t.message }
-                        enviando = false
-                    }
                 }
             }
         }

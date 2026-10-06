@@ -1,0 +1,355 @@
+package pe.gob.huata.ecolacteos.ui.roles
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
+import kotlinx.serialization.json.*
+import pe.gob.huata.ecolacteos.datos.ConfigServidor
+import pe.gob.huata.ecolacteos.datos.Sesion
+import pe.gob.huata.ecolacteos.tema.*
+import pe.gob.huata.ecolacteos.ui.componentes.*
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.hours
+
+/** Estado de Compras de insumos (sobrevive al cambiar de pestaña). */
+object CompraInsumos {
+    var pestana by mutableStateOf(0)            // Por llegar · Nueva orden · Recibidas
+    var vendedorId by mutableStateOf<Long?>(null)
+    val lineas = mutableStateMapOf<Long, Double>() // insumo → cantidad
+    var nuevoVendedor by mutableStateOf(false)
+    var recibiendo by mutableStateOf<JsonObject?>(null)
+    var mensaje by mutableStateOf<String?>(null)
+    var version by mutableStateOf(0)
+}
+
+private val TIPOS = listOf("FACTURA" to "Factura", "BOLETA" to "Boleta", "RECIBO" to "Recibo")
+
+private fun hoyLima(): String = (Clock.System.now() - 5.hours).toString().take(10)
+
+/** Para un campo que se edita: 1250.5 → "1250.5", 95.0 → "95" (sin separador de miles). */
+private fun simple(v: Double): String = if (v % 1.0 == 0.0) v.toLong().toString() else (kotlin.math.round(v * 100) / 100).toString()
+
+/** "50 kg Sal industrial · 1 L Cuajo líquido" */
+private fun resumen(o: JsonObject) = o.lista("items").joinToString(" · ") { "${formatear(it.num("cantidad"), 2)} ${it.txt("unidad")} ${it.txt("insumo")}" }
+
+/**
+ * Compras de insumos, como en la web de oficina: a quién se le compra
+ * (persona con DNI o empresa con RUC), varios insumos por orden y, cuando
+ * llega, el comprobante (factura, boleta o recibo) con su foto.
+ */
+@Composable
+fun ComprasInsumosReal() {
+    val c = CompraInsumos
+    ConPestanas(listOf("Por llegar", "Nueva orden", "Recibidas"), c.pestana, { c.pestana = it; c.recibiendo = null }) {
+        CargaServidor("/api/v1/compras/ordenes", clave = c.version + ComprasReal.version * 1000) { d, _ ->
+            when {
+                c.recibiendo != null -> RecibirOrden(c.recibiendo!!, d)
+                c.pestana == 0 -> PorLlegar(d)
+                c.pestana == 1 -> NuevaOrden(d)
+                else -> Recibidas(d)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PorLlegar(d: JsonObject) {
+    val pendientes = d.lista("ordenes").filter { it.txt("estado") == "EMITIDA" }
+    PantallaScroll {
+        CompraInsumos.mensaje?.let { AvisoCampo(it) }
+        if (pendientes.isEmpty()) AvisoCampo("No hay órdenes por llegar. Para pedir insumos, ve a «Nueva orden».")
+        pendientes.forEach { o ->
+            Tarjeta(borde = Altiplano.VerdeBorde) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("${o.txt("codigo")} · ${o.txt("proveedor")}", style = Texto.Fila, color = Altiplano.Texto)
+                        Text(resumen(o), style = Texto.Apoyo, color = Altiplano.TextoSecundario)
+                        Text("estimado ${soles(o.num("costo_estimado"))} · ${fechaCorta(o.txt("created_at"))}", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+                    }
+                    TextButton(onClick = { CompraInsumos.mensaje = null; CompraInsumos.recibiendo = o }) { Text("Llegó", color = Altiplano.Exito) }
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------- nueva orden
+
+@Composable
+private fun NuevaOrden(d: JsonObject) {
+    val c = CompraInsumos
+    val scope = rememberCoroutineScope()
+    var enviando by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    CargaServidor("/api/v1/compras/inventario", clave = c.version + ComprasReal.version * 1000) { inv, _ ->
+        val insumos = inv.lista("insumos")
+        val vendedores = d.lista("vendedores")
+        val estimado = c.lineas.entries.sumOf { (id, cant) -> cant * (insumos.find { it.num("id").toLong() == id }?.num("costo") ?: 0.0) }
+
+        PantallaScroll {
+            c.mensaje?.let { AvisoCampo(it) }
+            Seccion("¿A quién se le compra?")
+            if (vendedores.isEmpty() && !c.nuevoVendedor) AvisoCampo("Todavía no hay vendedores: agrega el primero.")
+            vendedores.forEach { v ->
+                val id = v.num("id").toLong()
+                Opcion(v.txt("nombre"), "${v.txt("tipo_documento")} ${v.txt("documento")}", c.vendedorId == id) { c.vendedorId = id }
+            }
+            if (c.nuevoVendedor) FormVendedor(
+                alGuardar = { id -> c.vendedorId = id; c.nuevoVendedor = false; c.version++ },
+                alCancelar = { c.nuevoVendedor = false },
+            ) else TextButton(onClick = { c.nuevoVendedor = true }) { Text("+ Nuevo vendedor (persona o empresa)", color = Altiplano.Exito) }
+
+            Seccion("Insumos · toca para agregar o quitar")
+            insumos.forEach { i ->
+                val id = i.num("id").toLong()
+                val bajo = i.num("stock") < i.num("minimo")
+                val cant = c.lineas[id]
+                Opcion(i.txt("nombre"), "hay ${formatear(i.num("stock"), 2)} ${i.txt("unidad")}" + if (bajo) " · bajo el mínimo" else "", cant != null) {
+                    if (cant != null) c.lineas.remove(id) else c.lineas[id] = 1.0
+                }
+                if (cant != null) Tarjeta {
+                    StepperGrande(cant, { c.lineas[id] = it ?: 1.0 }, paso = 1.0, minimo = 0.5, decimales = 1, unidad = i.txt("unidad"), compacto = true)
+                }
+            }
+            Tarjeta {
+                FilaValor("Vendedor", vendedores.find { it.num("id").toLong() == c.vendedorId }?.txt("nombre") ?: "elige uno")
+                FilaValor("Insumos", "${c.lineas.size}")
+                FilaValor("Costo estimado", soles(estimado))
+            }
+            error?.let { AvisoCampo("No se pudo guardar: $it", esAlerta = true) }
+            BotonPrimario(if (enviando) "Emitiendo…" else "Emitir orden de compra", !enviando && c.vendedorId != null && c.lineas.isNotEmpty()) {
+                scope.launch {
+                    enviando = true; error = null
+                    try {
+                        val r = Sesion.enviar("/api/v1/compras/ordenes", buildJsonObject {
+                            put("vendedor_id", c.vendedorId!!)
+                            putJsonArray("items") {
+                                c.lineas.forEach { (id, cant) -> addJsonObject { put("insumo_id", id); put("cantidad", cant) } }
+                            }
+                        })
+                        c.mensaje = "✓ ${r.txt("codigo")} emitida por ${soles(r.num("costo_estimado"))}. Cuando llegue, toca «Llegó» y registra el comprobante."
+                        c.lineas.clear(); c.pestana = 0; c.version++
+                    } catch (t: Throwable) { error = t.message }
+                    enviando = false
+                }
+            }
+        }
+    }
+}
+
+/** Alta rápida de un vendedor de insumos (persona con DNI o empresa con RUC). */
+@Composable
+private fun FormVendedor(alGuardar: (Long) -> Unit, alCancelar: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var ruc by remember { mutableStateOf(1) } // 0 = persona (DNI), 1 = empresa (RUC)
+    var doc by remember { mutableStateOf("") }
+    var nombre by remember { mutableStateOf("") }
+    var telefono by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    var enviando by remember { mutableStateOf(false) }
+    val largo = if (ruc == 1) 11 else 8
+
+    Tarjeta(borde = Altiplano.VerdeBorde) {
+        Text("Nuevo vendedor", style = Texto.Fila, color = Altiplano.Texto)
+        Spacer(Modifier.height(8.dp))
+        Segmentos(listOf("Persona (DNI)", "Empresa (RUC)"), ruc) { ruc = it; doc = doc.take(if (it == 1) 11 else 8) }
+        Spacer(Modifier.height(8.dp))
+        CampoTexto(doc, { doc = it.filter(Char::isDigit).take(largo) }, if (ruc == 1) "RUC (11 dígitos)" else "DNI (8 dígitos)", KeyboardType.Number)
+        CampoTexto(nombre, { nombre = it.take(120) }, if (ruc == 1) "Razón social" else "Nombre y apellidos")
+        CampoTexto(telefono, { telefono = it.filter { ch -> ch.isDigit() || ch == ' ' || ch == '+' }.take(20) }, "Teléfono (opcional)", KeyboardType.Phone)
+        error?.let { AvisoCampo(it, esAlerta = true) }
+        Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+            TextButton(onClick = alCancelar) { Text("Cancelar", color = Altiplano.TextoSecundario) }
+            TextButton(enabled = !enviando, onClick = {
+                error = when {
+                    doc.length != largo -> if (ruc == 1) "El RUC debe tener 11 dígitos" else "El DNI debe tener 8 dígitos"
+                    nombre.trim().length < 3 -> "Escribe el nombre o la razón social"
+                    else -> null
+                }
+                if (error == null) scope.launch {
+                    enviando = true
+                    try {
+                        val r = Sesion.enviar("/api/v1/compras/vendedores", buildJsonObject {
+                            put("tipo_documento", if (ruc == 1) "RUC" else "DNI"); put("documento", doc); put("nombre", nombre.trim())
+                            if (telefono.isNotBlank()) put("telefono", telefono.trim())
+                        })
+                        alGuardar(r.num("id").toLong())
+                    } catch (t: Throwable) { error = t.message }
+                    enviando = false
+                }
+            }) { Text(if (enviando) "Guardando…" else "Guardar", color = Altiplano.Exito) }
+        }
+    }
+}
+
+// --------------------------------------------------------------------- llegó
+
+@Composable
+private fun RecibirOrden(o: JsonObject, d: JsonObject) {
+    val c = CompraInsumos
+    val scope = rememberCoroutineScope()
+    val items = o.lista("items")
+    var tipo by remember { mutableStateOf<Int?>(null) }
+    var serie by remember { mutableStateOf("") }
+    var numero by remember { mutableStateOf("") }
+    var fecha by remember { mutableStateOf(hoyLima()) }
+    val pagos = remember { mutableStateMapOf<String, String>().apply { items.forEach { put(it.txt("id"), simple(it.num("costo_estimado"))) } } }
+    var vendedorId by remember { mutableStateOf(o.obj("vendedor")?.num("id")?.toLong()) }
+    var foto by remember { mutableStateOf<String?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var enviando by remember { mutableStateOf(false) }
+    val elegir = rememberElegirFoto { f -> if (f != null) foto = f }
+
+    val vendedor = d.lista("vendedores").find { it.num("id").toLong() == vendedorId } ?: o.obj("vendedor")
+    val total = pagos.values.sumOf { it.replace(",", ".").toDoubleOrNull() ?: 0.0 }
+    val clave = tipo?.let { TIPOS[it].first }
+
+    PantallaScroll {
+        Tarjeta(borde = Altiplano.VerdeBorde) {
+            Text("Llegó ${o.txt("codigo")}", style = Texto.Fila, color = Altiplano.Texto)
+            Text("${o.txt("proveedor")} · ${resumen(o)}", style = Texto.Apoyo, color = Altiplano.TextoSecundario)
+        }
+        if (o.obj("vendedor") == null) {
+            Seccion("Vendedor (esta orden antigua no lo tenía)")
+            d.lista("vendedores").forEach { v ->
+                val id = v.num("id").toLong()
+                Opcion(v.txt("nombre"), "${v.txt("tipo_documento")} ${v.txt("documento")}", vendedorId == id) { vendedorId = if (vendedorId == id) null else id }
+            }
+        }
+        Seccion("¿Qué comprobante te dieron?")
+        Segmentos(TIPOS.map { it.second }, tipo ?: -1) { tipo = it }
+        if (clave == "FACTURA" && vendedor?.txt("tipo_documento") != "RUC") AvisoCampo("Solo hay factura si el vendedor tiene RUC. Si te dio boleta, elige boleta.", esAlerta = true)
+        if (clave != null && clave != "RECIBO") Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(Modifier.weight(1f)) { CampoTexto(serie, { serie = it.uppercase().filter(Char::isLetterOrDigit).take(4) }, if (clave == "FACTURA") "Serie (F001)" else "Serie (B001)") }
+            Box(Modifier.weight(1.4f)) { CampoTexto(numero, { numero = it.filter(Char::isDigit).take(8) }, "Número", KeyboardType.Number) }
+        }
+        CampoTexto(fecha, { fecha = it.filter { ch -> ch.isDigit() || ch == '-' }.take(10) }, "Fecha del comprobante (AAAA-MM-DD)", KeyboardType.Number)
+
+        Seccion("¿Cuánto se pagó? (con IGV)")
+        Tarjeta {
+            items.forEach { it ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("${formatear(it.num("cantidad"), 2)} ${it.txt("unidad")} ${it.txt("insumo")}", style = Texto.Cuerpo, color = Altiplano.Texto, modifier = Modifier.weight(1f))
+                    Box(Modifier.width(120.dp)) {
+                        CampoTexto(pagos[it.txt("id")] ?: "", { v -> pagos[it.txt("id")] = v.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }.take(9) }, "S/", KeyboardType.Decimal)
+                    }
+                }
+            }
+            HorizontalDivider(Modifier.padding(vertical = 8.dp), color = Altiplano.BordeSuave)
+            if (clave == "FACTURA") {
+                val sub = kotlin.math.round(total / 1.18 * 100) / 100
+                FilaValor("Subtotal (sin IGV)", soles(sub))
+                FilaValor("IGV 18 %", soles(total - sub))
+            }
+            FilaValor("Total", soles(total))
+        }
+
+        Seccion("Foto del comprobante (opcional)")
+        if (foto == null) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = elegir.camara, modifier = Modifier.weight(1f)) { Text("Sacar foto", color = Altiplano.Texto) }
+            OutlinedButton(onClick = elegir.galeria, modifier = Modifier.weight(1f)) { Text("De la galería", color = Altiplano.Texto) }
+        } else Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("✓ Foto lista para guardar", style = Texto.Cuerpo, color = Altiplano.Exito, modifier = Modifier.weight(1f))
+            TextButton(onClick = { foto = null }) { Text("Quitar", color = Altiplano.TextoSecundario) }
+        }
+
+        error?.let { AvisoCampo(it, esAlerta = true) }
+        BotonPrimario(if (enviando) "Guardando…" else "Registrar y subir stock", !enviando && tipo != null) {
+            error = when {
+                clave == "FACTURA" && vendedor?.txt("tipo_documento") != "RUC" -> "Solo hay factura si el vendedor tiene RUC."
+                clave != "RECIBO" && serie.isBlank() -> "Escribe la serie del comprobante"
+                clave != "RECIBO" && numero.isBlank() -> "Escribe el número del comprobante"
+                !Regex("""\d{4}-\d{2}-\d{2}""").matches(fecha) -> "Escribe la fecha así: ${hoyLima()}"
+                pagos.values.any { it.replace(",", ".").toDoubleOrNull() == null } -> "Escribe cuánto se pagó por cada insumo"
+                else -> null
+            }
+            if (error == null) scope.launch {
+                enviando = true
+                try {
+                    val r = Sesion.enviar("/api/v1/compras/ordenes/${o.txt("id")}/recibir", buildJsonObject {
+                        put("comprobante_tipo", clave)
+                        if (clave != "RECIBO") { put("comprobante_serie", serie); put("comprobante_numero", numero) }
+                        put("comprobante_fecha", fecha)
+                        vendedorId?.let { put("vendedor_id", it) }
+                        foto?.let { put("foto", it) }
+                        putJsonArray("items") {
+                            items.forEach { it -> addJsonObject { put("id", it.num("id").toLong()); put("costo_real", pagos[it.txt("id")]!!.replace(",", ".").toDouble()) } }
+                        }
+                    })
+                    c.mensaje = "✓ ${r.txt("codigo")} recibida con ${r.txt("comprobante")} por ${soles(r.num("total"))}: el stock ya subió"
+                    c.recibiendo = null; c.version++; ComprasReal.version++
+                } catch (t: Throwable) { error = t.message }
+                enviando = false
+            }
+        }
+        TextButton(onClick = { c.recibiendo = null }, modifier = Modifier.fillMaxWidth()) { Text("Volver", color = Altiplano.TextoSecundario) }
+    }
+}
+
+// ------------------------------------------------------------------ recibidas
+
+@Composable
+private fun Recibidas(d: JsonObject) {
+    val c = CompraInsumos
+    val uri = LocalUriHandler.current
+    val scope = rememberCoroutineScope()
+    var paraFoto by remember { mutableStateOf<JsonObject?>(null) }
+    val elegir = rememberElegirFoto { f ->
+        val o = paraFoto ?: return@rememberElegirFoto
+        if (f != null) scope.launch {
+            try {
+                Sesion.enviar("/api/v1/compras/ordenes/${o.txt("id")}/foto", buildJsonObject { put("foto", f) })
+                c.mensaje = "✓ Foto del comprobante de ${o.txt("codigo")} guardada"; c.version++
+            } catch (t: Throwable) { c.mensaje = "No se pudo guardar la foto: ${t.message}" }
+        }
+    }
+    fun verFoto(o: JsonObject) = scope.launch {
+        try { uri.openUri(ConfigServidor.baseUrl + Sesion.consultar("/api/v1/compras/ordenes/${o.txt("id")}/foto").txt("url")) }
+        catch (t: Throwable) { c.mensaje = "No se pudo abrir la foto: ${t.message}" }
+    }
+
+    PantallaScroll {
+        c.mensaje?.let { AvisoCampo(it, esAlerta = it.startsWith("No se")) }
+        d.lista("ordenes").filter { it.txt("estado") == "RECIBIDA" }.forEach { o ->
+            val conFoto = o.txt("tiene_foto") == "true"
+            Tarjeta(onClick = if (conFoto) ({ verFoto(o) }) else null) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("${o.txt("codigo")} · ${o.txt("proveedor")}", style = Texto.Fila, color = Altiplano.Texto)
+                        Text(resumen(o), style = Texto.Apoyo, color = Altiplano.TextoSecundario)
+                        Text(
+                            listOfNotNull(o.txt("comprobante").ifBlank { null }, o.txt("comprobante_fecha").ifBlank { null }?.let { fechaCorta(it) },
+                                soles(o.num("total"))).joinToString(" · ") + if (o.txt("igv").isNotBlank()) " (IGV ${soles(o.num("igv"))})" else "",
+                            style = Texto.Apoyo, color = Altiplano.TextoTerciario,
+                        )
+                    }
+                    if (conFoto) Text("Ver foto", style = Texto.Apoyo, color = Altiplano.Exito)
+                    else TextButton(onClick = { paraFoto = o; elegir.camara() }) { Text("+ Foto", color = Altiplano.Exito) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CampoTexto(valor: String, onCambio: (String) -> Unit, etiqueta: String, teclado: KeyboardType = KeyboardType.Text) {
+    OutlinedTextField(
+        value = valor, onValueChange = onCambio, label = { Text(etiqueta) }, singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = teclado),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedTextColor = Altiplano.Texto, unfocusedTextColor = Altiplano.Texto,
+            focusedBorderColor = Altiplano.VerdeMarca, unfocusedBorderColor = Altiplano.Borde,
+            focusedLabelColor = Altiplano.TextoSecundario, unfocusedLabelColor = Altiplano.TextoTerciario,
+            cursorColor = Altiplano.Exito,
+        ),
+        modifier = Modifier.fillMaxWidth(),
+    )
+}

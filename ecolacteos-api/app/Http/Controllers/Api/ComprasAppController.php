@@ -3,20 +3,20 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\Compras;
 use App\Services\Formulas;
 use App\Services\Mermas;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
-/** Compras y almacén: inventario, órdenes de compra, ventas y movimientos. */
+/** Compras y almacén: inventario, ventas y movimientos (las órdenes están en OrdenesCompraController). */
 class ComprasAppController extends Controller
 {
-    /** Costo unitario de cada insumo según su última orden de compra. */
+    /** Costo unitario de cada insumo según su última compra. */
     private function costos()
     {
-        return DB::table('ordenes_compra')->orderBy('created_at')->get()
-            ->mapWithKeys(fn ($o) => [$o->insumo_id => $o->cantidad > 0 ? round($o->costo_estimado / $o->cantidad, 4) : 0]);
+        return Compras::costosUnitarios();
     }
 
     /** Stock de producto terminado = obtenido en lotes cerrados − vendido − perdido. */
@@ -43,62 +43,6 @@ class ComprasAppController extends Controller
         ]);
 
         return response()->json(['insumos' => $insumos, 'productos' => $this->productos(), 'avisos' => Formulas::avisos()]);
-    }
-
-    /** GET /api/v1/compras/ordenes — últimas 20, las emitidas primero. */
-    public function ordenes()
-    {
-        $filas = DB::table('ordenes_compra as o')->join('insumos as i', 'i.id', '=', 'o.insumo_id')
-            ->orderByRaw("o.estado = 'EMITIDA' DESC")->orderByDesc('o.created_at')->limit(20)
-            ->select('o.id', 'o.codigo', 'o.cantidad', 'o.proveedor_comercial', 'o.costo_estimado',
-                'o.estado', 'o.created_at', 'i.nombre as insumo', 'i.unidad')
-            ->get();
-        $proveedores = DB::table('ordenes_compra')->distinct()->orderBy('proveedor_comercial')->pluck('proveedor_comercial');
-
-        return response()->json(['ordenes' => $filas, 'proveedores' => $proveedores]);
-    }
-
-    /** POST /api/v1/compras/ordenes { insumo_id, cantidad, proveedor_comercial } */
-    public function emitir(Request $r)
-    {
-        $data = $r->validate([
-            'insumo_id' => ['required', 'exists:insumos,id'],
-            'cantidad' => ['required', 'numeric', 'min:0.001'],
-            'proveedor_comercial' => ['required', 'string', 'max:255'],
-        ]);
-        $ultimo = DB::table('ordenes_compra')->where('codigo', 'like', 'OC-%')->get('codigo')
-            ->map(fn ($o) => (int) substr($o->codigo, 3))->max() ?? 100;
-        $codigo = 'OC-'.($ultimo + 1);
-        $costo = round(($this->costos()[$data['insumo_id']] ?? 0) * $data['cantidad'], 2);
-
-        DB::table('ordenes_compra')->insert([
-            'uuid' => (string) Str::uuid(), 'codigo' => $codigo, 'insumo_id' => $data['insumo_id'],
-            'cantidad' => $data['cantidad'], 'proveedor_comercial' => $data['proveedor_comercial'],
-            'costo_estimado' => $costo, 'estado' => 'EMITIDA', 'emitida_por' => $r->user()->id,
-            'created_at' => now(), 'updated_at' => now(),
-        ]);
-
-        return response()->json(['codigo' => $codigo, 'costo_estimado' => $costo], 201);
-    }
-
-    /** POST /api/v1/compras/ordenes/{id}/recibir — entra el stock al almacén. */
-    public function recibir(Request $r, int $id)
-    {
-        return DB::transaction(function () use ($r, $id) {
-            $o = DB::table('ordenes_compra')->lockForUpdate()->find($id);
-            abort_if(! $o, 404, 'Orden no encontrada');
-            abort_if($o->estado !== 'EMITIDA', 422, 'La orden ya fue recibida o anulada');
-
-            DB::table('ordenes_compra')->where('id', $id)->update(['estado' => 'RECIBIDA', 'updated_at' => now()]);
-            DB::table('insumos')->where('id', $o->insumo_id)->increment('stock', $o->cantidad);
-            DB::table('movimientos_insumo')->insert([
-                'uuid' => (string) Str::uuid(), 'insumo_id' => $o->insumo_id, 'cantidad' => $o->cantidad,
-                'referencia' => "{$o->codigo} · recepción de compra", 'origen_type' => 'orden_compra', 'origen_id' => $o->id,
-                'registrado_por' => $r->user()->id, 'created_at' => now(), 'updated_at' => now(),
-            ]);
-
-            return response()->json(['codigo' => $o->codigo, 'estado' => 'RECIBIDA']);
-        });
     }
 
     /** GET /api/v1/compras/ventas-datos — productos con stock y precios, y clientes. */

@@ -15,6 +15,9 @@ Route::prefix('v1')->group(function () {
     // PDF de la nota de venta: sin sesión pero con enlace firmado (ver NotaVentaController)
     Route::get('notas-venta/{id}.pdf', [Api\NotaVentaController::class, 'pdf'])
         ->whereNumber('id')->middleware('signed:relative')->name('nota-venta.pdf');
+    // foto del comprobante de una compra: igual, con enlace firmado (ver OrdenesCompraController)
+    Route::get('comprobantes/{id}/foto', [Api\OrdenesCompraController::class, 'verFoto'])
+        ->whereNumber('id')->middleware('signed:relative')->name('comprobante.foto');
 
     Route::middleware('auth:sanctum')->group(function () {
 
@@ -73,9 +76,14 @@ Route::prefix('v1')->group(function () {
 
         // --- Compras y almacén en la app ---
         Route::get('compras/inventario',          [Api\ComprasAppController::class, 'inventario']);
-        Route::get('compras/ordenes',             [Api\ComprasAppController::class, 'ordenes']);
-        Route::post('compras/ordenes',            [Api\ComprasAppController::class, 'emitir']);
-        Route::post('compras/ordenes/{id}/recibir', [Api\ComprasAppController::class, 'recibir']);
+        Route::get('compras/ordenes',             [Api\OrdenesCompraController::class, 'index']);
+        Route::post('compras/ordenes',            [Api\OrdenesCompraController::class, 'emitir']);
+        Route::post('compras/ordenes/{id}/recibir', [Api\OrdenesCompraController::class, 'recibir'])->whereNumber('id');
+        Route::post('compras/ordenes/{id}/foto',  [Api\OrdenesCompraController::class, 'subirFoto'])->whereNumber('id');
+        Route::get('compras/ordenes/{id}/foto',   [Api\OrdenesCompraController::class, 'enlaceFoto'])->whereNumber('id');
+        Route::get('compras/vendedores',          [Api\VendedoresInsumoController::class, 'index']);
+        Route::post('compras/vendedores',         [Api\VendedoresInsumoController::class, 'guardar']);
+        Route::post('compras/vendedores/{id}',    [Api\VendedoresInsumoController::class, 'editar'])->whereNumber('id');
         Route::get('compras/ventas-datos',        [Api\ComprasAppController::class, 'datosVenta']);
         Route::post('compras/ventas',             [Api\ComprasAppController::class, 'vender']);
         Route::get('compras/movimientos',         [Api\ComprasAppController::class, 'movimientos']);

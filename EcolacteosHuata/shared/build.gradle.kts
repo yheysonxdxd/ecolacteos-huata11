@@ -45,6 +45,7 @@ kotlin {
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.compose.uiTooling)
             implementation(libs.ktor.client.okhttp)
+            implementation(libs.androidx.activity.compose) // cámara y galería (foto del comprobante)
         }
         commonMain.dependencies {
             implementation(libs.compose.runtime)

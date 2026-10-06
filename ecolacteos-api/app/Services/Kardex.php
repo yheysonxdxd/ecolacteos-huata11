@@ -45,8 +45,12 @@ class Kardex
         $movs = DB::table('movimientos_insumo as m')->leftJoin('users as u', 'u.id', '=', 'm.registrado_por')
             ->where('m.insumo_id', $id)->orderBy('m.created_at')->orderBy('m.id')
             ->get(['m.id', 'm.cantidad', 'm.referencia', 'm.origen_type', 'm.origen_id', 'm.created_at', 'u.name as usuario']);
-        $ordenes = DB::table('ordenes_compra')->where('insumo_id', $id)->orderBy('created_at')->get()->keyBy('id');
-        $costoDe = fn ($o) => $o && $o->cantidad > 0 ? $o->costo_estimado / $o->cantidad : null;
+        // la línea de este insumo en cada orden de compra (con su vendedor y comprobante)
+        $ordenes = DB::table('orden_compra_items as it')->join('ordenes_compra as o', 'o.id', '=', 'it.orden_compra_id')
+            ->where('it.insumo_id', $id)->orderBy('o.created_at')->orderBy('it.id')
+            ->get(['o.id', 'o.codigo', 'o.proveedor_comercial', 'o.comprobante_tipo', 'o.comprobante_serie', 'o.comprobante_numero',
+                'it.cantidad', 'it.costo_estimado', 'it.costo_real'])->keyBy('id');
+        $costoDe = fn ($o) => Compras::costoEnOrden($o);
 
         $lotes = DB::table('lotes as l')->join('productos as p', 'p.id', '=', 'l.producto_id')
             ->whereIn('l.id', $movs->where('origen_type', 'lote')->pluck('origen_id'))
@@ -63,7 +67,8 @@ class Kardex
             $oc = $m->origen_type === 'orden_compra' ? ($ordenes[$m->origen_id] ?? null) : null;
             $lote = $m->origen_type === 'lote' ? ($lotes[$m->origen_id] ?? null) : null;
             $texto = match (true) {
-                $oc !== null => "Llegó la compra {$oc->codigo} de {$oc->proveedor_comercial}",
+                $oc !== null => "Llegó la compra {$oc->codigo} de {$oc->proveedor_comercial}"
+                    .(($c = Compras::textoComprobante($oc->comprobante_tipo, $oc->comprobante_serie, $oc->comprobante_numero)) ? " ($c)" : ''),
                 $lote !== null => "Se usó para hacer el lote {$lote->codigo} ({$lote->producto})",
                 $tipo === 'AJUSTE' => ($m->cantidad > 0 ? 'Se agregó por ajuste: ' : 'Se sacó por ajuste: ')
                     .preg_replace('/^Ajuste · /u', '', $m->referencia),

@@ -38,6 +38,7 @@ function oficina() {
     d: {},          // datos de la sección abierta
     ventana: null,  // formulario/diálogo abierto
     f: {},          // campos del formulario abierto
+    fOrden: null,   // orden a medio llenar mientras se agrega un vendedor
 
     // filtros de secciones
     periodo: 'semana',
@@ -70,7 +71,8 @@ function oficina() {
         { id: 'almacen', nombre: 'Almacén', grupo: 'Compras y almacén',
           pestanas: [{ id: 'inventario', nombre: 'Stock y avisos' }, { id: 'mermas', nombre: 'Pérdidas (mermas)' }] },
         { id: 'kardex', nombre: 'Kardex', grupo: 'Compras y almacén', pestanas: [{ id: 'kardex', nombre: 'Kardex' }] },
-        { id: 'ordenes', nombre: 'Órdenes de compra', grupo: 'Compras y almacén', pestanas: [{ id: 'ordenes', nombre: 'Órdenes de compra' }] },
+        { id: 'ordenes-grupo', nombre: 'Compras de insumos', grupo: 'Compras y almacén',
+          pestanas: [{ id: 'ordenes', nombre: 'Órdenes y comprobantes' }, { id: 'vendedores', nombre: 'Vendedores' }] },
       ];
       if (!admin) return compras;
       return [
@@ -161,6 +163,7 @@ function oficina() {
           case 'ordenes':
             this.d = { ...(await this.api('/compras/ordenes')), inv: await this.api('/compras/inventario') };
             break;
+          case 'vendedores': this.d = await this.api('/compras/vendedores'); break;
           case 'movimientos': this.d = await this.api('/compras/movimientos'); break;
           case 'formulas': this.d = await this.api('/compras/formulas'); break;
           case 'mermas': this.d = await this.api('/compras/mermas'); break;
@@ -358,7 +361,7 @@ function oficina() {
       try { this.f.historial = await this.api(`/admin/proveedores/${p.id}/historial-comunidad`); } catch (e) { this.f.error = e.message; }
     },
     productoresCambio() {
-      const b = this.f.buscar.trim().toLowerCase();
+      const b = (this.f.buscar || '').trim().toLowerCase();
       return (this.f.datos?.proveedores || []).filter((p) => (p.nombre + ' ' + p.dni).toLowerCase().includes(b)).slice(0, 8);
     },
     async guardarCambio() {
@@ -487,24 +490,129 @@ function oficina() {
 
     // --------------------------------------------------------------- órdenes
     abrirOrden() {
-      this.f = { insumo_id: null, cantidad: '', proveedor: '', error: null, enviando: false };
+      this.f = { vendedor_id: null, items: [{ insumo_id: null, cantidad: '' }], error: null, enviando: false };
       this.ventana = 'orden';
+    },
+    insumoDe(id) { return (this.d.inv?.insumos || []).find((i) => i.id === id); },
+    costoEstimadoOrden() {
+      return (this.f.items || []).reduce((t, it) => t + (Number(it.cantidad) || 0) * (this.insumoDe(it.insumo_id)?.costo || 0), 0);
     },
     async emitirOrden() {
       const f = this.f;
-      if (!f.insumo_id) return (f.error = 'Elige el insumo');
-      if (!(Number(f.cantidad) > 0)) return (f.error = 'Escribe la cantidad');
-      if (!f.proveedor.trim()) return (f.error = 'Escribe el proveedor');
-      await this.enviar('/compras/ordenes', { insumo_id: f.insumo_id, cantidad: Number(f.cantidad), proveedor_comercial: f.proveedor.trim() },
-        null, (r) => `✓ Orden ${r.codigo} emitida · costo estimado ${soles(r.costo_estimado)}`);
+      if (!f.vendedor_id) return (f.error = 'Elige a quién se le compra');
+      const items = f.items.filter((it) => it.insumo_id);
+      if (!items.length) return (f.error = 'Elige al menos un insumo');
+      if (items.some((it) => !(Number(it.cantidad) > 0))) return (f.error = 'Escribe la cantidad de cada insumo');
+      if (new Set(items.map((it) => it.insumo_id)).size !== items.length) return (f.error = 'Hay un insumo repetido: junta las cantidades');
+      await this.enviar('/compras/ordenes', { vendedor_id: f.vendedor_id, items: items.map((it) => ({ insumo_id: it.insumo_id, cantidad: Number(it.cantidad) })) },
+        null, (r) => `✓ Orden ${r.codigo} emitida · costo estimado ${soles(r.costo_estimado)}. Cuando llegue, toca "Llegó" y registra el comprobante.`);
     },
-    async recibirOrden(o) {
-      if (!confirm(`¿Llegó la orden ${o.codigo}?\nSe suman ${num(o.cantidad, 3)} ${o.unidad} de ${o.insumo} al stock.`)) return;
+
+    // al recibir: comprobante, lo pagado por cada insumo y la foto
+    hoy() { return new Date().toLocaleDateString('en-CA'); },
+    abrirRecibir(o) {
+      const pagos = {};
+      o.items.forEach((it) => { pagos[it.id] = it.costo_estimado; });
+      this.f = { orden: o, tipo: null, serie: '', numero: '', fecha: this.hoy(), pagos, vendedor_id: o.vendedor?.id ?? null,
+        foto: null, fotoNombre: '', error: null, enviando: false };
+      this.ventana = 'recibir';
+    },
+    vendedorRecibir() { return (this.d.vendedores || []).find((v) => v.id === this.f.vendedor_id); },
+    totalRecibir() { return Object.values(this.f.pagos || {}).reduce((t, v) => t + (Number(v) || 0), 0); },
+    subtotalFactura() { return Math.round(this.totalRecibir() / 1.18 * 100) / 100; },
+    async recibirOrden() {
+      const f = this.f;
+      if (!f.tipo) return (f.error = 'Elige qué comprobante te dieron');
+      if (f.tipo === 'FACTURA' && this.vendedorRecibir()?.tipo_documento !== 'RUC') return (f.error = 'Solo hay factura si el vendedor tiene RUC. Si te dio boleta, elige boleta.');
+      if (f.tipo !== 'RECIBO' && !f.serie.trim()) return (f.error = 'Escribe la serie (ej. F001 o B001)');
+      if (f.tipo !== 'RECIBO' && !/^\d{1,8}$/.test(f.numero.trim())) return (f.error = 'Escribe el número del comprobante (solo dígitos)');
+      if (!f.fecha) return (f.error = 'Escribe la fecha del comprobante');
+      if (Object.values(f.pagos).some((v) => v === '' || Number(v) < 0)) return (f.error = 'Escribe cuánto se pagó por cada insumo');
+      const o = f.orden;
+      await this.enviar(`/compras/ordenes/${o.id}/recibir`, {
+        comprobante_tipo: f.tipo, comprobante_serie: f.serie.trim() || null, comprobante_numero: f.numero.trim() || null,
+        comprobante_fecha: f.fecha, vendedor_id: f.vendedor_id, foto: f.foto,
+        items: o.items.map((it) => ({ id: it.id, costo_real: Number(f.pagos[it.id]) })),
+      }, null, (r) => `✓ ${r.codigo} recibida con ${r.comprobante} por ${soles(r.total)}: el stock ya subió`);
+    },
+
+    /** Lee la foto elegida y la achica (lado mayor 1600 px, JPG) para que no pese. */
+    leerFoto(archivo) {
+      return new Promise((ok, mal) => {
+        if (!archivo) return ok(null);
+        if (!/^image\//.test(archivo.type)) return mal(new Error('Elige una imagen (foto del comprobante)'));
+        const img = new Image();
+        img.onload = () => {
+          const k = Math.min(1, 1600 / Math.max(img.width, img.height));
+          const c = document.createElement('canvas');
+          c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          URL.revokeObjectURL(img.src);
+          ok(c.toDataURL('image/jpeg', 0.82));
+        };
+        img.onerror = () => mal(new Error('No se pudo leer la imagen'));
+        img.src = URL.createObjectURL(archivo);
+      });
+    },
+    async elegirFoto(e) {
+      try { this.f.foto = await this.leerFoto(e.target.files[0]); this.f.fotoNombre = e.target.files[0]?.name || ''; }
+      catch (err) { this.f.error = err.message; }
+    },
+    async agregarFoto(o, e) {
       try {
-        await this.api(`/compras/ordenes/${o.id}/recibir`, {});
-        this.aviso = { texto: `✓ ${o.codigo} recibida: el stock de ${o.insumo} ya se actualizó` };
+        const foto = await this.leerFoto(e.target.files[0]);
+        if (!foto) return;
+        await this.api(`/compras/ordenes/${o.id}/foto`, { foto });
+        this.aviso = { texto: `✓ Foto del comprobante de ${o.codigo} guardada` };
         await this.cargar();
-      } catch (e) { this.aviso = { error: true, texto: e.message }; }
+      } catch (err) { this.aviso = { error: true, texto: err.message }; }
+    },
+    async verFoto(o) {
+      // se abre la pestaña al toque (si no, el navegador la bloquea) y luego se le pone la foto
+      const pestana = window.open('', '_blank');
+      try {
+        const r = await this.api(`/compras/ordenes/${o.id}/foto`);
+        if (pestana) pestana.location = r.url; else window.location = r.url;
+      } catch (e) {
+        pestana?.close();
+        this.aviso = { error: true, texto: 'No se pudo abrir la foto: ' + e.message };
+      }
+    },
+    resumenItems(o) { return o.items.map((it) => `${num(it.cantidad, 3)} ${it.unidad} ${it.insumo}`).join(' · '); },
+
+    // ------------------------------------------------------------ vendedores
+    /** [volver]: se abrió desde "Nueva orden"; al guardar vuelve a la orden con el vendedor elegido. */
+    abrirVendedor(v = null, volver = false) {
+      this.fOrden = volver ? this.f : null;
+      this.f = v
+        ? { id: v.id, tipo_documento: v.tipo_documento, documento: v.documento, nombre: v.nombre, telefono: v.telefono || '',
+            direccion: v.direccion || '', activo: v.activo, error: null, enviando: false }
+        : { id: null, tipo_documento: 'RUC', documento: '', nombre: '', telefono: '', direccion: '', activo: true, error: null, enviando: false };
+      this.ventana = 'vendedor';
+    },
+    cerrarVendedor() {
+      if (this.fOrden) { this.f = this.fOrden; this.fOrden = null; this.ventana = 'orden'; } else this.ventana = null;
+    },
+    async guardarVendedor() {
+      const f = this.f;
+      const doc = f.documento.replace(/\D/g, '');
+      if (f.tipo_documento === 'DNI' && !/^\d{8}$/.test(doc)) return (f.error = 'El DNI debe tener 8 dígitos');
+      if (f.tipo_documento === 'RUC' && !/^(10|15|16|17|20)\d{9}$/.test(doc)) return (f.error = 'El RUC debe tener 11 dígitos y empezar en 10, 15, 16, 17 o 20');
+      if (f.nombre.trim().length < 3) return (f.error = 'Escribe el nombre o la razón social');
+      f.enviando = true; f.error = null;
+      try {
+        const cuerpo = { tipo_documento: f.tipo_documento, documento: doc, nombre: f.nombre.trim(),
+          telefono: f.telefono.trim() || null, direccion: f.direccion.trim() || null, ...(f.id ? { activo: f.activo } : {}) };
+        const r = await this.api('/compras/vendedores' + (f.id ? '/' + f.id : ''), cuerpo);
+        if (this.fOrden) {
+          this.d = { ...this.d, ...(await this.api('/compras/ordenes')) };
+          this.f = this.fOrden; this.fOrden = null; this.f.vendedor_id = r.id; this.ventana = 'orden';
+        } else {
+          this.ventana = null;
+          this.aviso = { texto: `✓ ${r.nombre} ${f.id ? 'actualizado' : 'agregado'}` };
+          await this.cargar();
+        }
+      } catch (e) { f.error = e.message; } finally { f.enviando = false; }
     },
 
     // ---------------------------------------------------------------- kardex

@@ -45,7 +45,7 @@ fun destinosDe(rol: Rol, real: Boolean = Sesion.desdeServidor): List<Destino> = 
         Destino("compras/ventas", "Ventas", "Vender y notas de venta", Icons.Outlined.Sell),
         Destino("compras/almacen", "Almacén", "Stock, avisos y pérdidas", Icons.Outlined.Inventory2),
         Destino("compras/kardex", "Kardex", "Insumos, queso, yogurt y leche", Icons.Outlined.SwapHoriz),
-        Destino("compras/orden", "Orden", "Órdenes de compra", Icons.Outlined.ShoppingCart),
+        Destino("compras/orden", "Compras", "Órdenes, comprobantes y vendedores", Icons.Outlined.ShoppingCart),
     )
     Rol.ADMIN -> listOf(
         Destino("admin/acopio", "Acopio", "Totales y conciliación", Icons.Outlined.PieChart),
@@ -83,7 +83,7 @@ private fun destinosDemo(rol: Rol): List<Destino> = when (rol) {
     )
     Rol.COMPRAS -> listOf(
         Destino("compras/inventario", "Inventario", "Stock contra mínimo", Icons.Outlined.Inventory2),
-        Destino("compras/orden", "Orden", "Insumo, cantidad y proveedor", Icons.Outlined.ShoppingCart),
+        Destino("compras/orden", "Compras", "Órdenes, comprobantes y vendedores", Icons.Outlined.ShoppingCart),
         Destino("compras/ventas", "Ventas", "Mayorista, mercados y planta", Icons.Outlined.Sell),
         Destino("compras/movimientos", "Movimientos", "Entradas y salidas", Icons.Outlined.SwapHoriz),
     )

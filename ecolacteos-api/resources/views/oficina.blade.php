@@ -593,14 +593,41 @@
 
         {{-- ---------------------------------------------------- ÓRDENES --}}
         <section x-show="seccion === 'ordenes' && !cargando && !error">
-            <div class="fila"><h1>Órdenes de compra</h1><div class="espacio"></div><button class="btn" @click="abrirOrden()">+ Nueva orden</button></div>
-            <table class="lista" style="margin-top: 14px"><tr><th>Código</th><th>Insumo</th><th class="num">Cantidad</th><th>Proveedor</th><th class="num">Costo est.</th><th>Estado</th><th></th></tr>
+            <div class="fila"><h1>Órdenes y comprobantes</h1><div class="espacio"></div><button class="btn" @click="abrirOrden()">+ Nueva orden</button></div>
+            <p class="sub">A quién se le compró cada insumo y con qué comprobante. Cuando llegue lo pedido, toca <strong>Llegó</strong> y registra la factura, boleta o recibo.</p>
+            <table class="lista"><tr><th>Código</th><th>Vendedor</th><th>Insumos</th><th>Comprobante</th><th class="num">Monto</th><th>Estado</th><th></th></tr>
                 <template x-for="o in d.ordenes || []" :key="o.id"><tr>
-                    <td x-text="o.codigo"></td><td x-text="o.insumo"></td><td class="num" x-text="num(o.cantidad, 3) + ' ' + o.unidad"></td>
-                    <td x-text="o.proveedor_comercial"></td><td class="num" x-text="soles(o.costo_estimado)"></td>
-                    <td><span class="chip" :class="o.estado === 'RECIBIDA' ? 'ok' : (o.estado === 'EMITIDA' ? 'ojo' : 'mal')" x-text="o.estado.toLowerCase()"></span></td>
-                    <td class="num"><button class="btn chico" x-show="o.estado === 'EMITIDA'" @click="recibirOrden(o)">Llegó</button></td></tr></template>
+                    <td style="white-space: nowrap"><span x-text="o.codigo"></span><div class="sub" style="margin:0" x-text="fechaCorta(o.created_at)"></div></td>
+                    <td><span x-text="o.proveedor"></span>
+                        <div class="sub" style="margin:0" x-text="o.vendedor ? o.vendedor.tipo_documento + ' ' + o.vendedor.documento : 'sin DNI/RUC (orden antigua)'"></div></td>
+                    <td x-text="resumenItems(o)"></td>
+                    <td><span x-text="o.comprobante || '—'"></span>
+                        <div class="sub" style="margin:0" x-show="o.comprobante_fecha" x-text="'del ' + fechaCorta(o.comprobante_fecha)"></div></td>
+                    <td class="num"><span x-text="soles(o.total ?? o.costo_estimado)"></span>
+                        <div class="sub" style="margin:0" x-text="o.total === null ? 'estimado' : (o.igv !== null ? 'IGV ' + soles(o.igv) : 'pagado')"></div></td>
+                    <td><span class="chip" :class="o.estado === 'RECIBIDA' ? 'ok' : (o.estado === 'EMITIDA' ? 'ojo' : 'mal')" x-text="o.estado === 'EMITIDA' ? 'por llegar' : o.estado.toLowerCase()"></span></td>
+                    <td class="acciones">
+                        <button class="btn chico" x-show="o.estado === 'EMITIDA'" @click="abrirRecibir(o)">Llegó</button>
+                        <button class="btn chico gris" x-show="o.tiene_foto" @click="verFoto(o)">Ver foto</button>
+                        <label class="btn chico gris" x-show="o.estado === 'RECIBIDA' && !o.tiene_foto" style="cursor:pointer">+ Foto
+                            <input type="file" accept="image/*" style="display:none" @change="agregarFoto(o, $event)"></label>
+                    </td></tr></template>
             </table>
+        </section>
+
+        <section x-show="seccion === 'vendedores' && !cargando && !error">
+            <div class="fila"><h1>Vendedores de insumos</h1><div class="espacio"></div><button class="btn" @click="abrirVendedor()">+ Nuevo vendedor</button></div>
+            <p class="sub">Personas (DNI) y empresas (RUC) que nos venden insumos. No son los proveedores de leche: esos están en el Padrón.</p>
+            <table class="lista"><tr><th>Nombre o razón social</th><th>DNI / RUC</th><th>Teléfono</th><th class="num">Compras</th><th class="num">Pagado</th><th>Última</th><th></th></tr>
+                <template x-for="v in d.vendedores || []" :key="v.id"><tr :class="v.activo ? '' : 'tenue'">
+                    <td><span x-text="v.nombre"></span><div class="sub" style="margin:0" x-show="v.direccion" x-text="v.direccion"></div></td>
+                    <td x-text="v.tipo_documento + ' ' + v.documento"></td><td x-text="v.telefono || '—'"></td>
+                    <td class="num" x-text="v.compras"></td><td class="num" x-text="soles(v.pagado)"></td>
+                    <td x-text="v.ultima ? fechaCorta(v.ultima) : '—'"></td>
+                    <td class="acciones"><span class="chip mal" x-show="!v.activo">desactivado</span>
+                        <button class="btn chico gris" @click="abrirVendedor(v)">Editar</button></td></tr></template>
+            </table>
+            <p class="sub" x-show="!(d.vendedores || []).length">Todavía no hay vendedores. Agrega el primero con <strong>+ Nuevo vendedor</strong>.</p>
         </section>
 
         {{-- ---------------------------------------------------- MOVIMIENTOS --}}
@@ -754,7 +781,7 @@
         <div x-show="!f.proveedor">
             <label>Busca al productor</label>
             <input x-model="f.buscar" placeholder="Nombre o DNI">
-            <table class="lista" style="margin-top: 8px" x-show="f.buscar.trim().length >= 2">
+            <table class="lista" style="margin-top: 8px" x-show="(f.buscar || '').trim().length >= 2">
                 <template x-for="p in productoresCambio()" :key="p.id">
                     <tr class="clic" @click="f.proveedor = p"><td x-text="p.nombre"></td><td x-text="'DNI ' + p.dni"></td><td x-text="p.comunidad"></td></tr>
                 </template>
@@ -1006,19 +1033,92 @@
     </div>
 
     {{-- nueva orden de compra --}}
-    <div class="ventana" x-show="ventana === 'orden'">
+    <div class="ventana ancha" x-show="ventana === 'orden'">
         <h3>Nueva orden de compra</h3>
-        <label>Insumo</label>
-        <select x-model.number="f.insumo_id">
-            <option :value="null">Elige…</option>
-            <template x-for="i in d.inv?.insumos || []" :key="i.id"><option :value="i.id" x-text="i.nombre + ' · stock ' + num(i.stock, 3) + ' ' + i.unidad"></option></template>
-        </select>
-        <label>Cantidad</label><input type="number" min="0" step="0.001" x-model="f.cantidad">
-        <label>Proveedor</label><input x-model="f.proveedor" list="proveedores-comerciales">
-        <datalist id="proveedores-comerciales"><template x-for="p in d.proveedores || []"><option :value="p"></option></template></datalist>
+        <label>¿A quién se le compra?</label>
+        <div class="fila" style="gap: 8px">
+            <select x-model.number="f.vendedor_id" style="flex: 1">
+                <option :value="null">Elige el vendedor…</option>
+                <template x-for="v in d.vendedores || []" :key="v.id"><option :value="v.id" :selected="f.vendedor_id === v.id" x-text="v.nombre + ' · ' + v.tipo_documento + ' ' + v.documento"></option></template>
+            </select>
+            <button class="btn chico gris" @click="abrirVendedor(null, true)">+ Nuevo vendedor</button>
+        </div>
+        <label>Insumos</label>
+        <template x-for="(it, k) in f.items" :key="k">
+            <div class="fila" style="gap: 8px; margin-bottom: 6px">
+                <select x-model.number="it.insumo_id" style="flex: 2">
+                    <option :value="null">Elige el insumo…</option>
+                    <template x-for="i in d.inv?.insumos || []" :key="i.id"><option :value="i.id" :selected="it.insumo_id === i.id" x-text="i.nombre + ' · hay ' + num(i.stock, 3) + ' ' + i.unidad"></option></template>
+                </select>
+                <input type="number" min="0" step="0.001" x-model="it.cantidad" placeholder="Cantidad" style="flex: 1">
+                <span style="width: 40px" x-text="insumoDe(it.insumo_id)?.unidad || ''"></span>
+                <button class="btn chico gris" x-show="f.items.length > 1" @click="f.items.splice(k, 1)">Quitar</button>
+            </div>
+        </template>
+        <button class="btn chico gris" @click="f.items.push({ insumo_id: null, cantidad: '' })">+ Otro insumo</button>
+        <p class="sub" x-text="'Costo estimado (según la última compra): ' + soles(costoEstimadoOrden())"></p>
         <div class="aviso error" x-show="f.error" x-text="f.error"></div>
         <div class="pie"><button class="btn gris" @click="ventana = null">Cancelar</button>
             <button class="btn" @click="emitirOrden()" :disabled="!!f.enviando" x-text="f.enviando ? 'Emitiendo…' : 'Emitir orden'"></button></div>
+    </div>
+
+    {{-- llegó la compra: comprobante, lo pagado y la foto --}}
+    <div class="ventana ancha" x-show="ventana === 'recibir'">
+        <h3 x-text="'Llegó ' + (f.orden?.codigo || '')"></h3>
+        <p class="sub" x-text="f.orden ? f.orden.proveedor + ' · ' + resumenItems(f.orden) : ''"></p>
+        <template x-if="f.orden && !f.orden.vendedor"><div>
+            <label>Vendedor (esta orden antigua no lo tenía)</label>
+            <select x-model.number="f.vendedor_id">
+                <option :value="null">Sin DNI/RUC</option>
+                <template x-for="v in d.vendedores || []" :key="v.id"><option :value="v.id" x-text="v.nombre + ' · ' + v.tipo_documento + ' ' + v.documento"></option></template>
+            </select>
+        </div></template>
+        <label>¿Qué comprobante te dieron?</label>
+        <div class="opciones">
+            <template x-for="(texto, clave) in d.comprobantes || {}" :key="clave">
+                <button :class="{ activo: f.tipo === clave }" @click="f.tipo = clave" x-text="texto"></button>
+            </template>
+        </div>
+        <p class="sub" style="margin: 6px 0 0" x-show="f.tipo === 'FACTURA' && vendedorRecibir()?.tipo_documento !== 'RUC'">Ojo: solo hay factura si el vendedor tiene RUC.</p>
+        <div class="dos" x-show="f.tipo && f.tipo !== 'RECIBO'">
+            <div><label>Serie</label><input x-model="f.serie" maxlength="4" :placeholder="f.tipo === 'FACTURA' ? 'F001' : 'B001'" @input="f.serie = f.serie.toUpperCase()"></div>
+            <div><label>Número</label><input x-model="f.numero" maxlength="8" placeholder="00001234" @input="f.numero = f.numero.replace(/\D/g, '')"></div>
+        </div>
+        <label>Fecha del comprobante</label><input type="date" x-model="f.fecha" :max="hoy()">
+        <label>¿Cuánto se pagó por cada insumo? (con IGV)</label>
+        <table class="lista"><template x-for="it in f.orden?.items || []" :key="it.id"><tr>
+            <td x-text="num(it.cantidad, 3) + ' ' + it.unidad + ' ' + it.insumo"></td>
+            <td class="num" style="width: 140px"><input type="number" min="0" step="0.01" x-model="f.pagos[it.id]"></td></tr></template>
+            <tr x-show="f.tipo === 'FACTURA'"><td>Subtotal (sin IGV)</td><td class="num" x-text="soles(subtotalFactura())"></td></tr>
+            <tr x-show="f.tipo === 'FACTURA'"><td>IGV 18 %</td><td class="num" x-text="soles(totalRecibir() - subtotalFactura())"></td></tr>
+            <tr><td><strong>Total</strong></td><td class="num"><strong x-text="soles(totalRecibir())"></strong></td></tr>
+        </table>
+        <label>Foto del comprobante (opcional)</label>
+        <input type="file" accept="image/*" @change="elegirFoto($event)">
+        <img x-show="f.foto" :src="f.foto" alt="Foto del comprobante" style="max-height: 160px; margin-top: 8px; border-radius: 8px">
+        <div class="aviso error" x-show="f.error" x-text="f.error"></div>
+        <div class="pie"><button class="btn gris" @click="ventana = null">Cancelar</button>
+            <button class="btn" @click="recibirOrden()" :disabled="!!f.enviando" x-text="f.enviando ? 'Guardando…' : 'Registrar y subir stock'"></button></div>
+    </div>
+
+    {{-- vendedor de insumos --}}
+    <div class="ventana" x-show="ventana === 'vendedor'">
+        <h3 x-text="f.id ? 'Editar vendedor' : 'Nuevo vendedor'"></h3>
+        <div class="opciones" style="margin-top: 10px">
+            <button :class="{ activo: f.tipo_documento === 'RUC' }" @click="f.tipo_documento = 'RUC'">Empresa (RUC)</button>
+            <button :class="{ activo: f.tipo_documento === 'DNI' }" @click="f.tipo_documento = 'DNI'">Persona (DNI)</button>
+        </div>
+        <label x-text="f.tipo_documento === 'RUC' ? 'RUC (11 dígitos)' : 'DNI (8 dígitos)'"></label>
+        <input x-model="f.documento" :maxlength="f.tipo_documento === 'RUC' ? 11 : 8" @input="f.documento = f.documento.replace(/\D/g, '')">
+        <label x-text="f.tipo_documento === 'RUC' ? 'Razón social' : 'Nombre y apellidos'"></label><input x-model="f.nombre">
+        <div class="dos">
+            <div><label>Teléfono (opcional)</label><input x-model="f.telefono"></div>
+            <div><label>Dirección (opcional)</label><input x-model="f.direccion"></div>
+        </div>
+        <label style="display:flex; gap:8px; align-items:center" x-show="f.id"><input type="checkbox" x-model="f.activo" style="width:auto"> Activo (si no, ya no sale para nuevas órdenes)</label>
+        <div class="aviso error" x-show="f.error" x-text="f.error"></div>
+        <div class="pie"><button class="btn gris" @click="cerrarVendedor()">Cancelar</button>
+            <button class="btn" @click="guardarVendedor()" :disabled="!!f.enviando" x-text="f.enviando ? 'Guardando…' : 'Guardar'"></button></div>
     </div>
 </div>
 

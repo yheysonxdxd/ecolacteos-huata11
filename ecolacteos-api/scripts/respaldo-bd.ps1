@@ -11,12 +11,12 @@
 #
 # Restaurar (OJO: reemplaza los datos de la base indicada):
 #   1. Descomprimir el .zip
-#   2. C:\xampp\mysql\bin\mysql.exe -u root ecolacteos_huata < ecolacteos_huata_AAAA-MM-DD_HHMM.sql
+#   2. C:\xampp82\mysql\bin\mysql.exe -u root ecolacteos_huata < ecolacteos_huata_AAAA-MM-DD_HHMM.sql
 
 param(
     [string]$Destino = "D:\Respaldos\EcolacteosHuata",
     [int]$Dias = 30,
-    [string]$MysqlBin = "C:\xampp\mysql\bin"
+    [string]$MysqlBin = "C:\xampp82\mysql\bin"
 )
 
 $ErrorActionPreference = "Stop"

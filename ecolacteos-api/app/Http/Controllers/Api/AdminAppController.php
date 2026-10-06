@@ -388,9 +388,8 @@ class AdminAppController extends Controller
             ->where('l.iniciado_en', '>=', $desde)->select('l.*', 'p.nombre as producto', 'p.rendimiento_min', 'p.rendimiento_max')->get();
         $litrosProcesados = (float) $lotes->sum('litros_leche');
 
-        // costo unitario de cada insumo según su última orden de compra
-        $costoUnit = DB::table('ordenes_compra')->orderBy('created_at')->get()
-            ->mapWithKeys(fn ($o) => [$o->insumo_id => $o->cantidad > 0 ? $o->costo_estimado / $o->cantidad : 0]);
+        // costo unitario de cada insumo según su última compra
+        $costoUnit = \App\Services\Compras::costosUnitarios();
         $costoInsumos = DB::table('movimientos_insumo')->where('origen_type', 'lote')
             ->where('created_at', '>=', $desde)->where('cantidad', '<', 0)->get()
             ->sum(fn ($m) => abs($m->cantidad) * ($costoUnit[$m->insumo_id] ?? 0));

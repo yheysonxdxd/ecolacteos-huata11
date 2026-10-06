@@ -44,6 +44,20 @@ class FormulasKardexTest extends TestCase
         ]);
     }
 
+    /** Compra de azúcar ya recibida hace 5 días (sin pasar por la API). */
+    private function compraRecibida(float $kg, float $costo): int
+    {
+        $oc = DB::table('ordenes_compra')->insertGetId([
+            'uuid' => (string) Str::uuid(), 'codigo' => 'OC-1', 'proveedor_comercial' => 'X', 'costo_estimado' => $costo,
+            'estado' => 'RECIBIDA', 'total' => $costo, 'emitida_por' => $this->usuarios['COMPRAS']->id, 'created_at' => now()->subDays(5),
+        ]);
+        DB::table('orden_compra_items')->insert([
+            'orden_compra_id' => $oc, 'insumo_id' => $this->azucar, 'cantidad' => $kg, 'costo_estimado' => $costo, 'costo_real' => $costo,
+        ]);
+
+        return $oc;
+    }
+
     public function test_formulas_iniciales_y_cuanto_alcanza(): void
     {
         Sanctum::actingAs($this->usuarios['COMPRAS']);
@@ -108,11 +122,14 @@ class FormulasKardexTest extends TestCase
     {
         Sanctum::actingAs($this->usuarios['COMPRAS']);
         // compra 50 kg a S/ 4 el kg (antes había 12 kg sin compra registrada)
-        $oc = $this->postJson('/api/v1/compras/ordenes', ['insumo_id' => $this->azucar, 'cantidad' => 50, 'proveedor_comercial' => 'Distribuidora Juliaca']);
+        $vendedor = DB::table('vendedores_insumo')->insertGetId(['tipo_documento' => 'RUC', 'documento' => '10411223344', 'nombre' => 'Distribuidora Juliaca']);
+        $oc = $this->postJson('/api/v1/compras/ordenes', ['vendedor_id' => $vendedor, 'items' => [['insumo_id' => $this->azucar, 'cantidad' => 50]]]);
         $oc->assertCreated();
-        DB::table('ordenes_compra')->where('codigo', $oc->json('codigo'))->update(['costo_estimado' => 200]);
-        $ocId = DB::table('ordenes_compra')->where('codigo', $oc->json('codigo'))->value('id');
-        $this->postJson("/api/v1/compras/ordenes/$ocId/recibir")->assertOk();
+        $item = DB::table('orden_compra_items')->where('orden_compra_id', $oc->json('id'))->value('id');
+        $this->postJson("/api/v1/compras/ordenes/{$oc->json('id')}/recibir", [
+            'comprobante_tipo' => 'BOLETA', 'comprobante_serie' => 'B001', 'comprobante_numero' => '77',
+            'comprobante_fecha' => now('America/Lima')->toDateString(), 'items' => [['id' => $item, 'costo_real' => 200]],
+        ])->assertOk();
 
         // producción: 100 L de yogurt gastan 8 kg
         $this->tanque(100);
@@ -156,11 +173,7 @@ class FormulasKardexTest extends TestCase
             'origen_type' => $tipo, 'origen_id' => $id, 'registrado_por' => $this->usuarios['COMPRAS']->id,
             'created_at' => $cuando, 'updated_at' => $cuando,
         ]);
-        $oc = DB::table('ordenes_compra')->insertGetId([
-            'uuid' => (string) Str::uuid(), 'codigo' => 'OC-1', 'insumo_id' => $this->azucar, 'cantidad' => 50,
-            'proveedor_comercial' => 'X', 'costo_estimado' => 200, 'estado' => 'RECIBIDA',
-            'emitida_por' => $this->usuarios['COMPRAS']->id, 'created_at' => now()->subDays(5),
-        ]);
+        $oc = $this->compraRecibida(50, 200);
         $mov(-10, 'lote', 1, now()->subDays(3));
         $mov(50, 'orden_compra', $oc, now()->subDays(2));
         DB::table('insumos')->where('id', $this->azucar)->update(['stock' => 40]);
@@ -175,11 +188,7 @@ class FormulasKardexTest extends TestCase
     public function test_kardex_de_producto_y_de_leche(): void
     {
         DB::table('parametros')->insert(['clave' => 'precio.leche_litro', 'valor' => '1.80']);
-        DB::table('ordenes_compra')->insert([
-            'uuid' => (string) Str::uuid(), 'codigo' => 'OC-1', 'insumo_id' => $this->azucar, 'cantidad' => 50,
-            'proveedor_comercial' => 'X', 'costo_estimado' => 200, 'estado' => 'RECIBIDA',
-            'emitida_por' => $this->usuarios['COMPRAS']->id, 'created_at' => now()->subDays(5),
-        ]);
+        $this->compraRecibida(50, 200);
         $this->tanque(100);
 
         // lote de yogurt: 100 L de leche (S/ 180) + 8 kg de azúcar (S/ 32) + cultivo (sin costo) → 95 L
