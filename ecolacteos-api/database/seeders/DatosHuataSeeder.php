@@ -82,7 +82,7 @@ class DatosHuataSeeder extends Seeder
         // 12-13 quesos de 1 kg por cada 100 litros
         $paria = Producto::create([
             'nombre' => 'Queso Paria', 'unidad' => 'quesos de 1 kg',
-            'rendimiento_min' => 0.12, 'rendimiento_max' => 0.13, 'vida_util_dias' => 45,
+            'rendimiento_min' => 0.13, 'rendimiento_max' => 0.133, 'vida_util_dias' => 45, // 7,5 L de leche por kg
         ]);
         $yogurt = Producto::create([
             // se mide y se vende por litro (0,95 L de yogurt por litro de leche)

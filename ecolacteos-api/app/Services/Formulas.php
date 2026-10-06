@@ -11,11 +11,16 @@ use Illuminate\Support\Facades\DB;
  */
 class Formulas
 {
-    /** Fórmulas iniciales de la planta: producto => [insumo, cantidad por 100 L]. */
+    /**
+     * Fórmulas iniciales de la planta: producto => [insumo, cantidad por 100 L].
+     * Queso Paria según las guías técnicas de Puno: cloruro de calcio máx. 0,02 % del peso
+     * de la leche; sal 1,5–2,7 kg por 100 L (lo usual 2,0) disuelta en 3 veces su peso de agua.
+     * Cuajo y cultivo dependen de la marca: confirmar con la etiqueta del frasco o sobre.
+     */
     public const INICIALES = [
         'Queso Paria' => [
             ['Cloruro de calcio', 0.02], ['Cultivo láctico', 0.005],
-            ['Cuajo líquido', 0.02], ['Sal industrial', 1.5],
+            ['Cuajo líquido', 0.02], ['Sal industrial', 2.0],
         ],
         'Yogurt natural' => [
             ['Azúcar blanca', 8], ['Cultivo láctico', 0.01],
@@ -25,11 +30,11 @@ class Formulas
 
     public const PASOS = [
         'Queso Paria' => [
-            'Filtrar la leche aceptada y pasteurizar a 65 °C por 30 minutos.',
-            'Enfriar a 32–35 °C y agregar el cloruro de calcio y el cultivo láctico.',
-            'Agregar el cuajo, mover 1 minuto y dejar en reposo 35–40 minutos hasta que cuaje.',
+            'Filtrar la leche aceptada y pasteurizar a 63–65 °C por 30 minutos.',
+            'Enfriar a 36 °C, agregar el cloruro de calcio y el cultivo láctico y dejar 30 minutos.',
+            'Llevar a 38 °C, agregar el cuajo, mover 1 minuto y dejar en reposo 35–40 minutos hasta que cuaje.',
             'Cortar la cuajada en cubos de 1–2 cm y batir suave por 15 minutos.',
-            'Sacar un tercio del suero y salar la cuajada.',
+            'Sacar un tercio del suero y salar la cuajada: 2 kg de sal por cada 100 L, disuelta en 3 veces su peso de agua.',
             'Llenar los moldes de 1 kg y prensar 4–6 horas, volteando a la mitad.',
             'Orear 1–2 días en lugar fresco y empacar con film.',
         ],
