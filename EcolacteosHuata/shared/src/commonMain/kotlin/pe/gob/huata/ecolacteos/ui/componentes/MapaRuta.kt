@@ -32,17 +32,16 @@ import kotlin.math.hypot
 import kotlin.math.max
 
 /**
- * Croquis del distrito de Huata, dibujado en Canvas. Google Maps no cubre los
- * caminos rurales, así que las comunidades traen coordenadas del dibujo
- * (croquis_x, croquis_y sobre un lienzo de 340×400), no GPS. Como no baja
- * nada de internet, funciona igual sin señal.
+ * Croquis del distrito de Huata, dibujado en Canvas. El lago y las carreteras
+ * tienen su forma real (CroquisHuataDatos.kt) y el servidor manda cada
+ * comunidad ya pasada a coordenadas del dibujo desde su ubicación real (la
+ * misma del mapa de la web). Como no baja nada de internet, funciona igual
+ * sin señal.
  *
  * - Un pin por comunidad: anillo que se llena con lo registrado y "2/3" adentro.
  * - La ruta del acopiador va gruesa y numerada; las demás, apagadas.
  * - Con [acercar], el dibujo se acerca a la ruta del acopiador.
  */
-private const val LIENZO_W = 340f
-private const val LIENZO_H = 400f
 
 /** Avance de una comunidad en el día. */
 data class PinComunidad(val comunidad: Comunidad, val estado: EstadoPin, val hechos: Int, val total: Int)
@@ -55,9 +54,9 @@ fun colorPin(p: EstadoPin): Color = when (p) {
 }
 
 private val FONDO_PIN = Color(0xFF0E1A24)
-private val LAGO = Color(0xFF16304A)
-private val ORILLA = Color(0xFF2B5170)
-private val CARRETERA = Color(0xFF3B4A58)
+private val COLOR_LAGO = Color(0xFF16304A)
+private val COLOR_ORILLA = Color(0xFF2B5170)
+private val COLOR_CARRETERA = Color(0xFF3B4A58)
 
 /** Parte del lienzo que se ve: todo Huata o solo alrededor de la ruta. */
 private fun vista(comunidades: List<Comunidad>, ruta: List<Long>, acercar: Boolean): Rect {
@@ -108,30 +107,27 @@ fun MapaRuta(
         fun pt(x: Float, y: Float) = Offset((x - v.left) * k, (y - v.top) * k)
         fun de(c: Comunidad) = pt(c.croquisX, c.croquisY)
 
-        // lago Titicaca al sur, con su orilla
-        fun Path.borde() {
-            moveTo(pt(-20f, 330f).x, pt(-20f, 330f).y)
-            pt(58f, 316f).let { a -> pt(104f, 336f).let { b -> pt(158f, 346f).let { c -> cubicTo(a.x, a.y, b.x, b.y, c.x, c.y) } } }
-            pt(216f, 356f).let { a -> pt(276f, 372f).let { b -> pt(360f, 356f).let { c -> cubicTo(a.x, a.y, b.x, b.y, c.x, c.y) } } }
+        /** Línea que une los puntos (x, y, x, y, …) del croquis. */
+        fun trazo(p: FloatArray, cerrar: Boolean) = Path().apply {
+            moveTo(pt(p[0], p[1]).x, pt(p[0], p[1]).y)
+            for (i in 2 until p.size step 2) pt(p[i], p[i + 1]).let { lineTo(it.x, it.y) }
+            if (cerrar) close()
         }
-        val orilla = Path().apply { borde() }
-        val lago = Path().apply {
-            borde()
-            lineTo(pt(360f, 420f).x, pt(360f, 420f).y); lineTo(pt(-20f, 420f).x, pt(-20f, 420f).y); close()
+
+        // lago Titicaca, con su forma real
+        LAGO.forEach { p ->
+            val agua = trazo(p, cerrar = true)
+            drawPath(agua, COLOR_LAGO)
+            drawPath(agua, COLOR_ORILLA, style = Stroke(1.2.dp.toPx()))
         }
-        drawPath(lago, LAGO)
-        drawPath(orilla, ORILLA, style = Stroke(1.5.dp.toPx()))
-        texto(medidor, "Lago Titicaca", pt(200f, 385f),
+        texto(medidor, "Lago Titicaca", pt(330f, 255f),
             TextStyle(color = Color(0xFF6E9CC0), fontSize = 12.sp, fontStyle = FontStyle.Italic))
 
-        // carretera PE-3S bordeando el lago
-        val carretera = Path().apply {
-            pt(4f, 318f).let { moveTo(it.x, it.y) }
-            pt(64f, 304f).let { a -> pt(112f, 322f).let { b -> pt(166f, 332f).let { c -> cubicTo(a.x, a.y, b.x, b.y, c.x, c.y) } } }
-            pt(222f, 342f).let { a -> pt(282f, 358f).let { b -> pt(338f, 344f).let { c -> cubicTo(a.x, a.y, b.x, b.y, c.x, c.y) } } }
-        }
-        drawPath(carretera, CARRETERA, style = Stroke(4.dp.toPx(), cap = StrokeCap.Round))
-        texto(medidor, "PE-3S", pt(36f, 300f), TextStyle(color = Color(0xFF7D8C99), fontSize = 9.sp, fontWeight = FontWeight.Bold))
+        // carreteras: PU-118 pasa por Huatta; PE-3S (Juliaca – Puno) al oeste
+        (PU_118 + PE_3S).forEach { drawPath(trazo(it, cerrar = false), COLOR_CARRETERA, style = Stroke(3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)) }
+        val etiquetaVia = TextStyle(color = Color(0xFF7D8C99), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+        texto(medidor, "PU-118", pt(110f, 162f), etiquetaVia)
+        texto(medidor, "PE-3S", pt(28f, 140f), etiquetaVia)
 
         // rutas: las ajenas finas y apagadas, la del acopiador gruesa con halo
         vehiculos.sortedBy { it.id == resaltado }.forEach { ve ->

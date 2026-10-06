@@ -69,6 +69,21 @@ class MapaHuataTest extends TestCase
         $this->assertEquals(-69.9902, $carata['longitud']);
     }
 
+    public function test_el_croquis_de_la_app_sale_de_la_ubicacion_real(): void
+    {
+        $id = $this->comunidad['Carata'];
+        // el pueblo de Huata: 400 × 314 de lienzo entre -70.10/-69.85 y -15.53/-15.72
+        $this->postJson("/api/v1/admin/comunidades/$id/ubicacion", ['latitud' => -15.6151, 'longitud' => -69.9715])->assertOk();
+
+        Sanctum::actingAs($this->usuarios['ACOPIADOR']);
+        $carata = collect($this->getJson('/api/v1/sync/bootstrap')->assertOk()->json('comunidades'))->firstWhere('id', $id);
+        $this->assertEqualsWithDelta(205.6, $carata['croquis_x'], 0.2);
+        $this->assertEqualsWithDelta(140.5, $carata['croquis_y'], 0.2);
+
+        // fuera del marco: queda en el borde, no fuera del dibujo
+        $this->assertSame([10.0, 10.0], \App\Services\Croquis::punto(-15.40, -70.30));
+    }
+
     public function test_solo_admin(): void
     {
         Sanctum::actingAs($this->usuarios['COMPRAS']);

@@ -8,6 +8,7 @@ use App\Models\Parametro;
 use App\Models\Proveedor;
 use App\Models\Vehiculo;
 use App\Services\CambiosComunidad;
+use App\Services\Croquis;
 use App\Services\SyncService;
 use Illuminate\Http\Request;
 
@@ -42,8 +43,9 @@ class SyncController extends Controller
 
     /**
      * Carga inicial: todo lo que la app necesita para operar días sin señal,
-     * incluido el croquis de comunidades (coordenadas relativas, no GPS) y los
-     * parámetros de calidad para evaluar offline.
+     * incluido el croquis de comunidades y los parámetros de calidad para
+     * evaluar offline. croquis_x / croquis_y salen de la ubicación real de cada
+     * comunidad (la del mapa de la web), pasada al dibujo de la app (Croquis).
      */
     public function bootstrap()
     {
@@ -54,9 +56,11 @@ class SyncController extends Controller
         return response()->json([
             'cursor'      => now()->toIso8601String(),
             'vehiculos'   => Vehiculo::with('zona:id,nombre', 'acopiador:id,name')->get(),
-            'comunidades' => Comunidad::select(
-                'id', 'zona_id', 'nombre', 'croquis_x', 'croquis_y', 'vias'
-            )->get(),
+            'comunidades' => Comunidad::all()->map(function ($c) {
+                [$x, $y] = Croquis::deComunidad($c);
+                return ['id' => $c->id, 'zona_id' => $c->zona_id, 'nombre' => $c->nombre,
+                    'croquis_x' => $x, 'croquis_y' => $y, 'vias' => $c->vias];
+            }),
             // "🆕 Nuevo en tu ruta · antes en Carata" los primeros 15 días tras un cambio de comunidad
             'proveedores' => $proveedores->map(fn ($p) => $p->setAttribute('cambio_reciente', ($c = $recientes->get($p->id))
                 ? ['desde' => $c->desde, 'antes' => $c->antes, 'antes_vehiculo_id' => $c->antes_vehiculo_id] : null)),
