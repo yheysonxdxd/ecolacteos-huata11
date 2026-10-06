@@ -122,7 +122,13 @@ fun AppEcolacteos(rolInicial: Rol = Rol.ACOPIADOR, pendientes: Int = 0, hayRed: 
         var conectado by remember(r) { mutableStateOf(hayRed) }
         LaunchedEffect(r) {
             while (Sesion.token != null) {
+                val antes = conectado
                 conectado = Sesion.servidorResponde()
+                if (conectado && r == Rol.ACOPIADOR) {
+                    // volvió la señal: se borra el aviso viejo y se envía lo anotado sin señal
+                    if (ResultadoSync.huboError && ResultadoSync.mensaje?.startsWith("No se pudo conectar") == true) ResultadoSync.mensaje = null
+                    if (!antes && acopio.pendientes > 0) sincronizarAcopio(acopio, scope)
+                }
                 kotlinx.coroutines.delay(10_000)
             }
         }

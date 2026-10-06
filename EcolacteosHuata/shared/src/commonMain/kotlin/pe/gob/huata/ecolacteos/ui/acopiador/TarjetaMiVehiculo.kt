@@ -16,7 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import pe.gob.huata.ecolacteos.datos.*
 import pe.gob.huata.ecolacteos.tema.*
@@ -24,10 +24,13 @@ import pe.gob.huata.ecolacteos.tema.*
 /** Vehículo que el acopiador eligió para hoy (en memoria hasta tener login). */
 object VehiculoElegido {
     var id by mutableStateOf<Long?>(null)
+
+    // al elegir, la tarjeta de elegir desaparece: el guardado no puede depender de ella
+    internal val alcance = MainScope()
 }
 
 /** Elige el vehículo y, si hay sesión con el servidor, lo guarda en la base de datos. */
-private fun elegirVehiculo(v: Vehiculo, scope: CoroutineScope) {
+private fun elegirVehiculo(v: Vehiculo) {
     if (!Sesion.desdeServidor) { VehiculoElegido.id = v.id; return }
     // el acopiador que sale con el vehículo queda como su conductor
     Demo.vehiculos = Demo.vehiculos.map {
@@ -38,7 +41,7 @@ private fun elegirVehiculo(v: Vehiculo, scope: CoroutineScope) {
         }
     }
     VehiculoElegido.id = v.id
-    scope.launch {
+    VehiculoElegido.alcance.launch {
         try {
             Sesion.tomarVehiculo(v.id)
             ResultadoSync.huboError = false
@@ -62,7 +65,6 @@ fun TarjetaMiVehiculo(filas: List<FilaProveedor>, irARegistrar: () -> Unit) {
 
 @Composable
 private fun ElegirVehiculo() {
-    val scope = rememberCoroutineScope()
     Surface(
         shape = RoundedCornerShape(16.dp), color = Altiplano.Superficie,
         border = BorderStroke(1.dp, Altiplano.VerdeBorde),
@@ -72,7 +74,7 @@ private fun ElegirVehiculo() {
             Demo.vehiculos.forEach { v ->
                 val esMotocar = v.tipo == TipoVehiculo.MOTOCAR
                 Surface(
-                    onClick = { elegirVehiculo(v, scope) },
+                    onClick = { elegirVehiculo(v) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp), color = Altiplano.Fondo,
                     border = BorderStroke(1.dp, Altiplano.Borde),

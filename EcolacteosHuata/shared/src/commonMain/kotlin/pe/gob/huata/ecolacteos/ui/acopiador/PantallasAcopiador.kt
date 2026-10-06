@@ -212,110 +212,115 @@ internal fun estadoComunidad(estados: List<EstadoPin>): EstadoPin = when {
 private fun PantallaMapa(filas: List<FilaProveedor>, estado: EstadoAcopio) {
     val mio = VehiculoElegido.id
     val miVehiculo = Demo.vehiculos.firstOrNull { it.id == mio }
+    val tieneRuta = miVehiculo?.ordenRuta?.isNotEmpty() == true
     var elegida by remember { mutableStateOf<Long?>(null) }
     var abierta by remember { mutableStateOf<FilaProveedor?>(null) }
+    var verTodo by remember { mutableStateOf(false) }
 
     val porComunidad = filas.groupBy { it.proveedor.comunidadId }
     val pines = porComunidad.mapNotNull { (id, fs) ->
-        Demo.comunidades.firstOrNull { it.id == id }?.let { it to estadoComunidad(fs.map { f -> estadoPin(f, estado) }) }
+        Demo.comunidades.firstOrNull { it.id == id }?.let { c ->
+            PinComunidad(c, estadoComunidad(fs.map { f -> estadoPin(f, estado) }), fs.count { it.entrega != null }, fs.size)
+        }
     }
-    fun avance(id: Long) = porComunidad[id].orEmpty().let { fs -> "${fs.count { it.entrega != null }}/${fs.size}" }
+    val pinDe = pines.associateBy { it.comunidad.id }
 
     // comunidades de mi ruta en orden; sin vehículo elegido, todas las que tienen proveedores
     val orden = miVehiculo?.ordenRuta?.ifEmpty { null }
         ?: porComunidad.keys.sortedBy { id -> Demo.comunidades.firstOrNull { it.id == id }?.nombre }
-    val otras = porComunidad.keys.filter { it !in orden }
+    val lista = (orden + porComunidad.keys.filter { it !in orden }).filter { it in porComunidad }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Medidas.Pantalla),
         verticalArrangement = Arrangement.spacedBy(Medidas.Hueco),
     ) {
-        Surface(shape = RoundedCornerShape(16.dp), color = Altiplano.Superficie, border = BorderStroke(1.dp, Altiplano.Borde)) {
-            Column(Modifier.padding(14.dp)) {
-                Text(
-                    if (miVehiculo != null) "TU RUTA · ${miVehiculo.codigo}" else "CROQUIS · DISTRITO DE HUATA",
-                    style = Texto.Eyebrow, color = Altiplano.TextoTerciario,
-                )
-                Spacer(Modifier.height(10.dp))
-                CroquisConNombres(
-                    Demo.comunidades, Demo.vehiculos, pines,
-                    resaltado = mio,
-                    etiquetaDe = { c -> if (c.id in porComunidad) "${c.nombre} ${avance(c.id)}" else c.nombre },
-                    onToque = { c -> if (c.id in porComunidad) elegida = if (elegida == c.id) null else c.id },
-                )
-                Spacer(Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Leyenda("Registrado", Altiplano.Exito)
-                    Leyenda("Sin enviar", Altiplano.Aviso)
-                    Leyenda("Falta", Color(0xFF4E6577))
+        Surface(shape = RoundedCornerShape(18.dp), color = Altiplano.Superficie, border = BorderStroke(1.dp, Altiplano.Borde)) {
+            Column {
+                Row(Modifier.padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(if (miVehiculo != null) "TU RUTA" else "DISTRITO DE HUATA", style = Texto.Eyebrow, color = Altiplano.TextoTerciario)
+                        Text(
+                            miVehiculo?.let { "${it.codigo} · ${pines.filter { p -> p.comunidad.id in orden }.sumOf { p -> p.hechos }} de ${pines.filter { p -> p.comunidad.id in orden }.sumOf { p -> p.total }} registrados" }
+                                ?: "Elige tu vehículo en «Hoy»",
+                            style = Texto.Fila, color = Altiplano.Texto,
+                        )
+                    }
+                    if (tieneRuta) Surface(
+                        onClick = { verTodo = !verTodo },
+                        shape = RoundedCornerShape(50), color = Altiplano.Fondo,
+                        border = BorderStroke(1.dp, Altiplano.Borde),
+                    ) {
+                        Text(
+                            if (verTodo) "Ver mi ruta" else "Ver todo Huata",
+                            style = Texto.Apoyo, color = Altiplano.TextoSecundario,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                        )
+                    }
                 }
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    if (miVehiculo == null) "Elige tu vehículo en «Hoy» para ver tu ruta resaltada. Toca una comunidad para anotar litros."
-                    else "Toca una comunidad para anotar litros. Funciona sin señal: se envía cuando vuelva.",
-                    style = Texto.Apoyo, color = Altiplano.TextoTerciario,
+                MapaRuta(
+                    Demo.comunidades, Demo.vehiculos, pines,
+                    resaltado = mio, acercar = tieneRuta && !verTodo, elegida = elegida,
+                    onToque = { c -> elegida = if (elegida == c.id) null else c.id },
                 )
+                Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Leyenda("Enviado", colorPin(EstadoPin.REGISTRADO))
+                    Leyenda("Sin enviar", colorPin(EstadoPin.SIN_ENVIAR))
+                    Leyenda("Falta", colorPin(EstadoPin.FALTA))
+                }
             }
         }
 
-        Text(if (miVehiculo != null) "COMUNIDADES EN ORDEN DE RUTA" else "COMUNIDADES", style = Texto.Eyebrow, color = Altiplano.TextoTerciario)
-        (orden + otras).filter { it in porComunidad }.forEach { id ->
-            val c = Demo.comunidades.firstOrNull { it.id == id } ?: return@forEach
-            val fs = porComunidad.getValue(id)
-            val enRuta = miVehiculo != null && id in orden
-            val pin = estadoComunidad(fs.map { estadoPin(it, estado) })
-            Surface(
-                onClick = { elegida = if (elegida == id) null else id },
-                shape = RoundedCornerShape(14.dp), color = Altiplano.Superficie,
-                border = BorderStroke(1.dp, if (elegida == id) Altiplano.VerdeMarca else Altiplano.Borde),
-            ) {
-                Column(Modifier.fillMaxWidth().padding(14.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(10.dp).background(colorPin(pin), CircleShape))
-                        Spacer(Modifier.width(10.dp))
-                        Text(
-                            (if (enRuta) "${orden.indexOf(id) + 1}. " else "") + c.nombre,
-                            style = Texto.Fila, color = Altiplano.Texto, modifier = Modifier.weight(1f),
-                        )
-                        Text("${avance(id)} registrados", style = Texto.Apoyo, color = Altiplano.TextoSecundario)
+        // proveedores de la comunidad tocada, justo debajo del mapa
+        elegida?.let { id -> pinDe[id] }?.let { p ->
+            val paso = orden.indexOf(p.comunidad.id).takeIf { miVehiculo != null && it >= 0 }
+            Tarjeta(borde = colorPin(p.estado)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text((paso?.let { "${it + 1} · " } ?: "") + p.comunidad.nombre, style = Texto.Fila, color = Altiplano.Texto)
+                        Text("${p.hechos} de ${p.total} registrados · toca un nombre para anotar", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
                     }
-                    if (elegida == id) fs.forEach { f ->
-                        Spacer(Modifier.height(8.dp))
-                        Surface(
-                            onClick = { abierta = f },
-                            shape = RoundedCornerShape(12.dp), color = Altiplano.Fondo,
-                            border = BorderStroke(1.dp, if (f.entrega == null) Altiplano.VerdeBorde else Altiplano.Borde),
-                        ) {
-                            Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 12.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f)) {
-                                    Text(f.proveedor.nombre, style = Texto.Cuerpo, color = Altiplano.Texto)
-                                    Text(f.vehiculo, style = Texto.Apoyo, color = Altiplano.TextoTerciario)
-                                }
-                                Text(
-                                    f.entrega?.let { if (it.ausente) "—" else "${formatear(it.litros)} L" } ?: "",
-                                    style = Texto.Fila, color = Altiplano.Texto,
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                ChipEstado(estadoDe(f.entrega))
+                    TextButton(onClick = { elegida = null }) { Text("Cerrar", color = Altiplano.TextoSecundario) }
+                }
+                porComunidad.getValue(p.comunidad.id).forEach { f ->
+                    Spacer(Modifier.height(8.dp))
+                    Surface(
+                        onClick = { abierta = f },
+                        shape = RoundedCornerShape(12.dp), color = Altiplano.Fondo,
+                        border = BorderStroke(1.dp, if (f.entrega == null) Altiplano.VerdeBorde else Altiplano.Borde),
+                    ) {
+                        Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(f.proveedor.nombre, style = Texto.Cuerpo, color = Altiplano.Texto)
+                                Text(f.vehiculo, style = Texto.Apoyo, color = Altiplano.TextoTerciario)
                             }
+                            f.entrega?.takeIf { !it.ausente }?.let {
+                                Text("${formatear(it.litros)} L", style = Texto.Fila, color = Altiplano.Texto)
+                                Spacer(Modifier.width(8.dp))
+                            }
+                            ChipEstado(estadoDe(f.entrega))
                         }
                     }
                 }
             }
         }
-        Text("VEHÍCULOS", style = Texto.Eyebrow, color = Altiplano.TextoTerciario)
-        Demo.vehiculos.forEach { v ->
-            val suyos = filas.filter { it.proveedor.vehiculoId == v.id }
-            Surface(shape = RoundedCornerShape(14.dp), color = Altiplano.Superficie, border = BorderStroke(1.dp, Altiplano.Borde)) {
-                Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(10.dp).background(v.color, CircleShape))
-                    Spacer(Modifier.width(10.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("${v.codigo} · ${if (v.tipo == TipoVehiculo.MOTOCAR) "Motocar" else "Furgón"}", style = Texto.Fila, color = Altiplano.Texto)
-                        Text(if (v.rutaCircular) "Circuito cerrado" else "Ruta lineal", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+
+        Text(if (miVehiculo != null) "EN ORDEN DE RUTA" else "COMUNIDADES", style = Texto.Eyebrow, color = Altiplano.TextoTerciario)
+        lista.forEach { id ->
+            val p = pinDe[id] ?: return@forEach
+            val paso = orden.indexOf(id).takeIf { miVehiculo != null && it >= 0 }
+            Surface(
+                onClick = { elegida = if (elegida == id) null else id },
+                shape = RoundedCornerShape(14.dp), color = Altiplano.Superficie,
+                border = BorderStroke(1.dp, if (elegida == id) Altiplano.VerdeMarca else Altiplano.Borde),
+            ) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(28.dp).background(colorPin(p.estado).copy(alpha = 0.16f), CircleShape), contentAlignment = Alignment.Center) {
+                        Text(paso?.let { "${it + 1}" } ?: "•", style = Texto.Apoyo, color = colorPin(p.estado))
                     }
-                    Text("${suyos.count { it.entrega != null }}/${suyos.size}", style = Texto.Fila, color = Altiplano.TextoSecundario)
+                    Spacer(Modifier.width(12.dp))
+                    Text(p.comunidad.nombre, style = Texto.Fila, color = Altiplano.Texto, modifier = Modifier.weight(1f))
+                    Text("${p.hechos}/${p.total}", style = Texto.Fila, color = colorPin(p.estado))
                 }
             }
         }
@@ -330,13 +335,6 @@ private fun PantallaMapa(filas: List<FilaProveedor>, estado: EstadoAcopio) {
             onNoEntrego = { estado.guardar(fila.proveedor, 0.0, ausente = true); abierta = null },
         )
     }
-}
-
-private fun colorPin(p: EstadoPin): Color = when (p) {
-    EstadoPin.REGISTRADO -> Altiplano.Exito
-    EstadoPin.SIN_ENVIAR -> Altiplano.Aviso
-    EstadoPin.NO_ENTREGO -> Altiplano.Alerta
-    EstadoPin.FALTA -> Color(0xFF4E6577)
 }
 
 @Composable
