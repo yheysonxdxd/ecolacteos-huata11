@@ -42,7 +42,7 @@ class KardexController extends Controller
             'tipo' => ['required', 'in:ENTRADA,SALIDA'],
             'cantidad' => ['required', 'numeric', 'gt:0', 'max:1000000'],
             'motivo' => ['required', 'string', 'min:3', 'max:120'],
-        ], ['motivo.required' => 'Escribe el motivo del ajuste (merma, vencido, conteo…).']);
+        ], ['motivo.required' => 'Cuenta qué pasó (se malogró, se venció, al contar no cuadra…).']);
 
         return DB::transaction(function () use ($data, $r) {
             $i = DB::table('insumos')->lockForUpdate()->find($data['insumo_id']);
@@ -53,7 +53,7 @@ class KardexController extends Controller
             DB::table('insumos')->where('id', $i->id)->increment('stock', $cant);
             DB::table('movimientos_insumo')->insert([
                 'uuid' => (string) Str::uuid(), 'insumo_id' => $i->id, 'cantidad' => $cant,
-                'referencia' => 'Ajuste · '.trim($data['motivo']), 'origen_type' => 'ajuste', 'origen_id' => null,
+                'referencia' => 'Corrección · '.trim($data['motivo']), 'origen_type' => 'ajuste', 'origen_id' => null,
                 'registrado_por' => $r->user()->id, 'created_at' => now(), 'updated_at' => now(),
             ]);
 

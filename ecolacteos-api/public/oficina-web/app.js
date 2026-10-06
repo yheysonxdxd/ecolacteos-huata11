@@ -818,8 +818,8 @@ function oficina() {
     resumenKardex() {
       const d = this.d; if (!d.item || !d.totales) return '';
       const u = d.item.unidad; const t = d.totales;
-      const POR_ENTRA = { INICIAL: 'que ya había', COMPRA: 'por compras', AJUSTE: 'por ajustes', ACOPIO: 'de acopio aceptado', PRODUCCION: 'hechos en lotes' };
-      const POR_SALE = { PRODUCCION: 'para hacer lotes', VENTA: 'vendidos', AJUSTE: 'por mermas o ajustes', MERMA: 'perdidos' };
+      const POR_ENTRA = { INICIAL: 'que ya había', COMPRA: 'por compras', AJUSTE: 'por correcciones', ACOPIO: 'de acopio aceptado', PRODUCCION: 'hechos en lotes' };
+      const POR_SALE = { PRODUCCION: 'para hacer lotes', VENTA: 'vendidos', AJUSTE: 'por correcciones', MERMA: 'perdidos' };
       const detalle = (lado, nombres) => (d.resumen || []).filter((r) => r[lado] > 0)
         .map((r) => `${num(r[lado], 3)} ${u} ${nombres[r.tipo] || r.tipo.toLowerCase()}`).join(', ');
       const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
@@ -833,19 +833,40 @@ function oficina() {
       return partes.join(' ');
     },
     TIPO_KARDEX: { INICIAL: 'Saldo inicial', ANTERIOR: 'Saldo anterior', COMPRA: 'Compra', PRODUCCION: 'Producción',
-      AJUSTE: 'Ajuste', VENTA: 'Venta', ACOPIO: 'Acopio', MERMA: 'Pérdida' },
+      AJUSTE: 'Corrección', VENTA: 'Venta', ACOPIO: 'Acopio', MERMA: 'Pérdida' },
     cu: (v) => 'S/ ' + Number(v || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 4 }),
+    /** Qué pasó con el insumo, en palabras de todos los días. "contamos": se escribe cuánto hay y se calcula la diferencia. */
+    RAZONES_AJUSTE: [
+      { id: 'malogro', texto: 'Se malogró, mojó o derramó', tipo: 'SALIDA', motivo: 'Se malogró' },
+      { id: 'vencio', texto: 'Se venció', tipo: 'SALIDA', motivo: 'Se venció' },
+      { id: 'contamos', texto: 'Contamos y no cuadra', tipo: null, motivo: 'Conteo' },
+      { id: 'devolvieron', texto: 'Nos devolvieron', tipo: 'ENTRADA', motivo: 'Devolución' },
+      { id: 'otro', texto: 'Otra cosa', tipo: null, motivo: '' },
+    ],
     abrirAjuste() {
-      this.f = { tipo: 'SALIDA', cantidad: '', motivo: '', error: null, enviando: false };
+      this.f = { razon: null, tipo: 'SALIDA', cantidad: '', hay: '', detalle: '', error: null, enviando: false };
       this.ventana = 'ajuste';
     },
+    razonAjuste() { return this.RAZONES_AJUSTE.find((r) => r.id === this.f.razon); },
+    /** Al contar: cuánto cambia el stock (positivo sobra, negativo falta). */
+    diferenciaConteo() { return this.f.hay === '' ? null : Number(this.f.hay) - Number(this.d.item?.stock || 0); },
     async guardarAjuste() {
-      const f = this.f; const i = this.d.item;
-      if (!(Number(f.cantidad) > 0)) return (f.error = 'Escribe la cantidad');
-      if (f.motivo.trim().length < 3) return (f.error = 'Escribe el motivo (merma, vencido, conteo físico…)');
-      if (f.tipo === 'SALIDA' && Number(f.cantidad) > i.stock) return (f.error = `Solo hay ${num(i.stock, 3)} ${i.unidad}`);
-      await this.enviar('/compras/ajustes', { insumo_id: i.id, tipo: f.tipo, cantidad: Number(f.cantidad), motivo: f.motivo.trim() },
-        null, (r) => `✓ Ajuste registrado · ${r.insumo} queda con ${num(r.stock, 3)} ${i.unidad}`);
+      const f = this.f; const i = this.d.item; const r = this.razonAjuste();
+      if (!r) return (f.error = 'Elige qué pasó');
+      let tipo = r.tipo ?? f.tipo; let cantidad = Number(f.cantidad);
+      if (r.id === 'contamos') {
+        const dif = this.diferenciaConteo();
+        if (dif === null || !(Number(f.hay) >= 0)) return (f.error = '¿Cuánto hay de verdad? Escríbelo');
+        if (Math.abs(dif) < 0.0005) return (f.error = 'Cuadra con lo que dice el sistema: no hay nada que corregir');
+        tipo = dif > 0 ? 'ENTRADA' : 'SALIDA'; cantidad = Math.abs(dif);
+      } else if (!(cantidad > 0)) return (f.error = 'Escribe la cantidad');
+      if (r.id === 'otro' && f.detalle.trim().length < 3) return (f.error = 'Cuenta brevemente qué pasó');
+      if (tipo === 'SALIDA' && cantidad > i.stock) return (f.error = `Solo hay ${num(i.stock, 3)} ${i.unidad}`);
+      const motivo = r.id === 'contamos'
+        ? `Conteo: había ${num(f.hay, 3)} ${i.unidad} (el sistema decía ${num(i.stock, 3)})`
+        : [r.motivo, f.detalle.trim()].filter(Boolean).join(' · ');
+      await this.enviar('/compras/ajustes', { insumo_id: i.id, tipo, cantidad: Number(cantidad.toFixed(3)), motivo },
+        null, (res) => `✓ Corregido · ${res.insumo} queda con ${num(res.stock, 3)} ${i.unidad}`);
     },
 
     // -------------------------------------------------------------- fórmulas

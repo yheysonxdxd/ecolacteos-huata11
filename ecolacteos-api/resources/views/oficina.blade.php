@@ -471,7 +471,7 @@
         <section x-show="seccion === 'kardex' && !cargando && !error">
             <div class="fila no-imprimir"><h1>Kardex · entradas y salidas</h1><div class="espacio"></div>
                 <button class="btn gris" @click="window.print()">Imprimir</button>
-                <button class="btn" @click="abrirAjuste()" x-show="d.item?.tipo === 'insumo'">+ Ajuste (merma, vencido, conteo)</button>
+                <button class="btn" @click="abrirAjuste()" x-show="d.item?.tipo === 'insumo'">+ Corregir stock</button>
                 <button class="btn rojo" @click="abrirMerma(kardex.tipo === 'leche' ? 'LECHE' : 'PRODUCTO', kardex.id)"
                         x-show="d.item && d.item.tipo !== 'insumo'" x-text="kardex.tipo === 'leche' ? '+ Leche perdida' : '+ Registrar pérdida'"></button></div>
             <h1 class="solo-imprimir" x-text="'Kardex · ' + (d.item?.nombre || '')"></h1>
@@ -480,7 +480,7 @@
                     <button :class="{ activo: pestanaKardexActiva(t) }" @click="tipoKardex(t.tipo, t.id)" x-text="t.nombre"></button>
                 </template>
             </div>
-            <p class="sub" x-show="kardex.tipo === 'insumo'">Entra cuando llega una compra. Sale cuando se usa para hacer un lote o se pierde (merma).</p>
+            <p class="sub" x-show="kardex.tipo === 'insumo'">Entra cuando llega una compra. Sale cuando se usa para hacer un lote. Si algo se malogró, se venció o al contar no cuadra, usa <strong>Corregir stock</strong>.</p>
             <p class="sub" x-show="kardex.tipo === 'producto'">Entra cuando se termina un lote. Sale cuando se vende o se pierde (se venció, se malogró).</p>
             <p class="sub" x-show="kardex.tipo === 'leche'">Entra la leche que Calidad acepta cada día. Sale la que se usa para hacer cada lote o se pierde (se cortó, se derramó).</p>
             <div class="fila no-imprimir" style="align-items: flex-end">
@@ -1129,18 +1129,32 @@
             <button class="btn" @click="confirmarProducir()" :disabled="!!f.enviando" x-text="f.enviando ? 'Iniciando…' : 'Aceptar e iniciar lote'"></button></div>
     </div>
 
-    {{-- ajuste de kardex --}}
+    {{-- corregir stock (ajuste de kardex) --}}
     <div class="ventana" x-show="ventana === 'ajuste'">
-        <h3 x-text="'Ajuste de ' + (d.item?.nombre || '')"></h3>
-        <p class="sub" x-text="'Stock actual: ' + num(d.item?.stock, 3) + ' ' + (d.item?.unidad || '') + '. Para lo que no es compra ni producción.'"></p>
-        <div class="opciones">
-            <button :class="{ activo: f.tipo === 'SALIDA' }" @click="f.tipo = 'SALIDA'">Salida (merma, vencido, faltante)</button>
-            <button :class="{ activo: f.tipo === 'ENTRADA' }" @click="f.tipo = 'ENTRADA'">Entrada (sobrante, devolución)</button></div>
-        <label x-text="'Cantidad (' + (d.item?.unidad || '') + ')'"></label><input type="number" min="0" step="0.001" x-model="f.cantidad">
-        <label>Motivo</label><input x-model="f.motivo" maxlength="120" placeholder="Ej.: bolsa de azúcar mojada">
+        <h3 x-text="'Corregir el stock de ' + (d.item?.nombre || '')"></h3>
+        <p class="sub" x-text="'El sistema dice que hay ' + num(d.item?.stock, 3) + ' ' + (d.item?.unidad || '') + '. Las compras y lo que se usa en los lotes se anotan solos; esto es para todo lo demás.'"></p>
+        <label>¿Qué pasó?</label>
+        <div class="opciones" style="flex-wrap: wrap">
+            <template x-for="r in RAZONES_AJUSTE" :key="r.id">
+                <button :class="{ activo: f.razon === r.id }" @click="f.razon = r.id; f.error = null" x-text="r.texto"></button></template></div>
+        <template x-if="f.razon === 'contamos'"><div>
+            <label x-text="'¿Cuánto hay de verdad? (' + (d.item?.unidad || '') + ')'"></label>
+            <input type="number" min="0" step="0.001" x-model="f.hay">
+            <p class="sub" x-show="diferenciaConteo() !== null"
+               x-text="Math.abs(diferenciaConteo()) < 0.0005 ? 'Cuadra: no hay nada que corregir.' : (diferenciaConteo() > 0 ? 'Sobran ' : 'Faltan ') + num(Math.abs(diferenciaConteo()), 3) + ' ' + (d.item?.unidad || '') + '. Se corrige al guardar.'"></p>
+        </div></template>
+        <template x-if="f.razon && f.razon !== 'contamos'"><div>
+            <div class="opciones" x-show="f.razon === 'otro'" style="margin-top: 10px">
+                <button :class="{ activo: f.tipo === 'SALIDA' }" @click="f.tipo = 'SALIDA'">Hay menos</button>
+                <button :class="{ activo: f.tipo === 'ENTRADA' }" @click="f.tipo = 'ENTRADA'">Hay más</button></div>
+            <label x-text="(razonAjuste()?.tipo ?? f.tipo) === 'ENTRADA' ? '¿Cuánto entró? (' + (d.item?.unidad || '') + ')' : '¿Cuánto se perdió? (' + (d.item?.unidad || '') + ')'"></label>
+            <input type="number" min="0" step="0.001" x-model="f.cantidad">
+            <label x-text="f.razon === 'otro' ? '¿Qué pasó?' : 'Detalle (opcional)'"></label>
+            <input x-model="f.detalle" maxlength="100" placeholder="Ej.: se mojó una bolsa en el almacén">
+        </div></template>
         <div class="aviso error" x-show="f.error" x-text="f.error"></div>
         <div class="pie"><button class="btn gris" @click="ventana = null">Cancelar</button>
-            <button class="btn" @click="guardarAjuste()" :disabled="!!f.enviando" x-text="f.enviando ? 'Guardando…' : 'Registrar ajuste'"></button></div>
+            <button class="btn" @click="guardarAjuste()" :disabled="!!f.enviando" x-text="f.enviando ? 'Guardando…' : 'Guardar'"></button></div>
     </div>
 
     {{-- editar fórmula (solo admin) --}}
