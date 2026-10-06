@@ -19,8 +19,8 @@ class MapaController extends Controller
     /** Huatta (el pueblo) como referencia: su punto en el croquis y en el mapa. */
     private const REF_X = 104;
     private const REF_Y = 266;
-    private const REF_LAT = -15.6133;
-    private const REF_LNG = -69.9725;
+    private const REF_LAT = -15.6151; // 15°36'50" S (pueblo de Huata)
+    private const REF_LNG = -69.9715; // 69°58'25" O
     /** Metros por unidad del croquis (el lienzo de 340 × 400 cubre unos 20 × 24 km). */
     private const METROS = 60;
 
