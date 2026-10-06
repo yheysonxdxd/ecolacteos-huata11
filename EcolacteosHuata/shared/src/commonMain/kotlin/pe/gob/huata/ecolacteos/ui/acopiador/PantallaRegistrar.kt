@@ -150,9 +150,10 @@ fun PantallaRegistrar(
     }
 }
 
+/** Hoja para anotar litros de un proveedor (también se abre desde el mapa). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun HojaRegistro(
+internal fun HojaRegistro(
     fila: FilaProveedor,
     parametros: ParametrosCalidad,
     onCerrar: () -> Unit,
@@ -224,7 +225,7 @@ private fun HojaRegistro(
     }
 }
 
-private fun estadoDe(e: Entrega?): Estado = when {
+internal fun estadoDe(e: Entrega?): Estado = when {
     e == null -> Estado.FALTA
     e.ausente -> Estado.NO_ENTREGO
     e.estadoCalidad == "ACEPTADO" -> Estado.ACEPTADO

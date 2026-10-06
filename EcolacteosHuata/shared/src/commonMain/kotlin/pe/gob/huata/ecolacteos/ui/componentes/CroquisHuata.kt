@@ -30,6 +30,7 @@ fun CroquisHuata(
     vehiculos: List<Vehiculo>,
     pines: List<Pair<Comunidad, EstadoPin>>,
     modifier: Modifier = Modifier,
+    resaltado: Long? = null, // vehículo del acopiador: las demás rutas se ven apagadas
 ) {
     Canvas(modifier.fillMaxWidth().aspectRatio(LIENZO_W / LIENZO_H)) {
         val ex = size.width / LIENZO_W
@@ -58,8 +59,8 @@ fun CroquisHuata(
             style = Stroke(width = 5f * ex, cap = StrokeCap.Round),
         )
 
-        // una polilínea suave por vehículo
-        vehiculos.forEach { v ->
+        // una polilínea suave por vehículo (la del acopiador encima de las demás)
+        vehiculos.sortedBy { it.id == resaltado }.forEach { v ->
             val puntos = v.ordenRuta.mapNotNull { id ->
                 comunidades.firstOrNull { it.id == id }?.let { pt(it.croquisX, it.croquisY) }
             }
@@ -78,10 +79,11 @@ fun CroquisHuata(
                     )
                 }
             }
+            val apagada = resaltado != null && v.id != resaltado
             drawPath(
-                camino, color = v.color,
+                camino, color = if (apagada) v.color.copy(alpha = 0.22f) else v.color,
                 style = Stroke(
-                    width = if (v.rutaCircular) 3.6f * ex else 2.6f * ex,
+                    width = (if (v.rutaCircular) 3.6f else 2.6f) * ex * (if (resaltado == v.id) 1.6f else 1f),
                     cap = StrokeCap.Round,
                     // el motocar se distingue por trazo, no por otro color
                     pathEffect = if (v.rutaCircular)

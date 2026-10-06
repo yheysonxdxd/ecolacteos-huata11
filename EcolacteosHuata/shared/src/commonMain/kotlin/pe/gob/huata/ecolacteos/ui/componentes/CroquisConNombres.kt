@@ -1,6 +1,9 @@
 package pe.gob.huata.ecolacteos.ui.componentes
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlin.math.hypot
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -44,11 +47,26 @@ fun CroquisConNombres(
     vehiculos: List<Vehiculo>,
     pines: List<Pair<Comunidad, EstadoPin>>,
     modifier: Modifier = Modifier,
+    resaltado: Long? = null,
+    etiquetaDe: (Comunidad) -> String = { it.nombre },
+    onToque: ((Comunidad) -> Unit)? = null,
 ) {
     val medidor = rememberTextMeasurer()
+    val ruta = vehiculos.firstOrNull { it.id == resaltado }?.ordenRuta.orEmpty()
     Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Box {
-            CroquisHuata(comunidades, vehiculos, pines)
+        Box(
+            if (onToque == null) Modifier else Modifier.pointerInput(comunidades) {
+                // toca cerca de una comunidad (hasta ~40 px del lienzo) para elegirla
+                detectTapGestures { p ->
+                    val ex = size.width / LIENZO_W
+                    val ey = size.height / LIENZO_H
+                    comunidades.minByOrNull { hypot(it.croquisX * ex - p.x, it.croquisY * ey - p.y) }
+                        ?.takeIf { hypot(it.croquisX * ex - p.x, it.croquisY * ey - p.y) < 40f * ex }
+                        ?.let(onToque)
+                }
+            }
+        ) {
+            CroquisHuata(comunidades, vehiculos, pines, resaltado = resaltado)
             Canvas(Modifier.matchParentSize()) {
                 val ex = size.width / LIENZO_W
                 val ey = size.height / LIENZO_H
@@ -71,9 +89,19 @@ fun CroquisConNombres(
                 // nombre de cada comunidad, debajo de su punto
                 comunidades.forEach { c ->
                     etiqueta(
-                        medidor, c.nombre, Offset(c.croquisX * ex, c.croquisY * ey + 12f * ey),
+                        medidor, etiquetaDe(c), Offset(c.croquisX * ex, c.croquisY * ey + 12f * ey),
                         TextStyle(color = Altiplano.Texto, fontSize = 9.sp),
                         fondo = Color(0xCC10202A),
+                    )
+                }
+
+                // orden en que pasa el vehículo del acopiador: 1, 2, 3…
+                ruta.forEachIndexed { i, id ->
+                    val c = comunidades.firstOrNull { it.id == id } ?: return@forEachIndexed
+                    etiqueta(
+                        medidor, "${i + 1}", Offset(c.croquisX * ex + 9f * ex, c.croquisY * ey - 9f * ey),
+                        TextStyle(color = Color(0xFF10202A), fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                        fondo = Altiplano.Texto,
                     )
                 }
 

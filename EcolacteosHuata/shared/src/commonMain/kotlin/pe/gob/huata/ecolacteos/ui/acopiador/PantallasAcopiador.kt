@@ -185,33 +185,126 @@ private fun MiniDato(etiqueta: String, valor: String, modifier: Modifier, color:
     }
 }
 
+private fun estadoPin(f: FilaProveedor, estado: EstadoAcopio): EstadoPin = when {
+    f.entrega == null -> EstadoPin.FALTA
+    f.entrega.ausente -> EstadoPin.NO_ENTREGO
+    f.proveedor.id in estado.enviados -> EstadoPin.REGISTRADO
+    else -> EstadoPin.SIN_ENVIAR
+}
+
+/**
+ * Un pin por comunidad: gris si falta alguien, amarillo si ya están todos pero
+ * algo no se envió, verde si todo salió, rojo si nadie entregó.
+ */
+internal fun estadoComunidad(estados: List<EstadoPin>): EstadoPin = when {
+    EstadoPin.FALTA in estados -> EstadoPin.FALTA
+    EstadoPin.SIN_ENVIAR in estados -> EstadoPin.SIN_ENVIAR
+    estados.isNotEmpty() && estados.all { it == EstadoPin.NO_ENTREGO } -> EstadoPin.NO_ENTREGO
+    else -> EstadoPin.REGISTRADO
+}
+
+/**
+ * Mapa de la ruta. Funciona sin señal: el croquis, las comunidades y los
+ * proveedores salen de la copia guardada en el teléfono, y lo que se anota
+ * aquí queda en el teléfono hasta que se pueda enviar.
+ */
 @Composable
 private fun PantallaMapa(filas: List<FilaProveedor>, estado: EstadoAcopio) {
-    val pines = filas.map { f ->
-        Demo.comunidad(f.proveedor.comunidadId) to when {
-            f.entrega == null -> EstadoPin.FALTA
-            f.entrega.ausente -> EstadoPin.NO_ENTREGO
-            f.proveedor.id in estado.enviados -> EstadoPin.REGISTRADO
-            else -> EstadoPin.SIN_ENVIAR
-        }
+    val mio = VehiculoElegido.id
+    val miVehiculo = Demo.vehiculos.firstOrNull { it.id == mio }
+    var elegida by remember { mutableStateOf<Long?>(null) }
+    var abierta by remember { mutableStateOf<FilaProveedor?>(null) }
+
+    val porComunidad = filas.groupBy { it.proveedor.comunidadId }
+    val pines = porComunidad.mapNotNull { (id, fs) ->
+        Demo.comunidades.firstOrNull { it.id == id }?.let { it to estadoComunidad(fs.map { f -> estadoPin(f, estado) }) }
     }
+    fun avance(id: Long) = porComunidad[id].orEmpty().let { fs -> "${fs.count { it.entrega != null }}/${fs.size}" }
+
+    // comunidades de mi ruta en orden; sin vehículo elegido, todas las que tienen proveedores
+    val orden = miVehiculo?.ordenRuta?.ifEmpty { null }
+        ?: porComunidad.keys.sortedBy { id -> Demo.comunidades.firstOrNull { it.id == id }?.nombre }
+    val otras = porComunidad.keys.filter { it !in orden }
+
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Medidas.Pantalla),
         verticalArrangement = Arrangement.spacedBy(Medidas.Hueco),
     ) {
         Surface(shape = RoundedCornerShape(16.dp), color = Altiplano.Superficie, border = BorderStroke(1.dp, Altiplano.Borde)) {
             Column(Modifier.padding(14.dp)) {
-                Text("CROQUIS · DISTRITO DE HUATA", style = Texto.Eyebrow, color = Altiplano.TextoTerciario)
+                Text(
+                    if (miVehiculo != null) "TU RUTA · ${miVehiculo.codigo}" else "CROQUIS · DISTRITO DE HUATA",
+                    style = Texto.Eyebrow, color = Altiplano.TextoTerciario,
+                )
                 Spacer(Modifier.height(10.dp))
-                CroquisConNombres(Demo.comunidades, Demo.vehiculos, pines)
+                CroquisConNombres(
+                    Demo.comunidades, Demo.vehiculos, pines,
+                    resaltado = mio,
+                    etiquetaDe = { c -> if (c.id in porComunidad) "${c.nombre} ${avance(c.id)}" else c.nombre },
+                    onToque = { c -> if (c.id in porComunidad) elegida = if (elegida == c.id) null else c.id },
+                )
                 Spacer(Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     Leyenda("Registrado", Altiplano.Exito)
                     Leyenda("Sin enviar", Altiplano.Aviso)
                     Leyenda("Falta", Color(0xFF4E6577))
                 }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    if (miVehiculo == null) "Elige tu vehículo en «Hoy» para ver tu ruta resaltada. Toca una comunidad para anotar litros."
+                    else "Toca una comunidad para anotar litros. Funciona sin señal: se envía cuando vuelva.",
+                    style = Texto.Apoyo, color = Altiplano.TextoTerciario,
+                )
             }
         }
+
+        Text(if (miVehiculo != null) "COMUNIDADES EN ORDEN DE RUTA" else "COMUNIDADES", style = Texto.Eyebrow, color = Altiplano.TextoTerciario)
+        (orden + otras).filter { it in porComunidad }.forEach { id ->
+            val c = Demo.comunidades.firstOrNull { it.id == id } ?: return@forEach
+            val fs = porComunidad.getValue(id)
+            val enRuta = miVehiculo != null && id in orden
+            val pin = estadoComunidad(fs.map { estadoPin(it, estado) })
+            Surface(
+                onClick = { elegida = if (elegida == id) null else id },
+                shape = RoundedCornerShape(14.dp), color = Altiplano.Superficie,
+                border = BorderStroke(1.dp, if (elegida == id) Altiplano.VerdeMarca else Altiplano.Borde),
+            ) {
+                Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(10.dp).background(colorPin(pin), CircleShape))
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            (if (enRuta) "${orden.indexOf(id) + 1}. " else "") + c.nombre,
+                            style = Texto.Fila, color = Altiplano.Texto, modifier = Modifier.weight(1f),
+                        )
+                        Text("${avance(id)} registrados", style = Texto.Apoyo, color = Altiplano.TextoSecundario)
+                    }
+                    if (elegida == id) fs.forEach { f ->
+                        Spacer(Modifier.height(8.dp))
+                        Surface(
+                            onClick = { abierta = f },
+                            shape = RoundedCornerShape(12.dp), color = Altiplano.Fondo,
+                            border = BorderStroke(1.dp, if (f.entrega == null) Altiplano.VerdeBorde else Altiplano.Borde),
+                        ) {
+                            Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(f.proveedor.nombre, style = Texto.Cuerpo, color = Altiplano.Texto)
+                                    Text(f.vehiculo, style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+                                }
+                                Text(
+                                    f.entrega?.let { if (it.ausente) "—" else "${formatear(it.litros)} L" } ?: "",
+                                    style = Texto.Fila, color = Altiplano.Texto,
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                ChipEstado(estadoDe(f.entrega))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Text("VEHÍCULOS", style = Texto.Eyebrow, color = Altiplano.TextoTerciario)
         Demo.vehiculos.forEach { v ->
             val suyos = filas.filter { it.proveedor.vehiculoId == v.id }
             Surface(shape = RoundedCornerShape(14.dp), color = Altiplano.Superficie, border = BorderStroke(1.dp, Altiplano.Borde)) {
@@ -227,6 +320,23 @@ private fun PantallaMapa(filas: List<FilaProveedor>, estado: EstadoAcopio) {
             }
         }
     }
+
+    abierta?.let { fila ->
+        HojaRegistro(
+            fila = fila,
+            parametros = ParametrosCalidad(),
+            onCerrar = { abierta = null },
+            onGuardar = { litros -> estado.guardar(fila.proveedor, litros); abierta = null },
+            onNoEntrego = { estado.guardar(fila.proveedor, 0.0, ausente = true); abierta = null },
+        )
+    }
+}
+
+private fun colorPin(p: EstadoPin): Color = when (p) {
+    EstadoPin.REGISTRADO -> Altiplano.Exito
+    EstadoPin.SIN_ENVIAR -> Altiplano.Aviso
+    EstadoPin.NO_ENTREGO -> Altiplano.Alerta
+    EstadoPin.FALTA -> Color(0xFF4E6577)
 }
 
 @Composable
