@@ -14,6 +14,108 @@
 
 {{-- ============================================================ LOGIN --}}
 <div class="login" x-show="!usuario" x-cloak>
+    {{-- paisaje del altiplano: Andes, sol de la mañana, lago Titicaca y vacas pastando --}}
+    <svg class="escena" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+        <defs>
+            <linearGradient id="cielo" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#0d1b2b"/><stop offset=".3" stop-color="#1c3954"/>
+                <stop offset=".5" stop-color="#6d5f78"/><stop offset=".64" stop-color="#e3965c"/><stop offset=".72" stop-color="#f4c07a"/>
+            </linearGradient>
+            <radialGradient id="sol" cx=".5" cy=".5" r=".5">
+                <stop offset="0" stop-color="#fff1c9"/><stop offset=".35" stop-color="#ffd27e"/>
+                <stop offset="1" stop-color="#ffb35c" stop-opacity="0"/>
+            </radialGradient>
+            <linearGradient id="lago" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#3a6a8c"/><stop offset="1" stop-color="#10273a"/>
+            </linearGradient>
+            <linearGradient id="pampa" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#2f4a2c"/><stop offset="1" stop-color="#132418"/>
+            </linearGradient>
+            <linearGradient id="sombra" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0" stop-color="#0b1622" stop-opacity=".82"/><stop offset=".55" stop-color="#0b1622" stop-opacity=".15"/>
+                <stop offset="1" stop-color="#0b1622" stop-opacity=".35"/>
+            </linearGradient>
+        </defs>
+
+        <rect width="1600" height="900" fill="url(#cielo)"/>
+        <g class="estrellas" fill="#fff">
+            <circle cx="120" cy="80" r="1.6"/><circle cx="310" cy="150" r="1.2"/><circle cx="520" cy="60" r="1.4"/>
+            <circle cx="760" cy="120" r="1"/><circle cx="980" cy="70" r="1.5"/><circle cx="1210" cy="140" r="1.1"/>
+            <circle cx="1420" cy="90" r="1.6"/><circle cx="1530" cy="200" r="1"/><circle cx="660" cy="210" r="1"/>
+        </g>
+
+        {{-- sol saliendo detrás de los cerros --}}
+        <circle cx="760" cy="540" r="260" fill="url(#sol)" opacity=".6"/>
+        <circle cx="760" cy="540" r="58" fill="#ffe3a6"/>
+
+        <g class="nubes" fill="#f2b9a0" opacity=".35">
+            <ellipse cx="300" cy="300" rx="170" ry="16"/><ellipse cx="380" cy="286" rx="90" ry="12"/>
+            <ellipse cx="1300" cy="250" rx="200" ry="14"/><ellipse cx="1220" cy="238" rx="80" ry="10"/>
+        </g>
+
+        {{-- cordillera con nieve --}}
+        <path d="M0 600 L120 520 L210 560 L330 440 L420 520 L520 470 L640 560 L760 480 L860 540 L980 420 L1090 520 L1180 480 L1300 560 L1420 470 L1520 530 L1600 500 L1600 640 L0 640 Z" fill="#2a3e52"/>
+        <path d="M330 440 L300 468 L322 462 L340 476 L362 458 Z M980 420 L948 452 L972 446 L990 462 L1012 444 Z M760 480 L736 504 L758 498 L780 508 Z M1420 470 L1396 494 L1418 490 L1440 500 Z" fill="#dfe7ee" opacity=".85"/>
+        <path d="M0 640 L180 590 L360 620 L560 580 L760 615 L980 585 L1200 612 L1420 588 L1600 610 L1600 670 L0 670 Z" fill="#1f3141"/>
+
+        {{-- lago Titicaca con el reflejo del sol --}}
+        <rect y="660" width="1600" height="110" fill="url(#lago)"/>
+        <g class="reflejo" fill="#ffd9a0">
+            <rect x="710" y="672" width="100" height="3" rx="1.5" opacity=".7"/>
+            <rect x="690" y="690" width="140" height="3" rx="1.5" opacity=".5"/>
+            <rect x="725" y="708" width="75" height="2.5" rx="1.25" opacity=".45"/>
+            <rect x="670" y="728" width="170" height="2.5" rx="1.25" opacity=".3"/>
+            <rect x="740" y="748" width="50" height="2" rx="1" opacity=".3"/>
+        </g>
+        {{-- balsa de totora --}}
+        <path d="M440 712 Q500 726 560 712 L552 720 Q500 732 448 720 Z" fill="#c69a55"/>
+        <path d="M500 712 L500 680" stroke="#0e1a14" stroke-width="3"/>
+
+        {{-- pampa del altiplano --}}
+        <path d="M0 760 Q400 735 800 752 T1600 745 L1600 900 L0 900 Z" fill="url(#pampa)"/>
+        <g stroke="#6d8a3c" stroke-width="3" stroke-linecap="round" opacity=".9">
+            <path d="M40 770 L36 735 M52 770 L56 728 M64 770 L62 740 M1500 765 L1496 730 M1512 765 L1518 722 M1524 765 L1522 738 M1536 766 L1540 734"/>
+        </g>
+
+        {{-- vacas pastando --}}
+        <g fill="#0c1712">
+            <g transform="translate(980 800)">
+                <ellipse cx="0" cy="0" rx="46" ry="22"/><rect x="-36" y="12" width="8" height="30" rx="3"/><rect x="-18" y="12" width="8" height="32" rx="3"/>
+                <rect x="14" y="12" width="8" height="32" rx="3"/><rect x="30" y="12" width="8" height="30" rx="3"/>
+                <path d="M40 -8 Q66 -4 70 18 L60 26 Q50 12 38 10 Z"/><path d="M-46 -6 Q-60 10 -54 26" stroke="#0c1712" stroke-width="4" fill="none"/>
+                <ellipse cx="-6" cy="-6" rx="12" ry="8" fill="#e8eef3" opacity=".9"/><ellipse cx="18" cy="6" rx="9" ry="6" fill="#e8eef3" opacity=".9"/>
+            </g>
+            <g transform="translate(1210 820) scale(.75)">
+                <ellipse cx="0" cy="0" rx="46" ry="22"/><rect x="-36" y="12" width="8" height="30" rx="3"/><rect x="-18" y="12" width="8" height="32" rx="3"/>
+                <rect x="14" y="12" width="8" height="32" rx="3"/><rect x="30" y="12" width="8" height="30" rx="3"/>
+                <path d="M-40 -8 Q-66 -4 -70 18 L-60 26 Q-50 12 -38 10 Z"/>
+                <ellipse cx="10" cy="-4" rx="12" ry="8" fill="#e8eef3" opacity=".9"/>
+            </g>
+            <g transform="translate(1380 790) scale(.5)">
+                <ellipse cx="0" cy="0" rx="46" ry="22"/><rect x="-36" y="12" width="8" height="30" rx="3"/><rect x="-18" y="12" width="8" height="32" rx="3"/>
+                <rect x="14" y="12" width="8" height="32" rx="3"/><rect x="30" y="12" width="8" height="30" rx="3"/>
+                <path d="M40 -8 Q66 -4 70 18 L60 26 Q50 12 38 10 Z"/>
+            </g>
+        </g>
+
+        {{-- casita de adobe con su porongo de leche --}}
+        <g transform="translate(820 770)">
+            <rect x="0" y="0" width="70" height="44" fill="#7a5638"/><path d="M-8 2 L35 -26 L78 2 Z" fill="#4a3424"/>
+            <rect x="26" y="18" width="16" height="26" fill="#2a1d14"/>
+            <path d="M92 26 L110 26 L114 46 L88 46 Z" fill="#c9d3da"/><rect x="95" y="20" width="12" height="7" rx="2" fill="#aab5bd"/>
+        </g>
+
+        <rect width="1600" height="900" fill="url(#sombra)"/>
+    </svg>
+
+    <div class="login-intro">
+        <div class="marca grande">Ecolácteos <em>Huata</em></div>
+        <p>De la vaca a la planta: el acopio de leche, su calidad, la producción y las ventas de Huata en un solo lugar.</p>
+        <div class="chips">
+            <span>🥛 Acopio en campo</span><span>🔬 Calidad de leche</span><span>🧀 Planta y ventas</span>
+        </div>
+    </div>
+
     <form @submit.prevent="entrar()">
         <div class="marca">Ecolácteos <em>Huata</em></div>
         <div class="marca-sub">OFICINA · ADMINISTRACIÓN Y COMPRAS</div>
