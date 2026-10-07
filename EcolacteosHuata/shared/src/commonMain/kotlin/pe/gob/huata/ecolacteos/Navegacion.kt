@@ -56,6 +56,8 @@ fun destinosDe(rol: Rol, real: Boolean = Sesion.desdeServidor): List<Destino> = 
         Destino("admin/dinero", "Dinero", "Ventas, pagos y costos", Icons.Outlined.Savings),
         Destino("admin/padron", "Padrón", "Proveedores, trabajadores y cambios", Icons.Outlined.People),
         Destino("admin/planta", "Planta", "Compras, almacén, producción, ventas y kardex", Icons.Outlined.Inventory2),
+        // como Administración > Configuración en la web
+        Destino("admin/config", "Ajustes", "Precios, calidad, almacén, vehículos y rutas", Icons.Outlined.Settings),
     )
     else -> destinosDemo(rol)
 }

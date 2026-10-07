@@ -55,6 +55,7 @@ fun ContenidoAdminReal(ruta: String, e: EstadoAdmin) {
                 else -> KardexCompleto()
             }
         }
+        "admin/config" -> ConfiguracionReal()
         // rutas anteriores (por si alguna pantalla las usa todavía)
         "admin/totales" -> TotalesReal(e)
         "admin/negocio" -> DineroReal(e)
