@@ -20,6 +20,9 @@ object ConfigServidor {
     var baseUrl = "http://10.0.2.2:8000"
 }
 
+/** Se ve en la pantalla de ingreso. Igual que versionName en androidApp/build.gradle.kts. */
+const val VERSION_APP = "1.1"
+
 /** Sesión del usuario contra el servidor: token, rol y datos reales. */
 object Sesion {
     var token: String? = null

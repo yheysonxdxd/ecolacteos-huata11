@@ -148,6 +148,8 @@ fun PantallaLogin(hayRed: Boolean, onEntrar: (Rol) -> Unit) {
             TextButton(onClick = { modoDemo = true }) {
                 Text("Entrar en modo demo (sin servidor)", style = Texto.Apoyo, color = Altiplano.TextoSecundario)
             }
+            // para saber qué APK tiene cada celular
+            Text("Versión ${pe.gob.huata.ecolacteos.datos.VERSION_APP}", style = Texto.Apoyo, color = Altiplano.TextoApagado)
         }
     }
 }

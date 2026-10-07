@@ -17,6 +17,7 @@ import pe.gob.huata.ecolacteos.tema.*
 import pe.gob.huata.ecolacteos.ui.componentes.*
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.hours
+import kotlin.time.Instant
 
 /** Estado de Compras de insumos (sobrevive al cambiar de pestaña). */
 object CompraInsumos {
@@ -283,7 +284,7 @@ private fun RecibirOrden(o: JsonObject, d: JsonObject) {
             Box(Modifier.weight(1f)) { CampoTexto(serie, { serie = it.uppercase().filter(Char::isLetterOrDigit).take(4) }, if (clave == "FACTURA") "Serie (F001)" else "Serie (B001)") }
             Box(Modifier.weight(1.4f)) { CampoTexto(numero, { numero = it.filter(Char::isDigit).take(8) }, "Número", KeyboardType.Number) }
         }
-        CampoTexto(fecha, { fecha = it.filter { ch -> ch.isDigit() || ch == '-' }.take(10) }, "Fecha del comprobante (AAAA-MM-DD)", KeyboardType.Number)
+        CampoFecha(fecha, { fecha = it }, "Fecha del comprobante")
 
         Seccion("¿Cuánto se pagó? (con IGV)")
         Tarjeta {
@@ -461,6 +462,41 @@ private fun Vendedores() {
             }
         }
     }
+}
+
+/** Fecha que se elige en un calendario (no se escribe); no deja elegir días que todavía no llegan. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CampoFecha(valor: String, onCambio: (String) -> Unit, etiqueta: String) {
+    var abierto by remember { mutableStateOf(false) }
+    Tarjeta(onClick = { abierto = true }) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(etiqueta, style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+                Text(fechaCorta(valor) + " " + valor.take(4) + if (valor == hoyLima()) " (hoy)" else "", style = Texto.Fila, color = Altiplano.Texto)
+            }
+            Text("Cambiar", style = Texto.Apoyo, color = Altiplano.CelesteAcento)
+        }
+    }
+    if (!abierto) return
+    // el calendario trabaja en milisegundos UTC a medianoche
+    val hoy = Instant.parse("${hoyLima()}T00:00:00Z").toEpochMilliseconds()
+    val estado = rememberDatePickerState(
+        initialSelectedDateMillis = Instant.parse("${valor}T00:00:00Z").toEpochMilliseconds(),
+        selectableDates = object : SelectableDates {
+            override fun isSelectableDate(utcTimeMillis: Long) = utcTimeMillis <= hoy
+        },
+    )
+    DatePickerDialog(
+        onDismissRequest = { abierto = false },
+        confirmButton = {
+            TextButton(onClick = {
+                estado.selectedDateMillis?.let { onCambio(Instant.fromEpochMilliseconds(it).toString().take(10)) }
+                abierto = false
+            }) { Text("Listo") }
+        },
+        dismissButton = { TextButton(onClick = { abierto = false }) { Text("Cancelar") } },
+    ) { DatePicker(estado, showModeToggle = false) }
 }
 
 @Composable
