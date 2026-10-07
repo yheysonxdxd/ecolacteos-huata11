@@ -52,7 +52,8 @@ fun ContenidoCalidadReal(ruta: String, irA: (Int) -> Unit) {
         }
     }
     when (ruta) {
-        "calidad/cola" -> MuestreoReal(irA) // antes ColaReal: calidad ahora es por muestreo
+        // Muestreo y Diagnóstico en un solo botón: se elige de la lista y ahí mismo se analiza
+        "calidad/cola" -> if (CalidadReal.seleccion == null) MuestreoReal(irA) else DiagnosticoReal(irA)
         "calidad/diagnostico" -> DiagnosticoReal(irA)
         "calidad/infractores" -> InfractoresReal()
         else -> HistorialReal()
@@ -81,7 +82,7 @@ private fun ColaReal(irA: (Int) -> Unit) {
                     x.txt("proveedor"),
                     "${x.txt("comunidad")} · ${x.txt("vehiculo")} · ${fechaCorta(x.txt("fecha"))} ${x.txt("hora")}" +
                         if (kotlin.math.abs(desvio) >= 20) " · ${if (desvio > 0) "+" else ""}${formatear(desvio, 0)} % vs. promedio" else "",
-                    onClick = { CalidadReal.limpiar(); CalidadReal.seleccion = x; CalidadReal.mensaje = null; irA(1) },
+                    onClick = { CalidadReal.limpiar(); CalidadReal.seleccion = x; CalidadReal.mensaje = null; irA(0) },
                     borde = if (kotlin.math.abs(desvio) >= 20) Altiplano.AvisoBorde else Altiplano.VerdeBorde,
                 ) {
                     Text("${formatear(x.num("litros"))} L", style = Texto.Fila, color = Altiplano.Texto)
@@ -147,11 +148,13 @@ private fun DiagnosticoReal(irA: (Int) -> Unit) {
     }
 
     if (x == null) {
-        // sin nadie elegido: la misma lista de Muestreo, para elegir aquí mismo
-        MuestreoReal(irA, aviso = "Elige a quién analizar: toca un proveedor y aquí aparecen los valores del lactoscan.")
+        MuestreoReal(irA)
         return
     }
     PantallaScroll {
+        TextButton(onClick = { CalidadReal.limpiar(); error = null }, enabled = !CalidadReal.enviando) {
+            Text("← Volver a la lista", color = Altiplano.CelesteAcento)
+        }
         FilaLista(x.txt("proveedor"), "${x.txt("comunidad")} · ${x.txt("vehiculo")} · ${fechaCorta(x.txt("fecha"))}") {
             Text("${formatear(x.num("litros"))} L", style = Texto.Fila, color = Altiplano.Texto)
         }

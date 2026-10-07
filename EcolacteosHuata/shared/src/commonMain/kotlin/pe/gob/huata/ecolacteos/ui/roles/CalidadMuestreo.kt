@@ -18,7 +18,7 @@ import kotlin.math.abs
  * GET /calidad/muestreo → entregas de hoy y ayer sin análisis.
  */
 @Composable
-fun MuestreoReal(irA: (Int) -> Unit, aviso: String? = null) {
+fun MuestreoReal(irA: (Int) -> Unit) {
     var buscar by remember { mutableStateOf("") }
 
     CargaServidor("/api/v1/calidad/muestreo", clave = CalidadReal.version) { d, recargar ->
@@ -32,10 +32,9 @@ fun MuestreoReal(irA: (Int) -> Unit, aviso: String? = null) {
         val analizadas = d.num("analizadas_hoy").toInt()
 
         PantallaScroll {
-            aviso?.let { AvisoCampo(it) }
             CalidadReal.mensaje?.let { AvisoCampo(it, esAlerta = CalidadReal.mensajeGrave) }
             Text(
-                "No hace falta analizar a todos: elige a cualquier proveedor. " +
+                "No hace falta analizar a todos: toca a cualquier proveedor y anota lo que marca el lactoscan. " +
                     "Las entregas ya cuentan como aceptadas; si la muestra sale mal, el diagnóstico la corrige.",
                 style = Texto.Cuerpo, color = Altiplano.TextoTerciario,
             )
@@ -68,7 +67,7 @@ fun MuestreoReal(irA: (Int) -> Unit, aviso: String? = null) {
                         x.txt("proveedor"),
                         "${x.txt("comunidad")} · ${x.txt("vehiculo")} · ${x.txt("hora")}" +
                             if (abs(desvio) >= 20) " · ${if (desvio > 0) "+" else ""}${formatear(desvio, 0)} % vs. promedio" else "",
-                        onClick = { CalidadReal.limpiar(); CalidadReal.seleccion = x; CalidadReal.mensaje = null; irA(1) },
+                        onClick = { CalidadReal.limpiar(); CalidadReal.seleccion = x; CalidadReal.mensaje = null; irA(0) }, // se abre el diagnóstico aquí mismo
                         // un desvío grande no obliga, pero ayuda a decidir a quién muestrear
                         borde = if (abs(desvio) >= 20) Altiplano.AvisoBorde else Altiplano.Borde,
                     ) {

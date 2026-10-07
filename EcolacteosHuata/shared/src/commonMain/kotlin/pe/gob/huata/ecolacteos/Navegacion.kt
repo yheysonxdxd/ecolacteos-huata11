@@ -48,6 +48,12 @@ fun destinosDe(rol: Rol, real: Boolean = Sesion.desdeServidor): List<Destino> = 
         Destino("compras/ventas", "Ventas", "Vender, clientes y notas de venta", Icons.Outlined.Sell),
         Destino("compras/kardex", "Kardex", "Entradas y salidas", Icons.Outlined.SwapHoriz),
     )
+    Rol.CALIDAD -> listOf(
+        // elegir a quién y analizarlo es un solo paso: tocar en la lista abre el diagnóstico
+        Destino("calidad/cola", "Muestreo", "Toca a un proveedor para analizar su leche", Icons.Outlined.Science),
+        Destino("calidad/infractores", "Infractores", "Adulteración y leche significada", Icons.Outlined.ReportProblem),
+        Destino("calidad/historial", "Historial", "Por proveedor y acopiador", Icons.Outlined.History),
+    )
     Rol.ADMIN -> listOf(
         // llega la leche → se analiza → se paga; el padrón (se toca poco) y la planta después
         Destino("admin/acopio", "Acopio", "Totales y conciliación", Icons.Outlined.PieChart),
