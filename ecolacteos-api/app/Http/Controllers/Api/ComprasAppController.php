@@ -36,13 +36,17 @@ class ComprasAppController extends Controller
     public function inventario()
     {
         $costos = $this->costos();
+        $vendedores = Compras::ultimosVendedores();
         $insumos = DB::table('insumos')->orderBy('nombre')->get()->map(fn ($i) => [
             'id' => $i->id, 'nombre' => $i->nombre, 'unidad' => $i->unidad,
             'stock' => (float) $i->stock, 'minimo' => (float) $i->stock_minimo,
-            'costo' => (float) ($costos[$i->id] ?? 0),
+            'costo' => (float) ($costos[$i->id] ?? 0),               // lo que se pagó por unidad la última vez
+            'ultimo_vendedor_id' => $vendedores[$i->id] ?? null,      // a quién se le compró la última vez
         ]);
+        $avisos = Formulas::avisos();
 
-        return response()->json(['insumos' => $insumos, 'productos' => $this->productos(), 'avisos' => Formulas::avisos()]);
+        return response()->json(['insumos' => $insumos, 'productos' => $this->productos(), 'avisos' => $avisos,
+            'por_comprar' => Compras::porComprar($avisos)]);
     }
 
     /** GET /api/v1/compras/ventas-datos — productos con stock y precios, y clientes. */

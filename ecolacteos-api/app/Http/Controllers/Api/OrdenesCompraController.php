@@ -18,6 +18,9 @@ use Illuminate\Validation\Rule;
  * 2. Recibir ("Llegó"): el comprobante que entregó (factura, boleta o recibo),
  *    lo que de verdad se pagó por cada insumo y, si se quiere, la foto del
  *    comprobante. Recién ahí sube el stock.
+ * O las dos cosas a la vez ("Ya lo compré"): lo más común, se compra y se
+ * vuelve con la boleta en la mano.
+ * Con foto, la serie y el número del comprobante son opcionales (se ven en la foto).
  * La foto se ve con un enlace firmado de 30 minutos, como la nota de venta.
  */
 class OrdenesCompraController extends Controller
@@ -123,6 +126,36 @@ class OrdenesCompraController extends Controller
     }
 
     /**
+     * POST /api/v1/compras/ordenes/directa — "Ya lo compré": emite la orden y la recibe en un solo paso.
+     * { vendedor_id, items: [{ insumo_id, cantidad, costo_real }], comprobante_tipo,
+     *   comprobante_serie?, comprobante_numero?, comprobante_fecha, foto? }
+     */
+    public function directa(Request $r)
+    {
+        $r->validate([
+            'items' => ['required', 'array', 'min:1', 'max:20'],
+            'items.*.insumo_id' => ['required', 'integer'],
+            'items.*.costo_real' => ['required', 'numeric', 'min:0'],
+        ], [
+            'items.required' => 'Agrega al menos un insumo.',
+            'items.*.insumo_id.required' => 'Elige el insumo de cada línea.',
+            'items.*.costo_real.required' => 'Escribe cuánto se pagó por cada insumo.',
+            'items.*.costo_real.min' => 'Lo pagado no puede ser negativo.',
+        ]);
+        $pagado = collect($r->input('items'))->mapWithKeys(fn ($i) => [$i['insumo_id'] => $i['costo_real']]);
+
+        // si el comprobante falla (repetido, factura sin RUC…) no queda la orden a medias
+        return DB::transaction(function () use ($r, $pagado) {
+            $orden = $this->emitir($r)->getData();
+            $r->merge(['items' => DB::table('orden_compra_items')->where('orden_compra_id', $orden->id)->get(['id', 'insumo_id'])
+                ->map(fn ($it) => ['id' => $it->id, 'costo_real' => $pagado[$it->insumo_id]])->all()]);
+            $recibida = $this->recibir($r, $orden->id)->getData(true);
+
+            return response()->json($recibida + ['id' => $orden->id], 201);
+        });
+    }
+
+    /**
      * POST /api/v1/compras/ordenes/{id}/recibir
      * { comprobante_tipo, comprobante_serie?, comprobante_numero?, comprobante_fecha,
      *   items: [{ id, costo_real }], vendedor_id?, foto? (base64) }
@@ -130,7 +163,8 @@ class OrdenesCompraController extends Controller
     public function recibir(Request $r, int $id)
     {
         $r->merge(['comprobante_serie' => $r->filled('comprobante_serie') ? strtoupper(trim($r->input('comprobante_serie'))) : null]);
-        $conNumero = Rule::requiredIf(fn () => in_array($r->input('comprobante_tipo'), ['FACTURA', 'BOLETA'], true));
+        // factura y boleta llevan serie y número, salvo que manden la foto (ahí se ven)
+        $conNumero = Rule::requiredIf(fn () => in_array($r->input('comprobante_tipo'), ['FACTURA', 'BOLETA'], true) && ! $r->filled('foto'));
         $data = $r->validate([
             'comprobante_tipo' => ['required', Rule::in(array_keys(Compras::COMPROBANTES))],
             'comprobante_serie' => [$conNumero, 'nullable', 'regex:/^[A-Z0-9]{1,4}$/'],
@@ -171,9 +205,9 @@ class OrdenesCompraController extends Controller
             abort_if($tipo === 'FACTURA' && $vendedor?->tipo_documento !== 'RUC', 422,
                 'Solo se puede registrar factura si el vendedor tiene RUC. Si te dio boleta, elige boleta.');
 
-            $serie = $tipo === 'RECIBO' ? ($data['comprobante_serie'] ?? null) : $data['comprobante_serie'];
+            $serie = $data['comprobante_serie'] ?? null;
             $numero = isset($data['comprobante_numero']) ? (ltrim($data['comprobante_numero'], '0') ?: '0') : null;
-            if ($tipo !== 'RECIBO' && $vendedorId) {
+            if ($tipo !== 'RECIBO' && $vendedorId && $numero !== null) {
                 $repetida = DB::table('ordenes_compra')->where('id', '!=', $id)->where('vendedor_id', $vendedorId)
                     ->where('comprobante_tipo', $tipo)->where('comprobante_serie', $serie)->where('comprobante_numero', $numero)->value('codigo');
                 abort_if($repetida, 422, "Ese comprobante ya se registró en la orden $repetida.");

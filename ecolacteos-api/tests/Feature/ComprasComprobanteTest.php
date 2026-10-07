@@ -202,6 +202,52 @@ class ComprasComprobanteTest extends TestCase
         $this->assertSame('RECIBIDA', DB::table('ordenes_compra')->where('id', $id)->value('estado'));
     }
 
+    public function test_ya_lo_compre_en_un_solo_paso(): void
+    {
+        Storage::fake('local');
+        $rosa = $this->vendedor('DNI', '41234567', 'Rosa Mamani');
+        $hoy = now('America/Lima')->toDateString();
+
+        // boleta con foto: la serie y el número no hacen falta (se ven en la foto)
+        $r = $this->postJson('/api/v1/compras/ordenes/directa', [
+            'vendedor_id' => $rosa, 'comprobante_tipo' => 'BOLETA', 'comprobante_fecha' => $hoy, 'foto' => self::FOTO,
+            'items' => [['insumo_id' => $this->sal, 'cantidad' => 20, 'costo_real' => 40], ['insumo_id' => $this->cuajo, 'cantidad' => 1, 'costo_real' => 130]],
+        ])->assertCreated()->assertJsonPath('estado', 'RECIBIDA')->assertJsonPath('total', 170)->assertJsonPath('comprobante', 'Boleta');
+
+        $o = DB::table('ordenes_compra')->find($r->json('id'));
+        $this->assertSame('RECIBIDA', $o->estado);
+        $this->assertNotNull($o->foto);
+        $this->assertEquals(25, DB::table('insumos')->where('id', $this->sal)->value('stock'));
+        $this->assertEquals(1.2, DB::table('insumos')->where('id', $this->cuajo)->value('stock'));
+
+        // la próxima compra sugiere el precio y la vendedora de la última vez
+        $inv = collect($this->getJson('/api/v1/compras/inventario')->json('insumos'))->keyBy('id');
+        $this->assertEquals(2, $inv[$this->sal]['costo']);
+        $this->assertSame($rosa, $inv[$this->sal]['ultimo_vendedor_id']);
+
+        // boleta sin foto y sin número: no; y la orden no queda a medias
+        $antes = DB::table('ordenes_compra')->count();
+        $this->postJson('/api/v1/compras/ordenes/directa', [
+            'vendedor_id' => $rosa, 'comprobante_tipo' => 'BOLETA', 'comprobante_fecha' => $hoy,
+            'items' => [['insumo_id' => $this->sal, 'cantidad' => 5, 'costo_real' => 10]],
+        ])->assertStatus(422)->assertJsonValidationErrors('comprobante_numero');
+        // factura a una persona con DNI: tampoco
+        $this->postJson('/api/v1/compras/ordenes/directa', [
+            'vendedor_id' => $rosa, 'comprobante_tipo' => 'FACTURA', 'comprobante_serie' => 'F001', 'comprobante_numero' => '3',
+            'comprobante_fecha' => $hoy, 'items' => [['insumo_id' => $this->sal, 'cantidad' => 5, 'costo_real' => 10]],
+        ])->assertStatus(422);
+        $this->assertSame($antes, DB::table('ordenes_compra')->count());
+        $this->assertEquals(25, DB::table('insumos')->where('id', $this->sal)->value('stock'));
+    }
+
+    public function test_comprar_lo_que_falta(): void
+    {
+        // sal: 5 de mínimo 15 · cuajo: 0.2 de mínimo 0.5 → bajo el mínimo, comprar hasta el doble del mínimo
+        $falta = collect($this->getJson('/api/v1/compras/inventario')->assertOk()->json('por_comprar'))->keyBy('insumo_id');
+        $this->assertEquals(25, $falta[$this->sal]['cantidad']);
+        $this->assertEquals(0.8, $falta[$this->cuajo]['cantidad']);
+    }
+
     public function test_solo_compras_y_admin(): void
     {
         Sanctum::actingAs($this->usuarios['OPERARIO']);

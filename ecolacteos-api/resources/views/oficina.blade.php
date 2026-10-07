@@ -668,9 +668,15 @@
 
         {{-- ---------------------------------------------------- ÓRDENES --}}
         <section x-show="seccion === 'ordenes' && !cargando && !error">
-            <div class="fila"><h1>Compras de insumos</h1><div class="espacio"></div><button class="btn" @click="abrirOrden()">+ Nueva orden</button></div>
-            <p class="sub">A quién se le compró cada insumo y con qué comprobante. Cuando llegue lo pedido, toca <strong>Llegó</strong> y registra la factura, boleta o recibo.
-                Se ve mes por mes; lo que está <strong>por llegar</strong> sale siempre arriba, sea del mes que sea.</p>
+            <div class="fila"><h1>Compras de insumos</h1><div class="espacio"></div>
+                <button class="btn gris" x-show="(d.inv?.por_comprar || []).length" @click="abrirCompra(true)"
+                        x-text="'Comprar lo que falta (' + (d.inv?.por_comprar || []).length + ')'"></button>
+                <button class="btn" @click="abrirCompra()">+ Nueva compra</button></div>
+            <div class="aviso" x-show="(d.inv?.por_comprar || []).length" style="margin-bottom: 12px">
+                Falta: <span x-text="(d.inv?.por_comprar || []).map((p) => insumoDe(p.insumo_id)?.nombre).filter(Boolean).join(', ')"></span>.
+                Toca <strong>Comprar lo que falta</strong> y la compra se llena sola.</div>
+            <p class="sub">Toca <strong>+ Nueva compra</strong>: si ya lo compraste, anotas lo que pagaste y la foto de la boleta y el stock sube al toque.
+                Si lo pides y llega después, cuando llegue toca <strong>Llegó</strong>. Se ve mes por mes; lo que está <strong>por llegar</strong> sale siempre arriba.</p>
             {{-- vendedores arriba y plegados: se ven al entrar y se abren con un clic --}}
             <div style="background: var(--superficie); border: 1px solid var(--borde); border-radius: var(--radio); padding: 10px 14px; margin: 4px 0 18px"><div class="fila">
                 <h2 style="margin:0; font-size: 17px; cursor: pointer; user-select: none" @click="plegarVendedores(!vendedoresAbiertos)"
@@ -1185,10 +1191,14 @@
             <button class="btn" @click="guardarFormula()" :disabled="!!f.enviando" x-text="f.enviando ? 'Guardando…' : 'Guardar fórmula'"></button></div>
     </div>
 
-    {{-- nueva orden de compra --}}
-    <div class="ventana ancha" x-show="ventana === 'orden'">
-        <h3>Nueva orden de compra</h3>
-        <label>¿A quién se le compra?</label>
+    {{-- nueva compra: "ya lo compré" (en un paso) o "lo pido" (llega después) --}}
+    <div class="ventana ancha" x-show="ventana === 'compra'">
+        <h3>Nueva compra de insumos</h3>
+        <div class="opciones">
+            <button :class="{ activo: f.modo === 'directa' }" @click="f.modo = 'directa'">Ya lo compré</button>
+            <button :class="{ activo: f.modo === 'orden' }" @click="f.modo = 'orden'">Lo pido, llega después</button>
+        </div>
+        <label x-text="f.modo === 'orden' ? '¿A quién se le pide?' : '¿A quién se le compró?'"></label>
         <div class="fila" style="gap: 8px">
             <select x-model.number="f.vendedor_id" style="flex: 1">
                 <option :value="null">Elige el vendedor…</option>
@@ -1196,23 +1206,47 @@
             </select>
             <button class="btn chico gris" @click="abrirVendedor(null, true)">+ Nuevo vendedor</button>
         </div>
-        <label>Insumos</label>
-        <template x-for="(it, k) in f.items" :key="k">
-            <div class="fila" style="gap: 8px; margin-bottom: 6px">
-                <select x-model.number="it.insumo_id" style="flex: 2">
-                    <option :value="null">Elige el insumo…</option>
-                    <template x-for="i in d.inv?.insumos || []" :key="i.id"><option :value="i.id" :selected="it.insumo_id === i.id" x-text="i.nombre + ' · hay ' + num(i.stock, 3) + ' ' + i.unidad"></option></template>
-                </select>
-                <input type="number" min="0" step="0.001" x-model="it.cantidad" placeholder="Cantidad" style="flex: 1">
-                <span style="width: 40px" x-text="insumoDe(it.insumo_id)?.unidad || ''"></span>
-                <button class="btn chico gris" x-show="f.items.length > 1" @click="f.items.splice(k, 1)">Quitar</button>
+        <label x-text="f.modo === 'orden' ? 'Insumos y cantidad' : 'Insumos, cantidad y cuánto se pagó (con IGV)'"></label>
+        <template x-for="(it, k) in f.items || []" :key="k">
+            <div style="margin-bottom: 8px">
+                <div class="fila" style="gap: 8px">
+                    <select x-model.number="it.insumo_id" @change="elegirInsumoCompra(it)" style="flex: 2">
+                        <option :value="null">Elige el insumo…</option>
+                        <template x-for="i in d.inv?.insumos || []" :key="i.id"><option :value="i.id" :selected="it.insumo_id === i.id" x-text="i.nombre + ' · hay ' + num(i.stock, 3) + ' ' + i.unidad"></option></template>
+                    </select>
+                    <input type="number" min="0" step="0.001" x-model="it.cantidad" @input="sugerirPrecio(it)" placeholder="Cantidad" style="flex: 1">
+                    <span style="width: 40px" x-text="insumoDe(it.insumo_id)?.unidad || ''"></span>
+                    <input type="number" min="0" step="0.01" x-show="f.modo === 'directa'" x-model="it.pagado" @input="it.pagoTocado = true" placeholder="S/ pagado" style="flex: 1">
+                    <button class="btn chico gris" x-show="f.items.length > 1" @click="f.items.splice(k, 1)">Quitar</button>
+                </div>
+                <div class="sub" style="margin: 2px 0 0" x-show="it.insumo_id && f.modo === 'directa'" x-text="precioUnidad(it)"></div>
             </div>
         </template>
-        <button class="btn chico gris" @click="f.items.push({ insumo_id: null, cantidad: '' })">+ Otro insumo</button>
-        <p class="sub" x-text="'Costo estimado (según la última compra): ' + soles(costoEstimadoOrden())"></p>
+        <button class="btn chico gris" @click="f.items.push(lineaCompra(null, ''))">+ Otro insumo</button>
+        <p class="sub" x-show="f.modo === 'orden'" x-text="'Costo estimado (según la última compra): ' + soles(costoEstimadoOrden())"></p>
+        <template x-if="f.modo === 'directa'"><div>
+            <p style="margin: 8px 0 0"><strong x-text="'Total pagado: ' + soles(totalCompra())"></strong>
+                <span class="sub" x-show="f.tipo === 'FACTURA'" x-text="' · IGV ' + soles(totalCompra() - Math.round(totalCompra() / 1.18 * 100) / 100)"></span></p>
+            <label>¿Qué te dieron?</label>
+            <div class="opciones">
+                <template x-for="(texto, clave) in d.comprobantes || {}" :key="clave">
+                    <button :class="{ activo: f.tipo === clave }" @click="f.tipo = clave" x-text="texto"></button>
+                </template>
+            </div>
+            <p class="sub" style="margin: 6px 0 0" x-show="f.tipo === 'FACTURA' && vendedorRecibir()?.tipo_documento !== 'RUC'">Ojo: solo hay factura si el vendedor tiene RUC.</p>
+            <label>Foto del comprobante <span class="sub" x-show="f.tipo && f.tipo !== 'RECIBO'">(con la foto no hace falta escribir la serie ni el número)</span></label>
+            <input type="file" accept="image/*" @change="elegirFoto($event)">
+            <img x-show="f.foto" :src="f.foto" alt="Foto del comprobante" style="max-height: 160px; margin-top: 8px; border-radius: 8px">
+            <div class="dos" x-show="f.tipo && f.tipo !== 'RECIBO'">
+                <div><label x-text="'Serie' + (f.foto ? ' (opcional)' : '')"></label><input x-model="f.serie" maxlength="4" :placeholder="f.tipo === 'FACTURA' ? 'F001' : 'B001'" @input="f.serie = f.serie.toUpperCase()"></div>
+                <div><label x-text="'Número' + (f.foto ? ' (opcional)' : '')"></label><input x-model="f.numero" maxlength="8" placeholder="00001234" @input="f.numero = f.numero.replace(/\D/g, '')"></div>
+            </div>
+            <label>Fecha del comprobante</label><input type="date" x-model="f.fecha" :max="hoy()">
+        </div></template>
         <div class="aviso error" x-show="f.error" x-text="f.error"></div>
         <div class="pie"><button class="btn gris" @click="ventana = null">Cancelar</button>
-            <button class="btn" @click="emitirOrden()" :disabled="!!f.enviando" x-text="f.enviando ? 'Emitiendo…' : 'Emitir orden'"></button></div>
+            <button class="btn" @click="guardarCompra()" :disabled="!!f.enviando"
+                    x-text="f.enviando ? 'Guardando…' : (f.modo === 'orden' ? 'Anotar pedido' : 'Guardar y subir stock')"></button></div>
     </div>
 
     {{-- llegó la compra: comprobante, lo pagado y la foto --}}
@@ -1234,8 +1268,8 @@
         </div>
         <p class="sub" style="margin: 6px 0 0" x-show="f.tipo === 'FACTURA' && vendedorRecibir()?.tipo_documento !== 'RUC'">Ojo: solo hay factura si el vendedor tiene RUC.</p>
         <div class="dos" x-show="f.tipo && f.tipo !== 'RECIBO'">
-            <div><label>Serie</label><input x-model="f.serie" maxlength="4" :placeholder="f.tipo === 'FACTURA' ? 'F001' : 'B001'" @input="f.serie = f.serie.toUpperCase()"></div>
-            <div><label>Número</label><input x-model="f.numero" maxlength="8" placeholder="00001234" @input="f.numero = f.numero.replace(/\D/g, '')"></div>
+            <div><label x-text="'Serie' + (f.foto ? ' (opcional)' : '')"></label><input x-model="f.serie" maxlength="4" :placeholder="f.tipo === 'FACTURA' ? 'F001' : 'B001'" @input="f.serie = f.serie.toUpperCase()"></div>
+            <div><label x-text="'Número' + (f.foto ? ' (opcional)' : '')"></label><input x-model="f.numero" maxlength="8" placeholder="00001234" @input="f.numero = f.numero.replace(/\D/g, '')"></div>
         </div>
         <label>Fecha del comprobante</label><input type="date" x-model="f.fecha" :max="hoy()">
         <label>¿Cuánto se pagó por cada insumo? (con IGV)</label>
@@ -1246,7 +1280,7 @@
             <tr x-show="f.tipo === 'FACTURA'"><td>IGV 18 %</td><td class="num" x-text="soles(totalRecibir() - subtotalFactura())"></td></tr>
             <tr><td><strong>Total</strong></td><td class="num"><strong x-text="soles(totalRecibir())"></strong></td></tr>
         </table>
-        <label>Foto del comprobante (opcional)</label>
+        <label>Foto del comprobante <span class="sub">(con la foto no hace falta escribir la serie ni el número)</span></label>
         <input type="file" accept="image/*" @change="elegirFoto($event)">
         <img x-show="f.foto" :src="f.foto" alt="Foto del comprobante" style="max-height: 160px; margin-top: 8px; border-radius: 8px">
         <div class="aviso error" x-show="f.error" x-text="f.error"></div>

@@ -651,24 +651,66 @@ function oficina() {
       } catch (e) { this.f.error = e.message; } finally { this.f.enviando = false; }
     },
 
-    // --------------------------------------------------------------- órdenes
-    abrirOrden() {
-      this.f = { vendedor_id: null, items: [{ insumo_id: null, cantidad: '' }], error: null, enviando: false };
-      this.ventana = 'orden';
+    // --------------------------------------------------------------- compras
+    /**
+     * Una sola ventana para comprar: "Ya lo compré" (lo común: se compra y se vuelve con la boleta)
+     * o "Lo pido" (llega después y se registra con "Llegó"). [loQueFalta]: ya llena con lo que falta.
+     * El precio sale de la última compra y el vendedor, de a quién se le compró la última vez.
+     */
+    abrirCompra(loQueFalta = false) {
+      const items = loQueFalta
+        ? (this.d.inv?.por_comprar || []).map((p) => this.lineaCompra(p.insumo_id, p.cantidad))
+        : [this.lineaCompra(null, '')];
+      this.f = { modo: 'directa', vendedor_id: null, items, tipo: null, serie: '', numero: '', fecha: this.hoy(),
+        foto: null, error: null, enviando: false };
+      items.forEach((l) => this.sugerirVendedor(l));
+      this.ventana = 'compra';
+    },
+    lineaCompra(insumo_id, cantidad) {
+      const l = { insumo_id, cantidad, pagado: '', pagoTocado: false };
+      this.sugerirPrecio(l);
+      return l;
     },
     insumoDe(id) { return (this.d.inv?.insumos || []).find((i) => i.id === id); },
+    /** Lo que se pagó la última vez por unidad × la cantidad; si ya se escribió a mano, no se toca. */
+    sugerirPrecio(l) {
+      if (l.pagoTocado) return;
+      const c = this.insumoDe(l.insumo_id)?.costo || 0;
+      l.pagado = c && Number(l.cantidad) > 0 ? Math.round(c * Number(l.cantidad) * 100) / 100 : '';
+    },
+    /** Si todavía no se eligió a quién, el último que vendió ese insumo (si sigue activo). */
+    sugerirVendedor(l) {
+      const v = this.insumoDe(l.insumo_id)?.ultimo_vendedor_id;
+      if (!this.f.vendedor_id && v && (this.d.vendedores || []).some((x) => x.id === v)) this.f.vendedor_id = v;
+    },
+    elegirInsumoCompra(l) { this.sugerirPrecio(l); this.sugerirVendedor(l); },
+    precioUnidad(l) { const c = this.insumoDe(l.insumo_id)?.costo; return c ? `última vez ${this.cu(c)} por ${this.insumoDe(l.insumo_id).unidad}` : 'primera compra'; },
     costoEstimadoOrden() {
       return (this.f.items || []).reduce((t, it) => t + (Number(it.cantidad) || 0) * (this.insumoDe(it.insumo_id)?.costo || 0), 0);
     },
-    async emitirOrden() {
+    totalCompra() { return (this.f.items || []).reduce((t, l) => t + (Number(l.pagado) || 0), 0); },
+    async guardarCompra() {
       const f = this.f;
-      if (!f.vendedor_id) return (f.error = 'Elige a quién se le compra');
+      if (!f.vendedor_id) return (f.error = 'Elige a quién se le compró');
       const items = f.items.filter((it) => it.insumo_id);
       if (!items.length) return (f.error = 'Elige al menos un insumo');
       if (items.some((it) => !(Number(it.cantidad) > 0))) return (f.error = 'Escribe la cantidad de cada insumo');
       if (new Set(items.map((it) => it.insumo_id)).size !== items.length) return (f.error = 'Hay un insumo repetido: junta las cantidades');
-      await this.enviar('/compras/ordenes', { vendedor_id: f.vendedor_id, items: items.map((it) => ({ insumo_id: it.insumo_id, cantidad: Number(it.cantidad) })) },
-        null, (r) => `✓ Orden ${r.codigo} emitida · costo estimado ${soles(r.costo_estimado)}. Cuando llegue, toca "Llegó" y registra el comprobante.`);
+      if (f.modo === 'orden') {
+        return this.enviar('/compras/ordenes', { vendedor_id: f.vendedor_id, items: items.map((it) => ({ insumo_id: it.insumo_id, cantidad: Number(it.cantidad) })) },
+          null, (r) => `✓ Pedido ${r.codigo} anotado · costo estimado ${soles(r.costo_estimado)}. Cuando llegue, toca "Llegó" y registra el comprobante.`);
+      }
+      if (items.some((it) => it.pagado === '' || !(Number(it.pagado) >= 0))) return (f.error = 'Escribe cuánto se pagó por cada insumo');
+      if (!f.tipo) return (f.error = '¿Qué te dieron? Elige factura, boleta o recibo');
+      if (f.tipo === 'FACTURA' && this.vendedorRecibir()?.tipo_documento !== 'RUC') return (f.error = 'Solo hay factura si el vendedor tiene RUC. Si te dio boleta, elige boleta.');
+      if (f.tipo !== 'RECIBO' && !f.foto && (!f.serie.trim() || !/^\d{1,8}$/.test(f.numero.trim())))
+        return (f.error = 'Saca la foto de la boleta o factura, o escribe su serie y número');
+      if (!f.fecha) return (f.error = 'Elige la fecha del comprobante');
+      await this.enviar('/compras/ordenes/directa', {
+        vendedor_id: f.vendedor_id, comprobante_tipo: f.tipo, comprobante_serie: f.serie.trim() || null,
+        comprobante_numero: f.numero.trim() || null, comprobante_fecha: f.fecha, foto: f.foto,
+        items: items.map((it) => ({ insumo_id: it.insumo_id, cantidad: Number(it.cantidad), costo_real: Number(it.pagado) })),
+      }, null, (r) => `✓ Compra ${r.codigo} guardada con ${r.comprobante} por ${soles(r.total)}: el stock ya subió`);
     },
 
     // al recibir: comprobante, lo pagado por cada insumo y la foto
@@ -705,8 +747,8 @@ function oficina() {
       const f = this.f;
       if (!f.tipo) return (f.error = 'Elige qué comprobante te dieron');
       if (f.tipo === 'FACTURA' && this.vendedorRecibir()?.tipo_documento !== 'RUC') return (f.error = 'Solo hay factura si el vendedor tiene RUC. Si te dio boleta, elige boleta.');
-      if (f.tipo !== 'RECIBO' && !f.serie.trim()) return (f.error = 'Escribe la serie (ej. F001 o B001)');
-      if (f.tipo !== 'RECIBO' && !/^\d{1,8}$/.test(f.numero.trim())) return (f.error = 'Escribe el número del comprobante (solo dígitos)');
+      if (f.tipo !== 'RECIBO' && !f.foto && (!f.serie.trim() || !/^\d{1,8}$/.test(f.numero.trim())))
+        return (f.error = 'Saca la foto de la boleta o factura, o escribe su serie y número');
       if (!f.fecha) return (f.error = 'Escribe la fecha del comprobante');
       if (Object.values(f.pagos).some((v) => v === '' || Number(v) < 0)) return (f.error = 'Escribe cuánto se pagó por cada insumo');
       const o = f.orden;
@@ -771,7 +813,7 @@ function oficina() {
     resumenItems(o) { return o.items.map((it) => `${num(it.cantidad, 3)} ${it.unidad} ${it.insumo}`).join(' · '); },
 
     // ------------------------------------------------------------ vendedores
-    /** [volver]: se abrió desde "Nueva orden"; al guardar vuelve a la orden con el vendedor elegido. */
+    /** [volver]: se abrió desde "Nueva compra"; al guardar vuelve a la compra con el vendedor elegido. */
     abrirVendedor(v = null, volver = false) {
       this.fOrden = volver ? this.f : null;
       this.f = v
@@ -781,7 +823,7 @@ function oficina() {
       this.ventana = 'vendedor';
     },
     cerrarVendedor() {
-      if (this.fOrden) { this.f = this.fOrden; this.fOrden = null; this.ventana = 'orden'; } else this.ventana = null;
+      if (this.fOrden) { this.f = this.fOrden; this.fOrden = null; this.ventana = 'compra'; } else this.ventana = null;
     },
     async guardarVendedor() {
       const f = this.f;
@@ -795,9 +837,9 @@ function oficina() {
           telefono: f.telefono.trim() || null, direccion: f.direccion.trim() || null, ...(f.id ? { activo: f.activo } : {}) };
         const r = await this.api('/compras/vendedores' + (f.id ? '/' + f.id : ''), cuerpo);
         if (this.fOrden) {
-          const [ordenes, vend] = await Promise.all([this.api('/compras/ordenes'), this.api('/compras/vendedores')]);
-          this.d = { ...this.d, ...ordenes, todosVendedores: vend.vendedores };
-          this.f = this.fOrden; this.fOrden = null; this.f.vendedor_id = r.id; this.ventana = 'orden';
+          const compra = this.fOrden;
+          await this.cargar();
+          this.f = compra; this.fOrden = null; this.f.vendedor_id = r.id; this.ventana = 'compra';
         } else {
           this.ventana = null;
           this.aviso = { texto: `✓ ${r.nombre} ${f.id ? 'actualizado' : 'agregado'}` };

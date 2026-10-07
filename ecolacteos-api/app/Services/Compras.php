@@ -57,6 +57,36 @@ class Compras
             ->mapWithKeys(fn ($i) => [$i->insumo_id => round((float) ($i->costo_real ?? $i->costo_estimado) / (float) $i->cantidad, 4)]);
     }
 
+    /**
+     * A quién se le compró cada insumo la última vez (para sugerirlo en la próxima compra).
+     *
+     * @return Collection<int, int> insumo_id => vendedor_id
+     */
+    public static function ultimosVendedores(): Collection
+    {
+        return DB::table('orden_compra_items as it')->join('ordenes_compra as o', 'o.id', '=', 'it.orden_compra_id')
+            ->where('o.estado', '!=', 'ANULADA')->whereNotNull('o.vendedor_id')
+            ->orderBy('o.created_at')->orderBy('it.id')
+            ->get(['it.insumo_id', 'o.vendedor_id'])
+            ->mapWithKeys(fn ($i) => [$i->insumo_id => (int) $i->vendedor_id]);
+    }
+
+    /**
+     * "Comprar lo que falta": una línea por insumo con la cantidad sugerida en los
+     * avisos (si un insumo falta para queso y para yogurt, la mayor), redondeada
+     * hacia arriba a algo fácil de pedir: décimas si es poco, enteros si es 10 o más.
+     *
+     * @return array<int, array{insumo_id: int, cantidad: float}>
+     */
+    public static function porComprar(array $avisos): array
+    {
+        return collect($avisos)->where('comprar', '>', 0)->groupBy('insumo_id')
+            ->map(function ($a, $id) {
+                $c = (float) $a->max('comprar');
+                return ['insumo_id' => (int) $id, 'cantidad' => $c >= 10 ? ceil($c) : ceil($c * 10) / 10];
+            })->values()->all();
+    }
+
     /** Costo por unidad de un insumo dentro de una orden (para el kardex). */
     public static function costoEnOrden(?object $item): ?float
     {

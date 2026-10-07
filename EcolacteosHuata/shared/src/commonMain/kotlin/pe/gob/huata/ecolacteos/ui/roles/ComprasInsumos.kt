@@ -21,12 +21,14 @@ import kotlin.time.Instant
 
 /** Estado de Compras de insumos (sobrevive al cambiar de pestaña). */
 object CompraInsumos {
-    var pestana by mutableStateOf(0)            // Por llegar · Nueva orden · Recibidas · Vendedores
+    var pestana by mutableStateOf(0)            // Comprar · Por llegar · Recibidas · Vendedores
+    var modo by mutableStateOf(0)               // Comprar: 0 ya lo compré · 1 lo pido (llega después)
+    var comprobante by mutableStateOf(DatosComprobante())
     var mes by mutableStateOf<String?>(null)    // Recibidas: null = este mes · "todo"
     var buscarVendedor by mutableStateOf("")
     var editandoVendedor by mutableStateOf<JsonObject?>(null)
     var vendedorId by mutableStateOf<Long?>(null)
-    val lineas = mutableStateMapOf<Long, Double>() // insumo → cantidad
+    val lineas = mutableStateMapOf<Long, LineaCompra>() // insumo → cantidad y lo pagado
     var nuevoVendedor by mutableStateOf(false)
     var recibiendo by mutableStateOf<JsonObject?>(null)
     var anulando by mutableStateOf<JsonObject?>(null)
@@ -46,19 +48,20 @@ private fun resumen(o: JsonObject) = o.lista("items").joinToString(" · ") { "${
 
 /**
  * Compras de insumos, como en la web de oficina: a quién se le compra
- * (persona con DNI o empresa con RUC), varios insumos por orden y, cuando
- * llega, el comprobante (factura, boleta o recibo) con su foto.
+ * (persona con DNI o empresa con RUC), varios insumos por compra y el
+ * comprobante (factura, boleta o recibo) con su foto. Lo común es "Ya lo
+ * compré" en un solo paso; lo que se pide y llega después espera en "Por llegar".
  */
 @Composable
 fun ComprasInsumosReal() {
     val c = CompraInsumos
-    ConPestanas(listOf("Por llegar", "Nueva orden", "Recibidas", "Vendedores"), c.pestana, { c.pestana = it; c.recibiendo = null; c.anulando = null }) {
+    ConPestanas(listOf("Comprar", "Por llegar", "Recibidas", "Vendedores"), c.pestana, { c.pestana = it; c.recibiendo = null; c.anulando = null }) {
         CargaServidor("/api/v1/compras/ordenes", clave = c.version + ComprasReal.version * 1000) { d, _ ->
             when {
                 c.recibiendo != null -> RecibirOrden(c.recibiendo!!, d)
                 c.anulando != null -> AnularOrden(c.anulando!!)
-                c.pestana == 0 -> PorLlegar(d)
-                c.pestana == 1 -> NuevaOrden(d)
+                c.pestana == 0 -> NuevaCompra(d)
+                c.pestana == 1 -> PorLlegar(d)
                 c.pestana == 2 -> Recibidas()
                 else -> Vendedores()
             }
@@ -71,7 +74,7 @@ private fun PorLlegar(d: JsonObject) {
     val pendientes = d.lista("ordenes").filter { it.txt("estado") == "EMITIDA" }
     PantallaScroll {
         CompraInsumos.mensaje?.let { AvisoCampo(it) }
-        if (pendientes.isEmpty()) AvisoCampo("No hay órdenes por llegar. Para pedir insumos, ve a «Nueva orden».")
+        if (pendientes.isEmpty()) AvisoCampo("No hay pedidos por llegar. Para comprar o pedir insumos, ve a «Comprar».")
         pendientes.forEach { o ->
             Tarjeta(borde = Altiplano.VerdeBorde) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -123,10 +126,26 @@ private fun AnularOrden(o: JsonObject) {
     }
 }
 
-// ---------------------------------------------------------------- nueva orden
+// ------------------------------------------------------------- nueva compra
 
+/** Una línea de la compra: lo que se escribe (texto) y si el precio ya lo tocó la persona. */
+data class LineaCompra(val cantidad: String, val pago: String = "", val pagoTocado: Boolean = false)
+
+/** Lo que se pagó la última vez por unidad × la cantidad ("" si es la primera compra). */
+private fun precioSugerido(insumo: JsonObject?, cantidad: String): String {
+    val c = insumo?.num("costo") ?: 0.0
+    val n = cantidad.replace(",", ".").toDoubleOrNull() ?: 0.0
+    return if (c > 0 && n > 0) simple(kotlin.math.round(c * n * 100) / 100) else ""
+}
+
+/**
+ * Comprar insumos en una sola pantalla: "Ya lo compré" (lo común: se compra y
+ * se vuelve con la boleta; el stock sube al toque) o "Lo pido" (llega después
+ * y se registra con «Llegó»). "Comprar lo que falta" la llena sola, el precio
+ * sale de la última compra y el vendedor, de a quién se le compró la última vez.
+ */
 @Composable
-private fun NuevaOrden(d: JsonObject) {
+private fun NuevaCompra(d: JsonObject) {
     val c = CompraInsumos
     val scope = rememberCoroutineScope()
     var enviando by remember { mutableStateOf(false) }
@@ -135,11 +154,38 @@ private fun NuevaOrden(d: JsonObject) {
     CargaServidor("/api/v1/compras/inventario", clave = c.version + ComprasReal.version * 1000) { inv, _ ->
         val insumos = inv.lista("insumos")
         val vendedores = d.lista("vendedores")
-        val estimado = c.lineas.entries.sumOf { (id, cant) -> cant * (insumos.find { it.num("id").toLong() == id }?.num("costo") ?: 0.0) }
+        val directa = c.modo == 0
+        fun insumo(id: Long) = insumos.find { it.num("id").toLong() == id }
+        fun sugerirVendedor(id: Long) {
+            val v = insumo(id)?.txt("ultimo_vendedor_id")?.toLongOrNull() ?: return
+            if (c.vendedorId == null && vendedores.any { it.num("id").toLong() == v }) c.vendedorId = v
+        }
+        fun agregar(id: Long, cantidad: String) {
+            c.lineas[id] = LineaCompra(cantidad, precioSugerido(insumo(id), cantidad))
+            sugerirVendedor(id)
+        }
+        val vendedor = vendedores.find { it.num("id").toLong() == c.vendedorId }
+        val total = c.lineas.values.sumOf { it.pago.replace(",", ".").toDoubleOrNull() ?: 0.0 }
+        val estimado = c.lineas.entries.sumOf { (id, l) -> (l.cantidad.replace(",", ".").toDoubleOrNull() ?: 0.0) * (insumo(id)?.num("costo") ?: 0.0) }
 
         PantallaScroll {
-            c.mensaje?.let { AvisoCampo(it) }
-            Seccion("¿A quién se le compra?")
+            c.mensaje?.let { AvisoCampo(it, esAlerta = it.startsWith("No se")) }
+
+            // lo que falta, con un toque
+            val falta = inv.lista("por_comprar")
+            if (falta.isNotEmpty()) Tarjeta(borde = Altiplano.AvisoBorde) {
+                Text("Falta: " + falta.mapNotNull { insumo(it.num("insumo_id").toLong())?.txt("nombre") }.joinToString(", "),
+                    style = Texto.Cuerpo, color = Altiplano.Aviso)
+                Spacer(Modifier.height(10.dp))
+                BotonPrimario("Comprar lo que falta (${falta.size})") {
+                    c.lineas.clear(); c.vendedorId = null; error = null
+                    falta.forEach { agregar(it.num("insumo_id").toLong(), simple(it.num("cantidad"))) }
+                }
+            }
+
+            Segmentos(listOf("Ya lo compré", "Lo pido, llega después"), c.modo) { c.modo = it; error = null }
+
+            Seccion(if (directa) "¿A quién se le compró?" else "¿A quién se le pide?")
             if (vendedores.isEmpty() && !c.nuevoVendedor) AvisoCampo("Todavía no hay vendedores: agrega el primero.")
             if (vendedores.size > 5) Campo(c.buscarVendedor, { c.buscarVendedor = it.take(40) }, "Buscar vendedor por nombre o DNI/RUC")
             // el elegido se ve siempre, aunque no coincida con lo buscado
@@ -152,42 +198,141 @@ private fun NuevaOrden(d: JsonObject) {
                 alCancelar = { c.nuevoVendedor = false },
             ) else TextButton(onClick = { c.nuevoVendedor = true }) { Text("+ Nuevo vendedor (persona o empresa)", color = Altiplano.Exito) }
 
-            Seccion("Insumos · toca para agregar o quitar")
+            Seccion(if (directa) "¿Qué compraste? Toca para agregar o quitar" else "¿Qué se pide? Toca para agregar o quitar")
             insumos.forEach { i ->
                 val id = i.num("id").toLong()
+                val u = i.txt("unidad")
                 val bajo = i.num("stock") < i.num("minimo")
-                val cant = c.lineas[id]
-                Opcion(i.txt("nombre"), "hay ${formatear(i.num("stock"), 2)} ${i.txt("unidad")}" + if (bajo) " · bajo el mínimo" else "", cant != null) {
-                    if (cant != null) c.lineas.remove(id) else c.lineas[id] = 1.0
+                val l = c.lineas[id]
+                Opcion(i.txt("nombre"), "hay ${formatear(i.num("stock"), 2)} $u" + if (bajo) " · bajo el mínimo" else "", l != null) {
+                    if (l != null) c.lineas.remove(id) else agregar(id, "1")
                 }
-                if (cant != null) Tarjeta {
-                    StepperGrande(cant, { c.lineas[id] = it ?: 1.0 }, paso = 1.0, minimo = 0.5, decimales = 1, unidad = i.txt("unidad"), compacto = true)
+                if (l != null) Tarjeta {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Campo(l.cantidad, { v ->
+                            val cant = v.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }.take(8)
+                            c.lineas[id] = l.copy(cantidad = cant, pago = if (l.pagoTocado) l.pago else precioSugerido(i, cant))
+                        }, "Cantidad ($u)", teclado = KeyboardType.Decimal, modifier = Modifier.weight(1f))
+                        if (directa) Campo(l.pago, { v ->
+                            c.lineas[id] = l.copy(pago = v.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }.take(9), pagoTocado = true)
+                        }, "Pagado S/", teclado = KeyboardType.Decimal, modifier = Modifier.weight(1f))
+                    }
+                    if (directa) Text(
+                        if (i.num("costo") > 0) "La última vez: ${soles(i.num("costo"))} por $u" else "Primera compra: escribe cuánto pagaste",
+                        style = Texto.Apoyo, color = Altiplano.TextoTerciario,
+                    )
                 }
             }
-            Tarjeta {
-                FilaValor("Vendedor", vendedores.find { it.num("id").toLong() == c.vendedorId }?.txt("nombre") ?: "elige uno")
+
+            if (directa) {
+                TarjetaDato("TOTAL PAGADO", soles(total), apoyo = "${c.lineas.size} ${if (c.lineas.size == 1) "insumo" else "insumos"} · ${vendedor?.txt("nombre") ?: "elige el vendedor"}", destacada = true)
+                Seccion("¿Qué te dieron?")
+                CamposComprobante(c.comprobante, vendedor, total)
+            } else Tarjeta {
+                FilaValor("Vendedor", vendedor?.txt("nombre") ?: "elige uno")
                 FilaValor("Insumos", "${c.lineas.size}")
-                FilaValor("Costo estimado", soles(estimado))
+                FilaValor("Costo estimado (según la última compra)", soles(estimado))
             }
+
             error?.let { AvisoCampo("No se pudo guardar: $it", esAlerta = true) }
-            BotonPrimario(if (enviando) "Emitiendo…" else "Emitir orden de compra", !enviando && c.vendedorId != null && c.lineas.isNotEmpty()) {
-                scope.launch {
-                    enviando = true; error = null
+            BotonPrimario(
+                when { enviando -> "Guardando…"; directa -> "Guardar y subir stock"; else -> "Anotar pedido" },
+                !enviando && c.vendedorId != null && c.lineas.isNotEmpty(),
+            ) {
+                val num = { s: String -> s.replace(",", ".").toDoubleOrNull() }
+                error = when {
+                    c.lineas.values.any { (num(it.cantidad) ?: 0.0) <= 0 } -> "escribe la cantidad de cada insumo"
+                    directa && c.lineas.values.any { (num(it.pago) ?: -1.0) < 0 } -> "escribe cuánto se pagó por cada insumo"
+                    directa -> c.comprobante.error(vendedor)
+                    else -> null
+                }
+                if (error == null) scope.launch {
+                    enviando = true
                     try {
-                        val r = Sesion.enviar("/api/v1/compras/ordenes", buildJsonObject {
-                            put("vendedor_id", c.vendedorId!!)
-                            putJsonArray("items") {
-                                c.lineas.forEach { (id, cant) -> addJsonObject { put("insumo_id", id); put("cantidad", cant) } }
+                        val items = buildJsonArray {
+                            c.lineas.forEach { (id, l) ->
+                                addJsonObject {
+                                    put("insumo_id", id); put("cantidad", num(l.cantidad)!!)
+                                    if (directa) put("costo_real", num(l.pago)!!)
+                                }
                             }
-                        })
-                        c.mensaje = "✓ ${r.txt("codigo")} emitida por ${soles(r.num("costo_estimado"))}. Cuando llegue, toca «Llegó» y registra el comprobante."
-                        c.lineas.clear(); c.pestana = 0; c.version++
+                        }
+                        if (directa) {
+                            val r = Sesion.enviar("/api/v1/compras/ordenes/directa", buildJsonObject {
+                                put("vendedor_id", c.vendedorId!!); put("items", items); c.comprobante.poner(this)
+                            })
+                            c.mensaje = "✓ Compra ${r.txt("codigo")} guardada con ${r.txt("comprobante")} por ${soles(r.num("total"))}: el stock ya subió"
+                            c.pestana = 2; c.mes = null // a Recibidas, en este mes
+                        } else {
+                            val r = Sesion.enviar("/api/v1/compras/ordenes", buildJsonObject { put("vendedor_id", c.vendedorId!!); put("items", items) })
+                            c.mensaje = "✓ Pedido ${r.txt("codigo")} anotado por ${soles(r.num("costo_estimado"))}. Cuando llegue, toca «Llegó» y registra el comprobante."
+                            c.pestana = 1
+                        }
+                        c.lineas.clear(); c.vendedorId = null; c.comprobante = DatosComprobante()
+                        c.version++; ComprasReal.version++
                     } catch (t: Throwable) { error = t.message }
                     enviando = false
                 }
             }
         }
     }
+}
+
+/** Lo que dice el comprobante: tipo, foto, serie y número (opcionales si hay foto) y fecha. */
+class DatosComprobante {
+    var tipo by mutableStateOf<Int?>(null)
+    var serie by mutableStateOf("")
+    var numero by mutableStateOf("")
+    var fecha by mutableStateOf(hoyLima())
+    var foto by mutableStateOf<String?>(null)
+    val clave get() = tipo?.let { TIPOS[it].first }
+
+    fun error(vendedor: JsonObject?): String? = when {
+        tipo == null -> "elige qué te dieron: factura, boleta o recibo"
+        clave == "FACTURA" && vendedor?.txt("tipo_documento") != "RUC" -> "solo hay factura si el vendedor tiene RUC. Si te dio boleta, elige boleta."
+        clave != "RECIBO" && foto == null && (serie.isBlank() || numero.isBlank()) -> "saca la foto de la boleta o factura, o escribe su serie y número"
+        else -> null
+    }
+
+    fun poner(b: JsonObjectBuilder) {
+        b.put("comprobante_tipo", clave)
+        if (clave != "RECIBO" && serie.isNotBlank()) b.put("comprobante_serie", serie)
+        if (clave != "RECIBO" && numero.isNotBlank()) b.put("comprobante_numero", numero)
+        b.put("comprobante_fecha", fecha)
+        foto?.let { b.put("foto", it) }
+    }
+}
+
+@Composable
+private fun CamposComprobante(k: DatosComprobante, vendedor: JsonObject?, total: Double) {
+    val elegir = rememberElegirFoto { f -> if (f != null) k.foto = f }
+    val clave = k.clave
+    Segmentos(TIPOS.map { it.second }, k.tipo ?: -1) { k.tipo = it }
+    if (clave == "FACTURA" && vendedor != null && vendedor.txt("tipo_documento") != "RUC") {
+        AvisoCampo("Solo hay factura si el vendedor tiene RUC. Si te dio boleta, elige boleta.", esAlerta = true)
+    }
+    if (clave == "FACTURA") {
+        val sub = kotlin.math.round(total / 1.18 * 100) / 100
+        Text("Subtotal ${soles(sub)} + IGV ${soles(total - sub)}", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+    }
+    if (k.foto == null) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = elegir.camara, modifier = Modifier.weight(1f)) { Text("Sacar foto", color = Altiplano.Texto) }
+            OutlinedButton(onClick = elegir.galeria, modifier = Modifier.weight(1f)) { Text("De la galería", color = Altiplano.Texto) }
+        }
+    } else Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("✓ Foto del comprobante lista", style = Texto.Cuerpo, color = Altiplano.Exito, modifier = Modifier.weight(1f))
+        TextButton(onClick = { k.foto = null }) { Text("Quitar", color = Altiplano.TextoSecundario) }
+    }
+    if (clave != null && clave != "RECIBO") {
+        if (k.foto == null) Text("Con la foto no hace falta escribir la serie ni el número.", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+        val opc = if (k.foto != null) " (opcional)" else ""
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(Modifier.weight(1f)) { CampoTexto(k.serie, { k.serie = it.uppercase().filter(Char::isLetterOrDigit).take(4) }, (if (clave == "FACTURA") "Serie F001" else "Serie B001") + opc) }
+            Box(Modifier.weight(1.4f)) { CampoTexto(k.numero, { k.numero = it.filter(Char::isDigit).take(8) }, "Número$opc", KeyboardType.Number) }
+        }
+    }
+    CampoFecha(k.fecha, { k.fecha = it }, "Fecha del comprobante")
 }
 
 /** Vendedor de insumos (persona con DNI o empresa con RUC): alta rápida o, con [v], editarlo o desactivarlo. */
@@ -250,20 +395,14 @@ private fun RecibirOrden(o: JsonObject, d: JsonObject) {
     val c = CompraInsumos
     val scope = rememberCoroutineScope()
     val items = o.lista("items")
-    var tipo by remember { mutableStateOf<Int?>(null) }
-    var serie by remember { mutableStateOf("") }
-    var numero by remember { mutableStateOf("") }
-    var fecha by remember { mutableStateOf(hoyLima()) }
+    val k = remember(o) { DatosComprobante() }
     val pagos = remember { mutableStateMapOf<String, String>().apply { items.forEach { put(it.txt("id"), simple(it.num("costo_estimado"))) } } }
     var vendedorId by remember { mutableStateOf(o.obj("vendedor")?.num("id")?.toLong()) }
-    var foto by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var enviando by remember { mutableStateOf(false) }
-    val elegir = rememberElegirFoto { f -> if (f != null) foto = f }
 
     val vendedor = d.lista("vendedores").find { it.num("id").toLong() == vendedorId } ?: o.obj("vendedor")
     val total = pagos.values.sumOf { it.replace(",", ".").toDoubleOrNull() ?: 0.0 }
-    val clave = tipo?.let { TIPOS[it].first }
 
     PantallaScroll {
         Tarjeta(borde = Altiplano.VerdeBorde) {
@@ -277,14 +416,6 @@ private fun RecibirOrden(o: JsonObject, d: JsonObject) {
                 Opcion(v.txt("nombre"), "${v.txt("tipo_documento")} ${v.txt("documento")}", vendedorId == id) { vendedorId = if (vendedorId == id) null else id }
             }
         }
-        Seccion("¿Qué comprobante te dieron?")
-        Segmentos(TIPOS.map { it.second }, tipo ?: -1) { tipo = it }
-        if (clave == "FACTURA" && vendedor?.txt("tipo_documento") != "RUC") AvisoCampo("Solo hay factura si el vendedor tiene RUC. Si te dio boleta, elige boleta.", esAlerta = true)
-        if (clave != null && clave != "RECIBO") Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Box(Modifier.weight(1f)) { CampoTexto(serie, { serie = it.uppercase().filter(Char::isLetterOrDigit).take(4) }, if (clave == "FACTURA") "Serie (F001)" else "Serie (B001)") }
-            Box(Modifier.weight(1.4f)) { CampoTexto(numero, { numero = it.filter(Char::isDigit).take(8) }, "Número", KeyboardType.Number) }
-        }
-        CampoFecha(fecha, { fecha = it }, "Fecha del comprobante")
 
         Seccion("¿Cuánto se pagó? (con IGV)")
         Tarjeta {
@@ -297,42 +428,21 @@ private fun RecibirOrden(o: JsonObject, d: JsonObject) {
                 }
             }
             HorizontalDivider(Modifier.padding(vertical = 8.dp), color = Altiplano.BordeSuave)
-            if (clave == "FACTURA") {
-                val sub = kotlin.math.round(total / 1.18 * 100) / 100
-                FilaValor("Subtotal (sin IGV)", soles(sub))
-                FilaValor("IGV 18 %", soles(total - sub))
-            }
             FilaValor("Total", soles(total))
         }
 
-        Seccion("Foto del comprobante (opcional)")
-        if (foto == null) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = elegir.camara, modifier = Modifier.weight(1f)) { Text("Sacar foto", color = Altiplano.Texto) }
-            OutlinedButton(onClick = elegir.galeria, modifier = Modifier.weight(1f)) { Text("De la galería", color = Altiplano.Texto) }
-        } else Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("✓ Foto lista para guardar", style = Texto.Cuerpo, color = Altiplano.Exito, modifier = Modifier.weight(1f))
-            TextButton(onClick = { foto = null }) { Text("Quitar", color = Altiplano.TextoSecundario) }
-        }
+        Seccion("¿Qué te dieron?")
+        CamposComprobante(k, vendedor, total)
 
-        error?.let { AvisoCampo(it, esAlerta = true) }
-        BotonPrimario(if (enviando) "Guardando…" else "Registrar y subir stock", !enviando && tipo != null) {
-            error = when {
-                clave == "FACTURA" && vendedor?.txt("tipo_documento") != "RUC" -> "Solo hay factura si el vendedor tiene RUC."
-                clave != "RECIBO" && serie.isBlank() -> "Escribe la serie del comprobante"
-                clave != "RECIBO" && numero.isBlank() -> "Escribe el número del comprobante"
-                !Regex("""\d{4}-\d{2}-\d{2}""").matches(fecha) -> "Escribe la fecha así: ${hoyLima()}"
-                pagos.values.any { it.replace(",", ".").toDoubleOrNull() == null } -> "Escribe cuánto se pagó por cada insumo"
-                else -> null
-            }
+        error?.let { AvisoCampo("No se pudo guardar: $it", esAlerta = true) }
+        BotonPrimario(if (enviando) "Guardando…" else "Registrar y subir stock", !enviando) {
+            error = if (pagos.values.any { it.replace(",", ".").toDoubleOrNull() == null }) "escribe cuánto se pagó por cada insumo" else k.error(vendedor)
             if (error == null) scope.launch {
                 enviando = true
                 try {
                     val r = Sesion.enviar("/api/v1/compras/ordenes/${o.txt("id")}/recibir", buildJsonObject {
-                        put("comprobante_tipo", clave)
-                        if (clave != "RECIBO") { put("comprobante_serie", serie); put("comprobante_numero", numero) }
-                        put("comprobante_fecha", fecha)
+                        k.poner(this)
                         vendedorId?.let { put("vendedor_id", it) }
-                        foto?.let { put("foto", it) }
                         putJsonArray("items") {
                             items.forEach { it -> addJsonObject { put("id", it.num("id").toLong()); put("costo_real", pagos[it.txt("id")]!!.replace(",", ".").toDouble()) } }
                         }
