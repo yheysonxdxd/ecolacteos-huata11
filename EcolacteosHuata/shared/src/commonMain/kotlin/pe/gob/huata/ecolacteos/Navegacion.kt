@@ -41,18 +41,20 @@ fun destinosDe(rol: Rol, real: Boolean = Sesion.desdeServidor): List<Destino> = 
         Destino("operario/perdidas", "Pérdidas", "Leche cortada, queso vencido…", Icons.Outlined.ReportProblem),
     )
     Rol.COMPRAS -> listOf(
-        Destino("compras/formulas", "Fórmulas", "Cuánto hacer y qué falta", Icons.Outlined.MenuBook),
-        Destino("compras/ventas", "Ventas", "Vender y notas de venta", Icons.Outlined.Sell),
-        Destino("compras/almacen", "Almacén", "Stock, avisos y pérdidas", Icons.Outlined.Inventory2),
-        Destino("compras/kardex", "Kardex", "Insumos, queso, yogurt y leche", Icons.Outlined.SwapHoriz),
+        // en el orden del día de la planta: comprar → guardar → producir → vender; el kardex (para revisar) al final
         Destino("compras/orden", "Compras", "Órdenes, comprobantes y vendedores", Icons.Outlined.ShoppingCart),
+        Destino("compras/almacen", "Almacén", "Stock, avisos y pérdidas", Icons.Outlined.Inventory2),
+        Destino("compras/formulas", "Fórmulas", "Cuánto hacer y qué falta", Icons.Outlined.MenuBook),
+        Destino("compras/ventas", "Ventas", "Vender, clientes y notas de venta", Icons.Outlined.Sell),
+        Destino("compras/kardex", "Kardex", "Entradas y salidas", Icons.Outlined.SwapHoriz),
     )
     Rol.ADMIN -> listOf(
+        // llega la leche → se analiza → se paga; el padrón (se toca poco) y la planta después
         Destino("admin/acopio", "Acopio", "Totales y conciliación", Icons.Outlined.PieChart),
+        Destino("admin/calidad", "Calidad", "Promedios y adulteraciones", Icons.Outlined.Science),
         Destino("admin/dinero", "Dinero", "Ventas, pagos y costos", Icons.Outlined.Savings),
         Destino("admin/padron", "Padrón", "Proveedores, trabajadores y cambios", Icons.Outlined.People),
-        Destino("admin/calidad", "Calidad", "Promedios y adulteraciones", Icons.Outlined.Science),
-        Destino("admin/planta", "Planta", "Fórmulas, lotes, almacén y kardex", Icons.Outlined.Inventory2),
+        Destino("admin/planta", "Planta", "Compras, almacén, producción, ventas y kardex", Icons.Outlined.Inventory2),
     )
     else -> destinosDemo(rol)
 }

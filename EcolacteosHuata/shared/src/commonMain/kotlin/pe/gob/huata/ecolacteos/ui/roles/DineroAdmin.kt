@@ -57,15 +57,29 @@ private fun PagosProveedores() {
         val pendientes = boletas.filter { it.txt("estado") == "PENDIENTE" }
 
         PantallaScroll {
-            // semanas cerradas, la más reciente primero
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                d.lista("semanas").forEach { s ->
-                    val elegida = s.txt("inicio") == d.txt("inicio")
-                    val n = s.num("pendientes").toInt()
-                    ChipSemana(
-                        "${fechaCorta(s.txt("inicio"))} – ${fechaCorta(s.txt("fin"))}" + if (n > 0) " · $n" else " ✓",
-                        elegida, alerta = n > 0,
-                    ) { DineroAdmin.semana = s.txt("inicio"); DineroAdmin.mensaje = null }
+            // semana por semana con flechitas, como en la web (no hay "siguiente" después de la última cerrada)
+            fun ir(lunes: String) { DineroAdmin.semana = lunes; DineroAdmin.mensaje = null }
+            Flechitas(
+                "Semana ${fechaCorta(d.txt("inicio"))} – ${fechaCorta(d.txt("fin"))}",
+                "de lunes a domingo · se paga el viernes",
+                onAnterior = d.txt("anterior").takeIf { it.isNotEmpty() }?.let { { ir(it) } },
+                onSiguiente = d.txt("siguiente").takeIf { it.isNotEmpty() }?.let { { ir(it) } },
+            )
+            // que no se olvide ninguna semana: las otras con boletas sin pagar
+            val otras = d.lista("otras_con_pendientes")
+            if (otras.isNotEmpty()) Tarjeta(borde = Altiplano.AvisoBorde) {
+                Text(
+                    if (otras.size == 1) "Hay otra semana con pagos pendientes:" else "Hay ${otras.size} semanas más con pagos pendientes:",
+                    style = Texto.Cuerpo, color = Altiplano.Aviso,
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    otras.forEach { s ->
+                        ChipSemana(
+                            "${fechaCorta(s.txt("inicio"))} – ${fechaCorta(s.txt("fin"))} · ${s.num("pendientes").toInt()} por ${soles(s.num("monto"))}",
+                            elegida = false, alerta = true,
+                        ) { ir(s.txt("inicio")) }
+                    }
                 }
             }
 

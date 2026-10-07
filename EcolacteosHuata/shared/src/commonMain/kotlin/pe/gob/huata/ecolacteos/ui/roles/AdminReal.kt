@@ -5,6 +5,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.*
@@ -39,18 +40,19 @@ fun ContenidoAdminReal(ruta: String, e: EstadoAdmin) {
         "admin/padron" -> ConPestanas(listOf("Proveedores", "Trabajadores", "Cambios"), a.padron, { a.padron = it }) {
             if (a.padron == 2) SolicitudesReal() else PadronReal(a.padron == 1)
         }
+        // en el orden del día de la planta: comprar → guardar → producir → vender; el kardex al final
         "admin/planta" -> ConPestanas(
-            listOf("Fórmulas", "Lotes", "Almacén", "Pérdidas", "Kardex", "Órdenes", "Vender", "Últimas ventas"), a.planta, { a.planta = it },
+            listOf("Compras", "Almacén", "Pérdidas", "Fórmulas", "Lotes", "Vender", "Ventas y notas", "Kardex"), a.planta, { a.planta = it },
         ) {
             when (a.planta) {
-                0 -> FormulasReal(puedeAceptar = true) { a.planta = 1 } // al iniciar un lote, a Lotes
-                1 -> LotesReal()
-                2 -> ContenidoComprasReal("compras/inventario") { a.planta = 4 } // tocar un insumo: su kardex
-                3 -> PerdidasReal("compras")
-                4 -> KardexCompleto()
-                5 -> ContenidoComprasReal("compras/orden") {}
-                6 -> ContenidoComprasReal("compras/ventas-nueva") { a.planta = 7 } // después de vender: la nota
-                else -> ContenidoComprasReal("compras/movimientos") {}
+                0 -> ContenidoComprasReal("compras/orden") {}
+                1 -> ContenidoComprasReal("compras/inventario") { a.planta = 7 } // tocar un insumo: su kardex
+                2 -> PerdidasReal("compras")
+                3 -> FormulasReal(puedeAceptar = true) { a.planta = 4 } // al iniciar un lote, a Lotes
+                4 -> LotesReal()
+                5 -> ContenidoComprasReal("compras/ventas-nueva") { a.planta = 6 } // después de vender: la nota
+                6 -> ContenidoComprasReal("compras/ventas-mes") {}
+                else -> KardexCompleto()
             }
         }
         // rutas anteriores (por si alguna pantalla las usa todavía)
@@ -231,25 +233,89 @@ private fun SolicitudesReal() {
     }
 }
 
+/** Día que se concilia (null = el último con acopio) y el mensaje de lo último guardado. */
+private object Conciliacion {
+    var fecha by mutableStateOf<String?>(null)
+    var version by mutableStateOf(0)
+    var mensaje by mutableStateOf<String?>(null)
+}
+
+/**
+ * Campo vs. planta día por día, como en la web: por cada vehículo que acopió
+ * ese día se anotan los litros que llegaron a planta y se ve la diferencia.
+ */
 @Composable
 private fun ConciliacionReal() {
-    CargaServidor("/api/v1/admin/conciliacion") { d, _ ->
-        val tol = d.num("tolerancia")
+    val c = Conciliacion
+    CargaServidor("/api/v1/admin/conciliacion" + (c.fecha?.let { "?fecha=$it" } ?: ""), clave = c.version) { d, _ ->
+        val fecha = d.txt("fecha")
+        val filas = d.lista("filas")
+        val hoy = fechaLima()
         PantallaScroll {
-            AvisoCampo("Fase 2: requiere caudalímetro en la tina de recepción. Por ahora se compara con el pesaje manual de planta.")
-            Text("Recepción del ${fechaCorta(d.txt("fecha"))} · tolerancia ±${formatear(tol)} %", style = Texto.Cuerpo, color = Altiplano.TextoTerciario)
-            d.lista("vehiculos").forEach { v ->
-                val dif = v.num("diferencia_pct")
-                val fuera = v.txt("fuera_tolerancia") == "1" || v.txt("fuera_tolerancia") == "true"
-                Tarjeta(borde = if (fuera) Altiplano.AlertaBorde else Altiplano.Borde) {
-                    Text(v.txt("codigo"), style = Texto.Fila, color = Altiplano.Texto)
-                    Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                        MiniCifra("Campo", "${formatear(v.num("litros_campo"))} L")
-                        MiniCifra("Planta", "${formatear(v.num("litros_planta"))} L")
-                        MiniCifra("Diferencia", formatear(dif, 2) + " %", if (fuera) Altiplano.Alerta else Altiplano.Exito)
+            Flechitas(
+                "Acopio del ${fechaCorta(fecha)}" + if (fecha == hoy) " (hoy)" else "",
+                "tolerancia ±${formatear(d.num("tolerancia"))} %",
+                onAnterior = { c.fecha = sumarDias(fecha, -1); c.mensaje = null },
+                onSiguiente = if (fecha < hoy) ({ c.fecha = sumarDias(fecha, 1); c.mensaje = null }) else null,
+            )
+            c.mensaje?.let { AvisoCampo(it, esAlerta = it.startsWith("No se")) }
+            if (filas.isEmpty()) AvisoCampo("Ese día no hubo acopio en campo.")
+            if (filas.any { it.txt("litros_planta").isEmpty() }) {
+                Text("Escribe cuántos litros llegaron a planta de cada vehículo (lo que marcó la balanza o la tina).",
+                    style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+            }
+            filas.forEach { v -> FilaConciliacion(v, fecha) }
+        }
+    }
+}
+
+@Composable
+private fun FilaConciliacion(v: JsonObject, fecha: String) {
+    val scope = rememberCoroutineScope()
+    val anotado = v.txt("litros_planta").isNotEmpty()
+    var litros by remember(v, fecha) { mutableStateOf(if (anotado) v.txt("litros_planta") else "") }
+    var editando by remember(v, fecha) { mutableStateOf(!anotado) }
+    var enviando by remember { mutableStateOf(false) }
+    val fuera = v.txt("fuera_tolerancia") == "1" || v.txt("fuera_tolerancia") == "true"
+
+    Tarjeta(borde = when { !anotado -> Altiplano.AvisoBorde; fuera -> Altiplano.AlertaBorde; else -> Altiplano.Borde }) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(v.txt("codigo"), style = Texto.Fila, color = Altiplano.Texto, modifier = Modifier.weight(1f))
+            if (anotado && !editando) TextButton(onClick = { editando = true }) { Text("Corregir", color = Altiplano.CelesteAcento) }
+        }
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            MiniCifra("Campo", "${formatear(v.num("litros_campo"))} L")
+            if (anotado) {
+                MiniCifra("Planta", "${formatear(v.num("litros_planta"))} L")
+                MiniCifra("Diferencia", formatear(v.num("diferencia_pct"), 2) + " %", if (fuera) Altiplano.Alerta else Altiplano.Exito)
+            }
+        }
+        if (editando) {
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Campo(litros, { litros = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }.take(8) },
+                    "Litros en planta", teclado = KeyboardType.Decimal, modifier = Modifier.weight(1f))
+                TextButton(enabled = !enviando, onClick = {
+                    val l = litros.replace(",", ".").toDoubleOrNull()
+                    if (l == null || l < 0) {
+                        Conciliacion.mensaje = "No se guardó: escribe los litros que llegaron de ${v.txt("codigo")}"
+                        return@TextButton
                     }
-                }
+                    scope.launch {
+                        enviando = true
+                        try {
+                            val r = Sesion.enviar("/api/v1/admin/conciliacion", buildJsonObject {
+                                put("fecha", fecha); put("vehiculo_id", v.num("vehiculo_id").toLong()); put("litros_planta", l)
+                            })
+                            val f = r.txt("fuera_tolerancia") == "true" || r.txt("fuera_tolerancia") == "1"
+                            Conciliacion.mensaje = "✓ ${v.txt("codigo")}: ${formatear(r.num("litros_planta"))} L en planta · " +
+                                "diferencia ${formatear(r.num("diferencia_pct"), 2)} %" + if (f) " (fuera de tolerancia)" else ""
+                            Conciliacion.version++
+                        } catch (t: Throwable) { Conciliacion.mensaje = "No se pudo guardar: ${t.message}" }
+                        enviando = false
+                    }
+                }) { Text(if (enviando) "…" else "Guardar", color = Altiplano.Exito) }
             }
         }
     }

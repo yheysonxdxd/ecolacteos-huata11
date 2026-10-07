@@ -29,7 +29,7 @@ object KardexElegido {
 internal fun fechaLima(dias: Int = 0): String = (Clock.System.now() - 5.hours - dias.days).toString().take(10)
 
 private val TIPO_MOV = mapOf("INICIAL" to "Saldo inicial", "ANTERIOR" to "Saldo anterior", "COMPRA" to "Compra",
-    "PRODUCCION" to "Producción", "AJUSTE" to "Ajuste", "VENTA" to "Venta", "ACOPIO" to "Acopio", "MERMA" to "Pérdida")
+    "PRODUCCION" to "Producción", "AJUSTE" to "Corrección", "VENTA" to "Venta", "ACOPIO" to "Acopio", "MERMA" to "Pérdida")
 
 /**
  * Kardex de insumos, de cada producto (queso, yogurt) y de la leche, como en la
@@ -90,7 +90,7 @@ private fun KardexDe(ruta: String) {
 
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1f)) {
-                    if (item?.txt("tipo") == "insumo") BotonPrimario("+ Ajuste (merma, conteo)") { hojaAjuste = true }
+                    if (item?.txt("tipo") == "insumo") BotonPrimario("Corregir stock") { hojaAjuste = true }
                     else BotonPrimario(if (k.tipo == "leche") "+ Leche perdida" else "+ Registrar pérdida") { hojaPerdida = true }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -140,9 +140,9 @@ private fun FilaKardex(f: JsonObject, u: String, contable: Boolean) {
     }
 }
 
-private val POR_ENTRA = mapOf("INICIAL" to "que ya había", "COMPRA" to "por compras", "AJUSTE" to "por ajustes",
+private val POR_ENTRA = mapOf("INICIAL" to "que ya había", "COMPRA" to "por compras", "AJUSTE" to "por correcciones",
     "ACOPIO" to "de acopio aceptado", "PRODUCCION" to "hechos en lotes")
-private val POR_SALE = mapOf("PRODUCCION" to "para hacer lotes", "VENTA" to "vendidos", "AJUSTE" to "por mermas o ajustes", "MERMA" to "perdidos")
+private val POR_SALE = mapOf("PRODUCCION" to "para hacer lotes", "VENTA" to "vendidos", "AJUSTE" to "por correcciones", "MERMA" to "perdidos")
 
 private fun resumen(d: JsonObject, u: String, conInicio: Boolean): String {
     val t = d.obj("totales") ?: return ""
@@ -167,44 +167,91 @@ private fun CargaPerdida(tipo: String, productoId: Long?, onCerrar: () -> Unit) 
     datos?.let { HojaPerdida("compras", tipo, productoId, it, onCerrar) }
 }
 
-/** Ajuste de un insumo: lo que no es compra ni producción (merma, vencido, conteo físico, devolución). */
+/** Qué pasó con el insumo, en palabras de todos los días (como en la web). tipo null: se elige o se calcula. */
+private data class Razon(val texto: String, val tipo: String?, val motivo: String)
+
+private val RAZONES = listOf(
+    Razon("Se malogró, mojó o derramó", "SALIDA", "Se malogró"),
+    Razon("Se venció", "SALIDA", "Se venció"),
+    Razon("Contamos y no cuadra", null, "Conteo"),
+    Razon("Nos devolvieron", "ENTRADA", "Devolución"),
+    Razon("Otra cosa", null, ""),
+)
+
+/**
+ * Corregir el stock de un insumo: lo que no es compra ni producción. Al contar,
+ * se escribe cuánto hay de verdad y la app calcula si sobra o falta.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun HojaAjuste(item: JsonObject, onCerrar: () -> Unit) {
-    var salida by remember { mutableStateOf(true) }
+    var razon by remember { mutableStateOf<Razon?>(null) }
+    var salida by remember { mutableStateOf(true) } // solo para "Otra cosa"
     var cantidad by remember { mutableStateOf("") }
-    var motivo by remember { mutableStateOf("") }
+    var hay by remember { mutableStateOf("") }
+    var detalle by remember { mutableStateOf("") }
     var enviando by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val u = item.txt("unidad")
+    val stock = item.num("stock")
+    val contamos = razon?.motivo == "Conteo"
+    val diferencia = hay.replace(",", ".").toDoubleOrNull()?.let { it - stock }
 
-    Hoja("Ajuste de ${item.txt("nombre")}", onCerrar) {
-        Text("Stock actual: ${formatear(item.num("stock"), 3)} $u. Para lo que no es compra ni producción.", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+    Hoja("Corregir ${item.txt("nombre")}", onCerrar) {
+        Text("El sistema dice que hay ${formatear(stock, 3)} $u. ¿Qué pasó?", style = Texto.Cuerpo, color = Altiplano.TextoSecundario)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Chip("Salida (merma, vencido, faltante)", salida) { salida = true }
-            Chip("Entrada (sobrante, devolución)", !salida) { salida = false }
+            RAZONES.forEach { r -> Chip(r.texto, razon == r) { razon = r; error = null } }
         }
-        Campo(cantidad, { cantidad = it.filter { c -> c.isDigit() || c == '.' }.take(10) }, "Cantidad ($u)", teclado = KeyboardType.Decimal)
-        Campo(motivo, { motivo = it.take(120) }, "Motivo (ej.: bolsa de azúcar mojada)")
-        error?.let { AvisoCampo(it, esAlerta = true) }
-        BotonPrimario(if (enviando) "Guardando…" else "Registrar ajuste", habilitado = !enviando) {
-            val cant = cantidad.toDoubleOrNull() ?: 0.0
-            error = when {
-                cant <= 0 -> "Escribe la cantidad"
-                motivo.trim().length < 3 -> "Escribe el motivo"
-                salida && cant > item.num("stock") -> "Solo hay ${formatear(item.num("stock"), 3)} $u"
-                else -> null
+        val r = razon
+        if (r != null) {
+            if (contamos) {
+                Campo(hay, { hay = it.filter { c -> c.isDigit() || c == '.' || c == ',' }.take(10) }, "¿Cuánto hay de verdad? ($u)", teclado = KeyboardType.Decimal)
+                diferencia?.let { dif ->
+                    Text(
+                        when {
+                            kotlin.math.abs(dif) < 0.0005 -> "Cuadra con el sistema: no hay nada que corregir."
+                            dif > 0 -> "Sobran ${formatear(dif, 3)} $u: se sumarán al stock."
+                            else -> "Faltan ${formatear(-dif, 3)} $u: se restarán del stock."
+                        },
+                        style = Texto.Cuerpo, color = if (dif < 0) Altiplano.Aviso else Altiplano.Exito,
+                    )
+                }
+            } else {
+                if (r.tipo == null) Segmentos(listOf("Hay menos", "Hay más"), if (salida) 0 else 1) { salida = it == 0 }
+                Campo(cantidad, { cantidad = it.filter { c -> c.isDigit() || c == '.' || c == ',' }.take(10) },
+                    if ((r.tipo ?: if (salida) "SALIDA" else "ENTRADA") == "SALIDA") "¿Cuánto se perdió? ($u)" else "¿Cuánto entró? ($u)",
+                    teclado = KeyboardType.Decimal)
             }
+            Campo(detalle, { detalle = it.take(80) }, if (r.motivo.isEmpty()) "Cuenta brevemente qué pasó" else "Detalle (opcional, ej.: bolsa mojada)")
+        }
+        error?.let { AvisoCampo(it, esAlerta = true) }
+        BotonPrimario(if (enviando) "Guardando…" else "Corregir stock", habilitado = !enviando && r != null) {
+            val rz = razon ?: return@BotonPrimario
+            var tipo = rz.tipo ?: if (salida) "SALIDA" else "ENTRADA"
+            var cant = cantidad.replace(",", ".").toDoubleOrNull() ?: 0.0
+            error = null
+            if (contamos) {
+                val dif = diferencia
+                when {
+                    dif == null || dif + stock < 0 -> error = "¿Cuánto hay de verdad? Escríbelo"
+                    kotlin.math.abs(dif) < 0.0005 -> error = "Cuadra con lo que dice el sistema: no hay nada que corregir"
+                    else -> { tipo = if (dif > 0) "ENTRADA" else "SALIDA"; cant = kotlin.math.abs(dif) }
+                }
+            } else if (cant <= 0) error = "Escribe la cantidad"
+            if (error == null && rz.motivo.isEmpty() && detalle.trim().length < 3) error = "Cuenta brevemente qué pasó"
+            if (error == null && tipo == "SALIDA" && cant > stock + 0.0005) error = "Solo hay ${formatear(stock, 3)} $u"
             if (error != null) return@BotonPrimario
+            val motivo = if (contamos) "Conteo: había ${formatear(stock + (diferencia ?: 0.0), 3)} $u (el sistema decía ${formatear(stock, 3)})"
+                         else listOf(rz.motivo, detalle.trim()).filter { it.isNotEmpty() }.joinToString(" · ")
             scope.launch {
                 enviando = true
                 try {
-                    val r = Sesion.enviar("/api/v1/compras/ajustes", buildJsonObject {
-                        put("insumo_id", item.num("id").toLong()); put("tipo", if (salida) "SALIDA" else "ENTRADA")
-                        put("cantidad", cant); put("motivo", motivo.trim())
+                    val res = Sesion.enviar("/api/v1/compras/ajustes", buildJsonObject {
+                        put("insumo_id", item.num("id").toLong()); put("tipo", tipo)
+                        put("cantidad", kotlin.math.round(cant * 1000) / 1000); put("motivo", motivo)
                     })
-                    Perdidas.mensaje = "✓ Ajuste registrado · ${r.txt("insumo")} queda con ${formatear(r.num("stock"), 3)} $u"
+                    Perdidas.mensaje = "✓ Corregido · ${res.txt("insumo")} queda con ${formatear(res.num("stock"), 3)} $u"
                     KardexElegido.version++
                     onCerrar()
                 } catch (t: Throwable) { error = t.message }

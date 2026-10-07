@@ -5,42 +5,52 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.*
+import pe.gob.huata.ecolacteos.datos.Rol
 import pe.gob.huata.ecolacteos.datos.Sesion
+import pe.gob.huata.ecolacteos.destinosDe
 import pe.gob.huata.ecolacteos.tema.*
 import pe.gob.huata.ecolacteos.ui.componentes.*
 
 /** Estado de Compras con datos reales. */
 object ComprasReal {
     var productoSel by mutableStateOf(0)
-    var clienteSel by mutableStateOf(0)
+    var clienteId by mutableStateOf<Long?>(null) // por id: al agregar un cliente la lista se reordena
+    var buscarCliente by mutableStateOf("")
+    var verInactivos by mutableStateOf(false)
+    var editandoCliente by mutableStateOf<JsonObject?>(null) // el que se edita; vacío = nuevo
+    var mesVentas by mutableStateOf<String?>(null) // null = este mes · "todo"
     var cantidadVenta by mutableStateOf(10.0)
     var mensaje by mutableStateOf<String?>(null)
     var version by mutableStateOf(0)
-    var pestanaVentas by mutableStateOf(0)  // Nueva venta · Últimas ventas
+    var pestanaVentas by mutableStateOf(0)  // Nueva venta · Ventas y notas
     var pestanaAlmacen by mutableStateOf(0) // Stock y avisos · Pérdidas
 }
 
-private val NOMBRE_CANAL = mapOf("MAYORISTA" to "Mayorista", "DIRECTO" to "Vecino de Huata", "PLANTA" to "Proveedor de leche")
+private val NOMBRE_CANAL = mapOf("MAYORISTA" to "Mayorista", "DIRECTO" to "Cliente directo", "PLANTA" to "Proveedor de leche")
 
 /**
- * Compras con la base, como en la web de oficina: Fórmulas · Ventas (nueva y
- * últimas con su nota) · Almacén (stock y pérdidas) · Kardex · Compras de insumos.
- * [irA] cambia de opción del menú; desde Almacén, tocar algo abre su kardex (opción 3).
+ * Compras con la base, como en la web de oficina y en el orden del día de la planta:
+ * Compras de insumos · Almacén (stock y pérdidas) · Fórmulas · Ventas (nueva y
+ * mes por mes con su nota) · Kardex.
+ * [irA] cambia de opción del menú; desde Almacén, tocar algo abre su kardex.
  */
 @Composable
 fun ContenidoComprasReal(ruta: String, irA: (Int) -> Unit) {
     val c = ComprasReal
     when (ruta) {
         "compras/formulas" -> FormulasReal(puedeAceptar = false)
-        "compras/ventas" -> ConPestanas(listOf("Nueva venta", "Últimas ventas"), c.pestanaVentas, { c.pestanaVentas = it }) {
-            if (c.pestanaVentas == 0) VentaReal { c.pestanaVentas = 1 } else MovimientosReal()
+        "compras/ventas" -> ConPestanas(listOf("Nueva venta", "Ventas y notas"), c.pestanaVentas, { c.pestanaVentas = it }) {
+            if (c.pestanaVentas == 0) VentaReal { c.pestanaVentas = 1 } else VentasDelMes()
         }
         "compras/almacen" -> ConPestanas(listOf("Stock y avisos", "Pérdidas"), c.pestanaAlmacen, { c.pestanaAlmacen = it }) {
-            if (c.pestanaAlmacen == 0) InventarioReal { irA(3) } else PerdidasReal("compras")
+            if (c.pestanaAlmacen == 0) InventarioReal { irA(destinosDe(Rol.COMPRAS).indexOfFirst { it.ruta == "compras/kardex" }) }
+            else PerdidasReal("compras")
         }
+        "compras/ventas-mes" -> VentasDelMes()
         "compras/kardex" -> KardexCompleto()
         "compras/ventas-nueva" -> VentaReal { irA(0) }
         "compras/inventario" -> InventarioReal { irA(0) }
@@ -94,32 +104,68 @@ private fun VentaReal(irA: (Int) -> Unit) {
     val scope = rememberCoroutineScope()
     var enviando by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    val v = ComprasReal
 
-    CargaServidor("/api/v1/compras/ventas-datos", clave = ComprasReal.version) { d, _ ->
+    CargaServidor("/api/v1/compras/ventas-datos", clave = v.version) { d, _ ->
         val prods = d.lista("productos")
         val clientes = d.lista("clientes")
-        val p = prods.getOrNull(ComprasReal.productoSel) ?: return@CargaServidor
-        val c = clientes.getOrNull(ComprasReal.clienteSel)
+        val inactivos = d.lista("inactivos")
+        val p = prods.getOrNull(v.productoSel) ?: return@CargaServidor
+        val c = clientes.find { it.num("id").toLong() == v.clienteId }
         val precio = c?.let { p.obj("precios")?.num(it.txt("tipo")) } ?: 0.0
-        val cant = ComprasReal.cantidadVenta
+        val cant = v.cantidadVenta
         val sinStock = cant > p.num("stock")
+        // buscar por nombre, DNI/RUC o teléfono; los desactivados solo si se piden
+        val q = v.buscarCliente.trim().lowercase()
+        val visibles = (clientes + if (v.verInactivos) inactivos else emptyList()).filter {
+            q.isEmpty() || it.txt("nombre").lowercase().contains(q) || it.txt("ruc").contains(q) || it.txt("telefono").contains(q)
+        }
 
         PantallaScroll {
-            Segmentos(prods.map { it.txt("nombre") }, ComprasReal.productoSel) { ComprasReal.productoSel = it }
+            v.mensaje?.takeIf { it.startsWith("✓ Cliente") }?.let { AvisoCampo(it) }
+            Segmentos(prods.map { it.txt("nombre") }, v.productoSel) { v.productoSel = it }
             Text("En stock: ${formatear(p.num("stock"), 0)} ${p.txt("unidad")}", style = Texto.Cuerpo, color = Altiplano.TextoSecundario)
-            Seccion("Cliente")
-            clientes.forEachIndexed { k, x ->
-                Opcion(x.txt("nombre"), NOMBRE_CANAL[x.txt("tipo")], ComprasReal.clienteSel == k,
-                    derecha = p.obj("precios")?.num(x.txt("tipo"))?.let { soles(it) }) { ComprasReal.clienteSel = k }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) { Seccion("Cliente") }
+                TextButton(onClick = { v.editandoCliente = JsonObject(emptyMap()) }) { Text("+ Nuevo cliente", color = Altiplano.Exito) }
+            }
+            if (clientes.size + inactivos.size > 5) {
+                Campo(v.buscarCliente, { v.buscarCliente = it.take(40) }, "Buscar por nombre, DNI/RUC o teléfono")
+            }
+            if (visibles.isEmpty()) {
+                AvisoCampo(if (q.isEmpty()) "Todavía no hay clientes: agrega el primero." else "Nadie coincide con «${v.buscarCliente.trim()}».")
+            }
+            visibles.forEach { x ->
+                val activo = x.txt("activo") != "false" && x.txt("activo") != "0"
+                val id = x.num("id").toLong()
+                Opcion(
+                    x.txt("nombre") + if (activo) "" else " (desactivado)",
+                    listOfNotNull(NOMBRE_CANAL[x.txt("tipo")], x.txt("ruc").ifEmpty { null }, x.txt("telefono").ifEmpty { null }).joinToString(" · "),
+                    v.clienteId == id,
+                    derecha = if (activo) p.obj("precios")?.num(x.txt("tipo"))?.let { soles(it) } else null,
+                ) { if (activo) v.clienteId = id else v.editandoCliente = x } // un desactivado se abre para reactivarlo
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // el de "Proveedor de leche" es del sistema y no se edita
+                if (c != null && c.txt("tipo") != "PLANTA") TextButton(onClick = { v.editandoCliente = c }) {
+                    Text("Editar a ${c.txt("nombre")}", color = Altiplano.CelesteAcento)
+                }
+                Spacer(Modifier.weight(1f))
+                if (inactivos.isNotEmpty()) TextButton(onClick = { v.verInactivos = !v.verInactivos }) {
+                    Text(if (v.verInactivos) "Ocultar desactivados" else "Ver desactivados (${inactivos.size})", color = Altiplano.TextoSecundario)
+                }
             }
             TarjetaDato("TOTAL", soles(cant * precio), apoyo = "${formatear(cant, 0)} × ${soles(precio)} · ${p.txt("unidad")}", destacada = true) {
                 Spacer(Modifier.height(12.dp))
-                StepperGrande(cant, { ComprasReal.cantidadVenta = it ?: 1.0 }, paso = 1.0, minimo = 1.0, decimales = 0, unidad = p.txt("unidad"), fueraDeRango = sinStock, compacto = true)
+                StepperGrande(cant, { v.cantidadVenta = it ?: 1.0 }, paso = 1.0, minimo = 1.0, decimales = 0, unidad = p.txt("unidad"), fueraDeRango = sinStock, compacto = true)
             }
             if (sinStock) AvisoCampo("No hay suficiente stock para esa cantidad.", esAlerta = true)
             CampoCorreoVenta(c)
             error?.let { AvisoCampo("No se pudo registrar: $it", esAlerta = true) }
-            BotonPrimario(if (enviando) "Registrando…" else "Registrar venta", c != null && !sinStock && !enviando) {
+            BotonPrimario(
+                when { enviando -> "Registrando…"; c == null -> "Elige el cliente"; else -> "Registrar venta" },
+                c != null && !sinStock && !enviando,
+            ) {
                 val cli = c ?: return@BotonPrimario
                 scope.launch {
                     enviando = true; error = null
@@ -130,13 +176,121 @@ private fun VentaReal(irA: (Int) -> Unit) {
                             put("cantidad", cant)
                             correoParaVenta()?.let { put("correo", it) } // opcional: mandar la nota
                         })
-                        ComprasReal.mensaje = "✓ Venta registrada: ${soles(r.num("total"))} a ${cli.txt("nombre")}" + textoCorreo(r)
+                        v.mensaje = "✓ Venta registrada: ${soles(r.num("total"))} a ${cli.txt("nombre")}" + textoCorreo(r)
                         NotaVenta.ultima = UltimaNota(r.num("id").toLong(), r.txt("numero"), r.num("total"), cli.txt("nombre"), r.txt("correo"))
-                        ComprasReal.version++
+                        v.mesVentas = null // la venta recién hecha está en este mes
+                        v.version++
                         irA(3)
                     } catch (t: Throwable) { error = t.message }
                     enviando = false
                 }
+            }
+        }
+        v.editandoCliente?.let { HojaCliente(it) }
+    }
+}
+
+/** Agregar o editar a quién le vendemos; el DNI o RUC es opcional. Al agregar uno, queda elegido para la venta. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun HojaCliente(x: JsonObject) {
+    val nuevo = x.isEmpty()
+    val scope = rememberCoroutineScope()
+    var nombre by remember { mutableStateOf(x.txt("nombre")) }
+    var tipo by remember { mutableStateOf(x.txt("tipo").ifEmpty { "MAYORISTA" }) }
+    var doc by remember { mutableStateOf(x.txt("ruc")) }
+    var telefono by remember { mutableStateOf(x.txt("telefono")) }
+    var email by remember { mutableStateOf(x.txt("email")) }
+    var activo by remember { mutableStateOf(nuevo || (x.txt("activo") != "false" && x.txt("activo") != "0")) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var enviando by remember { mutableStateOf(false) }
+    val cerrar = { ComprasReal.editandoCliente = null }
+
+    Hoja(if (nuevo) "Nuevo cliente" else "Editar cliente", cerrar) {
+        Campo(nombre, { nombre = it.take(120) }, "Nombre del cliente o de su negocio", palabras = true)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Chip("Mayorista", tipo == "MAYORISTA") { tipo = "MAYORISTA" }
+            Chip("Cliente directo", tipo == "DIRECTO") { tipo = "DIRECTO" }
+        }
+        Campo(doc, { doc = it.filter(Char::isDigit).take(11) }, "DNI o RUC (opcional)", teclado = KeyboardType.Number)
+        Campo(telefono, { telefono = it.filter { ch -> ch.isDigit() || ch == ' ' || ch == '+' }.take(20) }, "Teléfono (opcional)", teclado = KeyboardType.Phone)
+        Campo(email, { email = it.trim().take(120) }, "Correo para la nota (opcional)", teclado = KeyboardType.Email)
+        if (!nuevo) Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(if (activo) "Activo: aparece para vender" else "Desactivado: ya no aparece para vender",
+                style = Texto.Cuerpo, color = Altiplano.TextoSecundario, modifier = Modifier.weight(1f))
+            Switch(activo, { activo = it }, colors = SwitchDefaults.colors(checkedTrackColor = Altiplano.VerdeMarca))
+        }
+        error?.let { AvisoCampo(it, esAlerta = true) }
+        BotonPrimario(if (enviando) "Guardando…" else if (nuevo) "Agregar cliente" else "Guardar cambios", !enviando) {
+            error = when {
+                nombre.trim().length < 3 -> "Escribe el nombre del cliente o de su negocio"
+                doc.isNotEmpty() && doc.length != 8 && !Regex("^(10|15|16|17|20)\\d{9}$").matches(doc) ->
+                    "El DNI lleva 8 dígitos y el RUC 11 (empieza en 10, 15, 16, 17 o 20)"
+                email.isNotEmpty() && !esCorreo(email) -> "Ese correo no es válido"
+                else -> null
+            }
+            if (error == null) scope.launch {
+                enviando = true
+                try {
+                    val r = Sesion.enviar("/api/v1/compras/clientes" + if (nuevo) "" else "/${x.txt("id")}", buildJsonObject {
+                        put("nombre", nombre.trim()); put("tipo", tipo)
+                        if (doc.isNotEmpty()) put("documento", doc)
+                        if (telefono.isNotBlank()) put("telefono", telefono.trim())
+                        if (email.isNotEmpty()) put("email", email)
+                        if (!nuevo) put("activo", activo)
+                    })
+                    val id = r.num("id").toLong()
+                    if (nuevo || activo) ComprasReal.clienteId = id
+                    else if (ComprasReal.clienteId == id) ComprasReal.clienteId = null // desactivado: ya no se puede elegir
+                    ComprasReal.mensaje = "✓ Cliente ${r.txt("nombre")} " + when {
+                        nuevo -> "agregado y elegido para esta venta"
+                        !activo -> "desactivado"
+                        else -> "actualizado"
+                    }
+                    ComprasReal.buscarCliente = ""
+                    ComprasReal.version++
+                    cerrar()
+                } catch (t: Throwable) { error = t.message }
+                enviando = false
+            }
+        }
+    }
+}
+
+/** Ventas mes por mes con flechitas (o todas), con el total vendido; tocar una abre su nota. */
+@Composable
+private fun VentasDelMes() {
+    val v = ComprasReal
+    val abrirNota = rememberAbrirNota()
+    var mostrar by remember(v.mesVentas) { mutableStateOf(40) }
+    CargaServidor("/api/v1/compras/movimientos?mes=${v.mesVentas ?: "actual"}", clave = v.version) { d, _ ->
+        val per = d.obj("periodo")
+        val todo = per?.txt("mes") == "todo"
+        val ventas = d.lista("movimientos")
+        PantallaScroll {
+            v.mensaje?.takeIf { it.startsWith("✓ Venta") }?.let { AvisoCampo(it) }
+            TarjetaUltimaNota()
+            if (todo) Tarjeta { Text("Todas las ventas", style = Texto.Fila, color = Altiplano.Texto) }
+            else Flechitas(
+                nombreMes(per?.txt("mes") ?: "").replaceFirstChar { it.uppercase() }, null,
+                onAnterior = per?.txt("anterior")?.takeIf { it.isNotEmpty() }?.let { { v.mesVentas = it } },
+                onSiguiente = per?.txt("siguiente")?.takeIf { it.isNotEmpty() }?.let { { v.mesVentas = it } },
+            )
+            TextButton(onClick = { v.mesVentas = if (todo) null else "todo" }) {
+                Text(if (todo) "Ver mes por mes" else "Ver todo", color = Altiplano.CelesteAcento)
+            }
+            val n = per?.num("ventas")?.toInt() ?: ventas.size
+            TarjetaDato("VENDIDO", soles(per?.num("vendido") ?: 0.0), apoyo = "$n ${if (n == 1) "venta" else "ventas"}", destacada = true)
+            if (ventas.isEmpty()) AvisoCampo(if (todo) "Todavía no hay ventas." else "No hubo ventas en este mes.")
+            ventas.take(mostrar).forEach { m ->
+                val venta = m.txt("venta_id").toLongOrNull()
+                FilaLista(m.txt("que"), "${m.txt("ref")} · ${fechaCorta(m.txt("fecha"))} · ${m.txt("numero")} (tocar para ver)",
+                    onClick = venta?.let { id -> { abrirNota(id) } }) {
+                    Text(m.txt("delta"), style = Texto.Fila, color = Altiplano.TextoSecundario)
+                }
+            }
+            if (ventas.size > mostrar) TextButton(onClick = { mostrar += 40 }) {
+                Text("Ver más (${ventas.size - mostrar})", color = Altiplano.CelesteAcento)
             }
         }
     }

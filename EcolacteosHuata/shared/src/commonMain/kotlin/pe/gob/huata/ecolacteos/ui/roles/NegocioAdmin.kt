@@ -55,7 +55,7 @@ fun NegocioReal(e: EstadoAdmin) {
             if (nVentas > 0) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Tarjeta(Modifier.weight(1f)) { MiniCifra("Mayorista", soles(tipos.num("MAYORISTA"))) }
-                    Tarjeta(Modifier.weight(1f)) { MiniCifra("Vecinos", soles(tipos.num("DIRECTO"))) }
+                    Tarjeta(Modifier.weight(1f)) { MiniCifra("Directos",soles(tipos.num("DIRECTO"))) }
                     Tarjeta(Modifier.weight(1f)) { MiniCifra("Proveedores", soles(tipos.num("PLANTA"))) }
                 }
             }
