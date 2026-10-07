@@ -36,6 +36,15 @@ fun FormulasReal(puedeAceptar: Boolean, onLoteIniciado: () -> Unit = {}) {
                 style = Texto.Cuerpo, color = Altiplano.TextoTerciario)
             d.lista("avisos").filter { it.txt("nivel") == "FALTA" }.forEach { AvisoCampo(it.txt("texto"), esAlerta = true) }
 
+            // queso y yogurt (o los que haya) con la leche del día: todo revisado junto
+            if (d.lista("productos").size > 1) {
+                ProducirVarios(d.lista("productos"), tanque, puedeAceptar) { msg ->
+                    FormulasApp.mensaje = msg
+                    OperarioReal.version++
+                    recargar(); onLoteIniciado()
+                }
+            }
+
             d.lista("productos").forEach { p ->
                 val id = p.num("id").toLong()
                 val u = p.txt("unidad").substringBefore(' ')

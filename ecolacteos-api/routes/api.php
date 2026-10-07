@@ -89,6 +89,7 @@ Route::prefix('v1')->group(function () {
         Route::get('planta/recetas',              [Api\PlantaAppController::class, 'recetasYTanque']);
         Route::get('planta/lotes',                [Api\PlantaAppController::class, 'lotes']);
         Route::post('planta/lotes',               [Api\PlantaAppController::class, 'iniciar']);
+        Route::post('planta/lotes/varios',        [Api\PlantaAppController::class, 'iniciarVarios']); // varios productos a la vez
         Route::post('planta/lotes/{id}/cerrar',   [Api\PlantaAppController::class, 'cerrar']);
 
         // --- Compras y almacén en la app ---

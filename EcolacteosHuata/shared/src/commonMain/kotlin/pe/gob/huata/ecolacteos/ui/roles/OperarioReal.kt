@@ -105,6 +105,11 @@ private fun NuevaOrdenReal(irA: (Int) -> Unit) {
         val sinLeche = litros > tanque
 
         PantallaScroll {
+            if (recetas.size > 1) Segmentos(listOf("Un producto", "Varios a la vez"), VariosApp.modo) { VariosApp.modo = it }
+            if (VariosApp.modo == 1 && recetas.size > 1) {
+                ProducirVarios(recetas, tanque, puedeIniciar = true) { msg -> OperarioReal.mensaje = msg; OperarioReal.version++; irA(2) }
+                return@PantallaScroll
+            }
             Segmentos(recetas.map { it.txt("nombre") }, OperarioReal.receta) { OperarioReal.receta = it; LimiteOrden.aviso = null }
             ElegirQuesos(r, tanque)
             Tarjeta {

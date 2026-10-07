@@ -57,6 +57,7 @@ function oficina() {
     buscar: '',
     kardex: { tipo: 'insumo', id: null, desde: '', hasta: '' }, // tipo: insumo | producto | leche
     quiero: {},     // producto => cuántos quesos / litros de yogurt se quieren hacer
+    varios: {},     // producir varios a la vez: producto => cuánto (vacío o 0 = no se hace)
     mapaFecha: '',  // vacío = hoy
     mesCompras: '', // vacío = mes actual (2026-10)
     mesVentas: '',
@@ -1118,6 +1119,48 @@ function oficina() {
       return falta.length
         ? { ok: false, motivo: `Para hacer ${num(q, 0)} ${u} falta ${falta.join(', ')}. Hay que conseguirlo antes de producir.` }
         : { ok: true, motivo: '' };
+    },
+    /**
+     * Varios productos a la vez: la leche y los insumos que comparten (el cultivo
+     * láctico) se suman. { elegidos, litros, insumos, ok, motivo }
+     */
+    planVarios() {
+      const elegidos = (this.d.productos || []).map((p) => {
+        const q = Number(this.varios[p.id]) || 0;
+        return { p, q, litros: q > 0 && p.rendimiento_min > 0 ? Math.ceil(q / p.rendimiento_min - 1e-9) : 0 };
+      }).filter((e) => e.q > 0);
+      const litros = elegidos.reduce((t, e) => t + e.litros, 0);
+      const porInsumo = {};
+      elegidos.forEach((e) => e.p.insumos.forEach((i) => {
+        porInsumo[i.id] ??= { nombre: i.nombre, unidad: i.unidad, stock: i.stock, necesita: 0, productos: [] };
+        porInsumo[i.id].necesita += (i.por_100l * e.litros) / 100;
+        porInsumo[i.id].productos.push(e.p.nombre);
+      }));
+      const insumos = Object.values(porInsumo).sort((a, b) => b.productos.length - a.productos.length || a.nombre.localeCompare(b.nombre));
+      const falta = [];
+      if (litros > this.d.tanque) falta.push(`leche (${num(litros - this.d.tanque, 1)} L)`);
+      insumos.filter((i) => i.necesita > i.stock + 1e-9).forEach((i) => falta.push(`${i.nombre.toLowerCase()} (${num(i.necesita - i.stock, 3)} ${i.unidad})`));
+      const ok = elegidos.length > 0 && !falta.length;
+      const motivo = !elegidos.length ? 'Escribe cuánto quieres hacer de cada producto (deja en blanco el que no).'
+        : falta.length ? `Para hacerlos juntos falta ${falta.join(', ')}. Baja alguna cantidad o consigue lo que falta.` : '';
+      return { elegidos, litros, insumos, ok, motivo };
+    },
+    textoVarios(plan) { return plan.elegidos.map((e) => `${num(e.q, 0)} ${this.unidadProducto(e.p)} de ${e.p.nombre}`).join(' y '); },
+    abrirProducirVarios() {
+      this.f = { plan: this.planVarios(), error: null, enviando: false };
+      this.ventana = 'producir-varios';
+    },
+    async confirmarProducirVarios() {
+      const f = this.f;
+      f.enviando = true; f.error = null;
+      try {
+        const r = await this.api('/planta/lotes/varios', { lotes: f.plan.elegidos.map((e) => ({ producto_id: e.p.id, litros: e.litros })) });
+        this.ventana = null;
+        this.varios = {};
+        await this.ir('lotes');
+        this.aviso = { texto: `✓ ${r.lotes.length} lotes iniciados a la vez: ` + r.lotes.map((l) => `${l.codigo} ${l.producto} (${num(l.litros, 0)} L)`).join(', ') +
+          '. Se descontaron la leche y los insumos. Ciérralos aquí cuando terminen.' };
+      } catch (e) { f.error = e.message; } finally { f.enviando = false; }
     },
     abrirProducir(p) {
       this.f = { producto: p, cantidad: Number(this.cantidadQuiero(p)), litros: this.litrosPara(p), error: null, enviando: false };

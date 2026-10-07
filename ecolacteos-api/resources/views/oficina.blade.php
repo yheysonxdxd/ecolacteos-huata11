@@ -852,6 +852,39 @@
                     <span x-text="' Comprar al menos ' + num(a.comprar, 3) + ' ' + a.unidad + '.'"></span>
                 </div>
             </template>
+            {{-- varios productos a la vez: la leche y los insumos compartidos se suman --}}
+            <div class="tarjeta destacada" style="margin-top: 16px" x-show="(d.productos || []).length > 1">
+                <h2 style="margin: 0; color: var(--texto); font-size: 18px; text-transform: none; letter-spacing: 0">Producir varios a la vez</h2>
+                <p class="sub" style="margin: 6px 0 12px">Escribe cuánto quieres de cada uno (deja en blanco el que no). Se revisa que la leche y los insumos alcancen para todo junto.</p>
+                <table class="lista"><tr><th>Producto</th><th>Cuánto</th><th class="num">Leche</th></tr>
+                    <template x-for="p in d.productos || []" :key="p.id"><tr>
+                        <td x-text="p.nombre"></td>
+                        <td><div class="fila" style="gap: 8px; flex-wrap: nowrap">
+                            <input type="number" min="0" step="1" x-model="varios[p.id]" placeholder="0" style="width: 100px" :aria-label="'Cuánto ' + p.nombre">
+                            <span x-text="unidadProducto(p)"></span></div></td>
+                        <td class="num" x-text="Number(varios[p.id]) > 0 ? num(planVarios().elegidos.find((e) => e.p.id === p.id)?.litros || 0, 0) + ' L' : '—'"></td></tr></template>
+                    <tr><td colspan="2"><strong>Leche total</strong> <span class="sub" style="margin: 0" x-text="'(en el tanque hay ' + num(d.tanque, 1) + ' L)'"></span></td>
+                        <td class="num" :class="planVarios().litros > d.tanque ? 'mal' : ''"><strong x-text="num(planVarios().litros, 0) + ' L'"></strong></td></tr>
+                </table>
+                <table class="lista" style="margin-top: 10px" x-show="planVarios().insumos.length">
+                    <tr><th>Insumo</th><th class="num">Necesitas en total</th><th class="num">Hay en almacén</th><th></th></tr>
+                    <template x-for="i in planVarios().insumos" :key="i.nombre"><tr>
+                        <td><span x-text="i.nombre"></span><div class="sub" style="margin: 0" x-show="i.productos.length > 1" x-text="'lo usan ' + i.productos.join(' y ')"></div></td>
+                        <td class="num" :class="i.necesita > i.stock + 1e-9 ? 'mal' : ''"><strong x-text="num(i.necesita, 3) + ' ' + i.unidad"></strong></td>
+                        <td class="num" x-text="num(i.stock, 3) + ' ' + i.unidad"></td>
+                        <td><span class="chip" :class="i.necesita > i.stock + 1e-9 ? 'mal' : 'ok'"
+                                  x-text="i.necesita > i.stock + 1e-9 ? 'Falta ' + num(i.necesita - i.stock, 3) + ' ' + i.unidad : 'Alcanza'"></span></td></tr></template>
+                </table>
+                <div class="decision" :class="planVarios().ok ? 'si' : 'no'" style="margin-top: 12px">
+                    <div class="texto">
+                        <strong x-text="planVarios().ok ? '✓ Sí se puede hacer ' + textoVarios(planVarios()) + ' a la vez.' : (planVarios().elegidos.length ? '✗ No se puede todo junto.' : '')"></strong>
+                        <span x-text="' ' + (planVarios().ok ? 'Hay leche e insumos para todo.' : planVarios().motivo)"></span>
+                        <div class="sub" style="margin: 4px 0 0" x-show="planVarios().ok && usuario?.rol !== 'ADMIN'">Los lotes los inicia el operario (en la app) o el administrador.</div>
+                    </div>
+                    <button class="btn" x-show="usuario?.rol === 'ADMIN'" :disabled="!planVarios().ok" @click="abrirProducirVarios()"
+                            x-text="'Aceptar: iniciar ' + planVarios().elegidos.length + (planVarios().elegidos.length === 1 ? ' lote' : ' lotes')"></button>
+                </div>
+            </div>
             <template x-for="p in d.productos || []" :key="p.id">
                 <div class="tarjeta" style="margin-top: 16px">
                     <div class="fila"><h2 style="margin: 0; color: var(--texto); font-size: 18px; text-transform: none; letter-spacing: 0" x-text="p.nombre"></h2>
@@ -1384,6 +1417,27 @@
         <div class="aviso error" x-show="f.error" x-text="f.error"></div>
         <div class="pie"><button class="btn gris" @click="ventana = null">Cancelar</button>
             <button class="btn" @click="confirmarProducir()" :disabled="!!f.enviando" x-text="f.enviando ? 'Iniciando…' : 'Aceptar e iniciar lote'"></button></div>
+    </div>
+
+    {{-- producir varios a la vez --}}
+    <div class="ventana" x-show="ventana === 'producir-varios'">
+        <h3 x-text="'Hacer ' + (f.plan ? textoVarios(f.plan) : '')"></h3>
+        <p class="sub">Al aceptar se inician los lotes a la vez y se descuenta del almacén:</p>
+        <table class="lista">
+            <template x-for="e in f.plan?.elegidos || []" :key="e.p.id">
+                <tr><td x-text="'Leche para ' + e.p.nombre"></td><td class="num"><strong x-text="num(e.litros, 0) + ' L'"></strong></td></tr>
+            </template>
+            <template x-for="i in f.plan?.insumos || []" :key="i.nombre">
+                <tr><td x-text="i.nombre"></td><td class="num"><strong x-text="num(i.necesita, 3) + ' ' + i.unidad"></strong></td></tr>
+            </template>
+        </table>
+        <template x-for="e in f.plan?.elegidos || []" :key="'r' + e.p.id">
+            <p class="sub" style="margin: 8px 0 0" x-text="e.p.nombre + ': deben salir entre ' + num(e.litros * e.p.rendimiento_min, 0) + ' y ' + num(e.litros * e.p.rendimiento_max, 0) + ' ' + unidadProducto(e.p) + '. Vence en ' + e.p.vida_util_dias + ' días.'"></p>
+        </template>
+        <div class="aviso error" x-show="f.error" x-text="f.error" style="margin-top: 10px"></div>
+        <div class="pie"><button class="btn gris" @click="ventana = null">Cancelar</button>
+            <button class="btn" @click="confirmarProducirVarios()" :disabled="!!f.enviando"
+                    x-text="f.enviando ? 'Iniciando…' : 'Aceptar e iniciar ' + (f.plan?.elegidos.length || 0) + ' lotes'"></button></div>
     </div>
 
     {{-- corregir stock (ajuste de kardex) --}}

@@ -83,60 +83,115 @@ class PlantaAppController extends Controller
             'litros'      => ['required', 'numeric', 'min:1'],
         ]);
 
-        return DB::transaction(function () use ($data, $r) {
-            $prod = DB::table('productos')->find($data['producto_id']);
-            $litros = (float) $data['litros'];
+        $lote = $this->abrirLotes([[(int) $data['producto_id'], (float) $data['litros']]], $r->user()->id)[0];
+
+        return response()->json(['codigo' => $lote['codigo'], 'id' => $lote['id']], 201);
+    }
+
+    /**
+     * POST /api/v1/planta/lotes/varios { lotes: [{ producto_id, litros }, ...] }
+     * Varios productos a la vez (ej.: queso y yogurt con la leche del día). La leche y
+     * los insumos que comparten se revisan sumados: o se abren todos los lotes o ninguno.
+     */
+    public function iniciarVarios(Request $r)
+    {
+        $data = $r->validate([
+            'lotes' => ['required', 'array', 'min:1', 'max:10'],
+            'lotes.*.producto_id' => ['required', 'distinct', 'exists:productos,id'],
+            'lotes.*.litros' => ['required', 'numeric', 'min:1'],
+        ], [
+            'lotes.required' => 'Elige al menos un producto y cuánto hacer.',
+            'lotes.*.producto_id.distinct' => 'Un producto está repetido: pon todo lo que quieres hacer de él en una sola fila.',
+        ]);
+
+        $lotes = $this->abrirLotes(array_map(fn ($l) => [(int) $l['producto_id'], (float) $l['litros']], $data['lotes']), $r->user()->id);
+
+        return response()->json(['lotes' => $lotes], 201);
+    }
+
+    /**
+     * Abre uno o varios lotes en una sola transacción: toma la leche aceptada más
+     * antigua, descuenta los insumos según cada receta y deja la trazabilidad.
+     *
+     * @param  array<int, array{0: int, 1: float}>  $pedidos  [producto_id, litros]
+     * @return array<int, array{id: int, codigo: string, producto: string, litros: float}>
+     */
+    private function abrirLotes(array $pedidos, int $usuarioId): array
+    {
+        return DB::transaction(function () use ($pedidos, $usuarioId) {
+            $varios = count($pedidos) > 1;
+            $juntos = $varios ? ' para hacerlos juntos' : '';
+            $productos = DB::table('productos')->whereIn('id', array_column($pedidos, 0))->get()->keyBy('id');
 
             $disponibles = $this->entregasDisponibles()->lockForUpdate()->get();
-            abort_if(round($disponibles->sum('restante'), 2) < $litros, 422,
-                'Solo hay '.round($disponibles->sum('restante'), 2).' L de leche aceptada disponible.');
+            $hay = round($disponibles->sum('restante'), 2);
+            $total = array_sum(array_column($pedidos, 1));
+            abort_if($hay < $total, 422, $varios
+                ? "Para hacerlos juntos se necesitan {$total} L de leche y solo hay {$hay} L de leche aceptada disponible."
+                : "Solo hay {$hay} L de leche aceptada disponible.");
 
-            $receta = DB::table('recetas_insumo as r')->join('insumos as i', 'i.id', '=', 'r.insumo_id')
-                ->where('r.producto_id', $prod->id)->select('i.id', 'i.nombre', 'i.unidad', 'i.stock', 'r.cantidad_por_100l')->get();
-            $faltan = $receta->filter(fn ($i) => $i->stock < $i->cantidad_por_100l * $litros / 100)
-                ->map(fn ($i) => "{$i->nombre} (se necesita ".round($i->cantidad_por_100l * $litros / 100, 3)
-                    ." {$i->unidad} y hay ".(float) $i->stock.')');
+            // lo que necesita cada insumo, sumando los productos que lo comparten (ej.: cultivo láctico)
+            $recetas = DB::table('recetas_insumo as r')->join('insumos as i', 'i.id', '=', 'r.insumo_id')
+                ->whereIn('r.producto_id', array_column($pedidos, 0))
+                ->select('r.producto_id', 'i.id', 'i.nombre', 'i.unidad', 'i.stock', 'r.cantidad_por_100l')->get()->groupBy('producto_id');
+            $necesita = [];
+            foreach ($pedidos as [$prod, $litros]) {
+                foreach ($recetas[$prod] ?? [] as $i) {
+                    $necesita[$i->id] ??= ['i' => $i, 'cant' => 0.0];
+                    $necesita[$i->id]['cant'] += $i->cantidad_por_100l * $litros / 100;
+                }
+            }
+            $faltan = collect($necesita)->filter(fn ($n) => $n['i']->stock < round($n['cant'], 3))
+                ->map(fn ($n) => "{$n['i']->nombre} (se necesita ".round($n['cant'], 3)." {$n['i']->unidad}{$juntos} y hay ".(float) $n['i']->stock.')');
             abort_if($faltan->isNotEmpty(), 422, 'Falta '.$faltan->join(', ', ' y ').'. Pide a Compras que reponga.');
 
             $ultimo = DB::table('lotes')->where('codigo', 'like', 'L-%')->get('codigo')
                 ->map(fn ($l) => (int) substr($l->codigo, 2))->max() ?? 2400;
-            $codigo = 'L-'.($ultimo + 1);
             $ahora = now();
+            $restante = $disponibles->mapWithKeys(fn ($e) => [$e->id => (float) $e->restante])->all();
+            $abiertos = [];
 
-            $loteId = DB::table('lotes')->insertGetId([
-                'uuid' => (string) Str::uuid(), 'codigo' => $codigo, 'producto_id' => $prod->id,
-                'litros_leche' => $litros,
-                'esperado_min' => round($litros * $prod->rendimiento_min, 2),
-                'esperado_max' => round($litros * $prod->rendimiento_max, 2),
-                'estado' => 'EN_PROCESO',
-                'vence_el' => Carbon::today('America/Lima')->addDays($prod->vida_util_dias)->toDateString(),
-                'operario_id' => $r->user()->id, 'iniciado_en' => $ahora,
-                'created_at' => $ahora, 'updated_at' => $ahora,
-            ]);
-
-            // trazabilidad: qué entregas entran al lote (la última puede entrar en parte)
-            $falta = $litros;
-            foreach ($disponibles as $e) {
-                if ($falta <= 0) break;
-                $usa = min($falta, (float) $e->restante);
-                DB::table('lote_entrega')->insert([
-                    'lote_id' => $loteId, 'entrega_id' => $e->id, 'litros' => $usa,
+            foreach ($pedidos as [$prodId, $litros]) {
+                $prod = $productos[$prodId];
+                $codigo = 'L-'.(++$ultimo);
+                $loteId = DB::table('lotes')->insertGetId([
+                    'uuid' => (string) Str::uuid(), 'codigo' => $codigo, 'producto_id' => $prod->id,
+                    'litros_leche' => $litros,
+                    'esperado_min' => round($litros * $prod->rendimiento_min, 2),
+                    'esperado_max' => round($litros * $prod->rendimiento_max, 2),
+                    'estado' => 'EN_PROCESO',
+                    'vence_el' => Carbon::today('America/Lima')->addDays($prod->vida_util_dias)->toDateString(),
+                    'operario_id' => $usuarioId, 'iniciado_en' => $ahora,
                     'created_at' => $ahora, 'updated_at' => $ahora,
                 ]);
-                $falta -= $usa;
+
+                // trazabilidad: qué entregas entran al lote (la última puede entrar en parte)
+                $falta = $litros;
+                foreach ($restante as $entregaId => $queda) {
+                    if ($falta <= 0) break;
+                    if ($queda <= 0) continue;
+                    $usa = min($falta, $queda);
+                    DB::table('lote_entrega')->insert([
+                        'lote_id' => $loteId, 'entrega_id' => $entregaId, 'litros' => $usa,
+                        'created_at' => $ahora, 'updated_at' => $ahora,
+                    ]);
+                    $restante[$entregaId] -= $usa;
+                    $falta -= $usa;
+                }
+
+                foreach ($recetas[$prodId] ?? [] as $i) {
+                    $cant = round($i->cantidad_por_100l * $litros / 100, 3);
+                    DB::table('insumos')->where('id', $i->id)->decrement('stock', $cant);
+                    DB::table('movimientos_insumo')->insert([
+                        'uuid' => (string) Str::uuid(), 'insumo_id' => $i->id, 'cantidad' => -$cant,
+                        'referencia' => "$codigo · inicio de lote", 'origen_type' => 'lote', 'origen_id' => $loteId,
+                        'registrado_por' => $usuarioId, 'created_at' => $ahora, 'updated_at' => $ahora,
+                    ]);
+                }
+                $abiertos[] = ['id' => $loteId, 'codigo' => $codigo, 'producto' => $prod->nombre, 'litros' => $litros];
             }
 
-            foreach ($receta as $i) {
-                $cant = round($i->cantidad_por_100l * $litros / 100, 3);
-                DB::table('insumos')->where('id', $i->id)->decrement('stock', $cant);
-                DB::table('movimientos_insumo')->insert([
-                    'uuid' => (string) Str::uuid(), 'insumo_id' => $i->id, 'cantidad' => -$cant,
-                    'referencia' => "$codigo · inicio de lote", 'origen_type' => 'lote', 'origen_id' => $loteId,
-                    'registrado_por' => $r->user()->id, 'created_at' => $ahora, 'updated_at' => $ahora,
-                ]);
-            }
-
-            return response()->json(['codigo' => $codigo, 'id' => $loteId], 201);
+            return $abiertos;
         });
     }
 
