@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Services\Configuracion;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -55,6 +56,7 @@ class ResumenController extends Controller
         return response()->json([
             'desde' => $desde->toDateString(), 'hasta' => $hoy->toDateString(),
             'total' => array_sum(array_column($dias, 'litros')),
+            'precio_litro' => Configuracion::precioLeche(), // el de hoy, para el monto aproximado de la app
             'dias' => $dias, 'proveedores' => $porProveedor,
         ]);
     }
@@ -81,7 +83,7 @@ class ResumenController extends Controller
 
         $hoy   = Carbon::today('America/Lima');
         $lunes = $hoy->copy()->startOfWeek();
-        $precio = (float) (DB::table('parametros')->where('clave', 'precio.leche_litro')->value('valor') ?? 1.80);
+        $precio = Configuracion::precioLeche();
 
         $ultimos = DB::table('entregas')->where('proveedor_id', $p->id)
             ->whereBetween('fecha', [$hoy->copy()->subDays(6)->toDateString(), $hoy->toDateString()])

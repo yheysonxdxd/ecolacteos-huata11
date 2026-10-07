@@ -21,7 +21,7 @@ class AceptacionAutomatica
             return; // ya la vio calidad: manda su veredicto
         }
 
-        $precio = (float) Parametro::valor('precio.leche_litro', 1.80);
+        $precio = Configuracion::precioLeche($e->fecha); // el que regía el día de la entrega
         $e->update([
             'estado_calidad' => 'ACEPTADO',
             'precio_litro'   => $e->ausente ? null : $precio,

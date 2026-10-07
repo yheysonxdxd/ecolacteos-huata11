@@ -113,7 +113,7 @@ class CalidadService
 
             $entrega   = $analisis->entrega;
             $proveedor = $entrega->proveedor;
-            $precio    = (float) Parametro::valor('precio.leche_litro', 1.80);
+            $precio    = Configuracion::precioLeche($entrega->fecha); // el que regía el día de la entrega
             $sancion   = null;
 
             if (! $ev['adulterada'] && $aceptar && empty($ev['causas'])) {

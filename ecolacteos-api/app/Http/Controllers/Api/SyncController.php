@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Services\Configuracion;
 use App\Http\Controllers\Controller;
 use App\Models\Comunidad;
 use App\Models\Parametro;
@@ -72,7 +73,7 @@ class SyncController extends Controller
                     'antes' => $c->antes, 'ahora' => $c->ahora, 'desde' => $c->desde,
                 ] : null;
             })->filter()->values(),
-            'parametros'  => Parametro::pluck('valor', 'clave'),
+            'parametros'  => Parametro::pluck('valor', 'clave')->merge(['precio.leche_litro' => (string) Configuracion::precioLeche()]),
         ]);
     }
 }

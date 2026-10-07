@@ -27,7 +27,8 @@ fun PantallaSemanaReal() {
                 valor = formatear(d.num("total")), unidad = "L",
                 apoyo = "${fechaCorta(d.txt("desde"))} – ${fechaCorta(d.txt("hasta"))} · " +
                     (codigo?.let { "solo $it" } ?: "todos los vehículos") +
-                    " · ${soles(d.num("total") * PRECIO_LECHE)}",
+                    // el precio de hoy lo manda el servidor (se cambia en Configuración); sin él, el de siempre
+                    " · ${soles(d.num("total") * (d.num("precio_litro").takeIf { it > 0 } ?: PRECIO_LECHE))}",
                 destacada = true,
             ) {
                 Spacer(Modifier.height(14.dp))

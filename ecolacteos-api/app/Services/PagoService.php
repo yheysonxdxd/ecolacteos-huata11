@@ -24,7 +24,7 @@ class PagoService
             ->whereBetween('fecha', [$inicio->toDateString(), $fin->toDateString()])
             ->orderBy('fecha')->get();
 
-        $base   = (float) Parametro::valor('precio.leche_litro', 1.80);
+        $base   = Configuracion::precioLeche($inicio); // de referencia: cada entrega ya trae el suyo
         $detalle = [];
         $litros = 0.0;
         $monto  = 0.0;

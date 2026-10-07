@@ -130,7 +130,7 @@ class Kardex
 
     private static function leche(): array
     {
-        $base = (float) (DB::table('parametros')->where('clave', 'precio.leche_litro')->value('valor') ?? 0);
+        $base = Configuracion::precioLeche(); // solo si a una entrega le faltara su precio
         $lista = [];
 
         // acopio aceptado, un renglón por día (al inicio del día: los lotes de ese día salen después)

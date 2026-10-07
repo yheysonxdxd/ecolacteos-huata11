@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Services\Configuracion;
 use App\Http\Controllers\Controller;
 use App\Services\AcopioService;
 use App\Services\CambiosComunidad;
@@ -437,7 +438,7 @@ class AdminAppController extends Controller
     public function costos()
     {
         $desde = $this->hoy()->subDays(29);
-        $precioLeche = (float) (DB::table('parametros')->where('clave', 'precio.leche_litro')->value('valor') ?? 1.80);
+        $precioLeche = Configuracion::precioLeche();
 
         $lotes = DB::table('lotes as l')->join('productos as p', 'p.id', '=', 'l.producto_id')
             ->where('l.iniciado_en', '>=', $desde)->select('l.*', 'p.nombre as producto', 'p.rendimiento_min', 'p.rendimiento_max')->get();

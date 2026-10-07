@@ -70,6 +70,12 @@ Route::prefix('v1')->group(function () {
         Route::post('admin/trabajadores',              [Api\AdminPadronController::class, 'nuevoTrabajador']);
         Route::post('admin/trabajadores/{id}/activo',  [Api\AdminPadronController::class, 'cambiarActivo']);
         Route::post('admin/formulas/{producto}',       [Api\FormulasController::class, 'guardar'])->whereNumber('producto');
+        // configuración: empresa, precios, límites de calidad y tolerancias (con historial de cambios)
+        Route::get('admin/configuracion',                       [Api\ConfiguracionController::class, 'index']);
+        Route::post('admin/configuracion',                      [Api\ConfiguracionController::class, 'guardar']);
+        Route::post('admin/configuracion/precio-leche',         [Api\ConfiguracionController::class, 'precioLeche']);
+        Route::post('admin/configuracion/precio-leche/{id}/quitar', [Api\ConfiguracionController::class, 'quitarPrecioLeche'])->whereNumber('id');
+        Route::post('admin/configuracion/precio-venta',         [Api\ConfiguracionController::class, 'precioVenta']);
 
         // --- Planta (operario) en la app ---
         Route::get('planta/recetas',              [Api\PlantaAppController::class, 'recetasYTanque']);

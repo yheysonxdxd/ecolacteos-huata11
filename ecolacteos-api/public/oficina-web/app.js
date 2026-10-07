@@ -67,6 +67,9 @@ function oficina() {
     concFecha: '',  // vacío = último día con acopio
     concLitros: {}, // vehiculo_id => litros que llegaron a planta (lo que se está escribiendo)
     mapaEditar: false, // arrastrar comunidades a su lugar real
+    cfg: {},        // configuración: clave => valor que se está escribiendo
+    cfgLeche: { precio: '', desde: '' },
+    cfgVenta: {},   // 'producto_id.TIPO' => precio que se está escribiendo
 
     soles, num, fechaCorta, hora, TIPO_CLIENTE, ROLES, esCorreo,
 
@@ -109,6 +112,11 @@ function oficina() {
         { id: 'padron-grupo', nombre: 'Padrón', grupo: 'Administración',
           pestanas: [{ id: 'padron', nombre: 'Proveedores y trabajadores' }, { id: 'solicitudes', nombre: 'Cambios de comunidad' },
             { id: 'sesiones', nombre: 'Sesiones abiertas' }] },
+        // lo que antes solo se cambiaba en la base: precios, límites de calidad, datos de la empresa
+        { id: 'config-grupo', nombre: 'Configuración', grupo: 'Administración',
+          pestanas: [{ id: 'config-precios', nombre: 'Precios' }, { id: 'config-calidad', nombre: 'Calidad' },
+            { id: 'config-acopio', nombre: 'Acopio y planta' }, { id: 'config-empresa', nombre: 'Empresa' },
+            { id: 'config-historial', nombre: 'Historial de cambios' }] },
         ...compras,
       ];
     },
@@ -201,6 +209,13 @@ function oficina() {
           case 'movimientos':
             this.d = await this.api('/compras/movimientos?mes=' + (this.mesVentas || 'actual'));
             this.mesVentas = this.d.periodo.mes;
+            break;
+          case 'config-precios': case 'config-calidad': case 'config-acopio': case 'config-empresa': case 'config-historial':
+            this.d = await this.api('/admin/configuracion');
+            this.cfg = Object.fromEntries(this.d.campos.map((c) => [c.clave, c.valor]));
+            this.cfgLeche = { precio: '', desde: this.hoy() };
+            this.cfgVenta = Object.fromEntries(this.d.precios_venta.flatMap((p) =>
+              Object.entries(p.precios).map(([tipo, v]) => [p.producto_id + '.' + tipo, v ?? ''])));
             break;
           case 'formulas': this.d = await this.api('/compras/formulas'); break;
           case 'mermas': this.d = await this.api('/compras/mermas'); break;
@@ -512,6 +527,51 @@ function oficina() {
         this.aviso = { texto: aprobar
           ? `✓ ${s.proveedor} pasa a ${s.destino} (vehículo ${r.vehiculo}) desde el ${fechaCorta(r.vigente_desde)}`
           : `Se rechazó el cambio de ${s.proveedor}` };
+        await this.cargar();
+      } catch (e) { this.aviso = { error: true, texto: e.message }; }
+    },
+
+    // ---------------------------------------------------------- configuración
+    camposDe(grupo) { return (this.d.campos || []).filter((c) => c.grupo === grupo); },
+    /** Los campos del grupo que se escribieron distinto a lo guardado. */
+    cambiadosDe(grupo) {
+      return this.camposDe(grupo).filter((c) => String(this.cfg[c.clave] ?? '').trim() !== String(c.valor ?? ''));
+    },
+    async guardarConfig(grupo) {
+      const cambiados = this.cambiadosDe(grupo);
+      if (!cambiados.length) { this.aviso = { texto: 'No cambiaste nada.' }; return; }
+      try {
+        const r = await this.api('/admin/configuracion', { valores: Object.fromEntries(cambiados.map((c) => [c.clave, this.cfg[c.clave]])) });
+        this.aviso = { texto: `✓ Guardado (${r.cambios} ${r.cambios === 1 ? 'cambio' : 'cambios'}). Ya rige para lo que se registre desde ahora.` };
+        await this.cargar();
+      } catch (e) { this.aviso = { error: true, texto: e.message }; }
+    },
+    async guardarPrecioLeche() {
+      const f = this.cfgLeche;
+      if (!(Number(f.precio) > 0)) { this.aviso = { error: true, texto: 'Escribe el precio nuevo por litro' }; return; }
+      try {
+        const r = await this.api('/admin/configuracion/precio-leche', { precio: Number(f.precio), desde: f.desde });
+        this.aviso = { texto: r.desde === this.hoy()
+          ? `✓ Desde hoy se paga ${soles(r.precio)} por litro. Lo entregado antes conserva su precio.`
+          : `✓ Anotado: desde el ${fechaCorta(r.desde)} se pagará ${soles(r.precio)} por litro. Hasta entonces sigue ${soles(r.hoy)}.` };
+        await this.cargar();
+      } catch (e) { this.aviso = { error: true, texto: e.message }; }
+    },
+    async quitarPrecioLeche(p) {
+      try {
+        await this.api(`/admin/configuracion/precio-leche/${p.id}/quitar`, {});
+        this.aviso = { texto: `✓ Se quitó el precio de ${soles(p.precio)} que iba a regir desde el ${fechaCorta(p.desde)}.` };
+        await this.cargar();
+      } catch (e) { this.aviso = { error: true, texto: e.message }; }
+    },
+    async guardarPrecioVenta(p, tipo) {
+      const v = this.cfgVenta[p.producto_id + '.' + tipo];
+      if (!(Number(v) > 0)) { this.aviso = { error: true, texto: 'Escribe el precio' }; return; }
+      try {
+        const r = await this.api('/admin/configuracion/precio-venta', { producto_id: p.producto_id, tipo_cliente: tipo, precio: Number(v) });
+        this.aviso = { texto: r.cambio
+          ? `✓ ${p.producto} para ${this.d.tipos_cliente[tipo].toLowerCase()}: ${soles(r.precio)} desde hoy` + (r.antes ? ` (antes ${soles(r.antes)}).` : '.')
+          : 'Ese ya era el precio.' };
         await this.cargar();
       } catch (e) { this.aviso = { error: true, texto: e.message }; }
     },

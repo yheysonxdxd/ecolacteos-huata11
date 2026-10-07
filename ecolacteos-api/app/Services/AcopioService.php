@@ -49,7 +49,7 @@ class AcopioService
             ->whereDate('fecha', $fecha)->get();
 
         $litros = $entregas->where('ausente', false)->sum('litros');
-        $precio = (float) Parametro::valor('precio.leche_litro', 1.80);
+        $precio = Configuracion::precioLeche($fecha);
 
         return [
             'litros'        => round($litros, 2),

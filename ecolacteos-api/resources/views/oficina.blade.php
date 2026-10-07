@@ -357,6 +357,90 @@
             </table>
         </section>
 
+        {{-- ---------------------------------------------------- CONFIGURACIÓN --}}
+        <section x-show="seccion?.startsWith('config-') && !cargando && !error">
+            <h1 x-text="{ 'config-precios': 'Precios', 'config-calidad': 'Límites de calidad', 'config-acopio': 'Acopio y planta',
+                'config-empresa': 'Datos de la empresa', 'config-historial': 'Historial de cambios' }[seccion]"></h1>
+            <p class="sub" x-show="seccion !== 'config-historial'">Lo que cambies aquí rige para lo que se registre desde ahora; lo ya registrado no cambia.
+                Cada cambio queda en el <strong>Historial de cambios</strong> con quién lo hizo.</p>
+
+            {{-- precios: leche (con fecha) y venta --}}
+            <template x-if="seccion === 'config-precios' && d.precio_leche"><div>
+                <h2>Precio de la leche</h2>
+                <div class="tarjetas" style="margin-bottom: 12px">
+                    <div class="tarjeta destacada"><div class="eti">Hoy se paga</div><div class="valor" x-text="soles(d.precio_leche.hoy) + ' por litro'"></div>
+                        <div class="apoyo">Cada entrega se paga con el precio que regía el día que se entregó.</div></div>
+                </div>
+                <template x-for="p in d.precio_leche.programados" :key="p.id">
+                    <div class="aviso" style="margin-bottom: 10px"><span x-text="'Desde el ' + fechaCorta(p.desde) + ' se pagará ' + soles(p.precio) + ' por litro.'"></span>
+                        <button class="btn chico gris" style="margin-left: 8px" @click="quitarPrecioLeche(p)">Quitar</button></div>
+                </template>
+                <div class="tarjeta" style="max-width: 560px">
+                    <div class="dos">
+                        <div><label for="cfg-leche-precio">Precio nuevo por litro (S/)</label>
+                            <input id="cfg-leche-precio" type="number" min="0.5" max="10" step="0.01" x-model="cfgLeche.precio" :placeholder="num(d.precio_leche.hoy, 2)"></div>
+                        <div><label for="cfg-leche-desde">Desde el día</label>
+                            <input id="cfg-leche-desde" type="date" x-model="cfgLeche.desde" :min="hoy()"></div>
+                    </div>
+                    <p class="sub" style="margin: 8px 0 0">Conviene que empiece un lunes, para que toda la semana de pago tenga el mismo precio.</p>
+                    <div style="margin-top: 10px"><button class="btn" @click="guardarPrecioLeche()">Guardar precio de la leche</button></div>
+                </div>
+                <p class="sub" style="margin-top: 8px" x-show="d.precio_leche.anteriores.length"
+                   x-text="'Precios anteriores: ' + d.precio_leche.anteriores.map((p) => soles(p.precio) + ' desde el ' + fechaCorta(p.desde)).join(' · ')"></p>
+
+                <template x-for="c in camposDe('precios')" :key="c.clave"><div class="tarjeta" style="max-width: 560px; margin-top: 12px">
+                    <label :for="'cfg-' + c.clave" x-text="c.etiqueta + (c.unidad ? ' (' + c.unidad + ')' : '')"></label>
+                    <input :id="'cfg-' + c.clave" type="number" :min="c.min" :max="c.max" step="0.1" x-model="cfg[c.clave]">
+                    <p class="sub" style="margin: 6px 0 0" x-text="c.ayuda + ' Con el precio de hoy: ' + soles(d.precio_leche.hoy * (Number(cfg[c.clave]) || 0) / 100) + ' por litro.'"></p>
+                    <div style="margin-top: 10px"><button class="btn" @click="guardarConfig('precios')" :disabled="!cambiadosDe('precios').length">Guardar</button></div>
+                </div></template>
+
+                <h2>Precios de venta</h2>
+                <p class="sub">Desde hoy, para las ventas nuevas. Las notas de venta ya hechas conservan su precio.</p>
+                <table class="lista"><tr><th>Producto</th>
+                    <template x-for="(nombre, tipo) in d.tipos_cliente" :key="tipo"><th class="num" x-text="nombre"></th></template></tr>
+                    <template x-for="p in d.precios_venta" :key="p.producto_id"><tr>
+                        <td><span x-text="p.producto"></span><div class="sub" style="margin:0" x-text="'por ' + p.unidad"></div></td>
+                        <template x-for="(nombre, tipo) in d.tipos_cliente" :key="tipo"><td class="num">
+                            <div class="fila" style="gap: 6px; justify-content: flex-end; flex-wrap: nowrap">
+                                <input type="number" min="0.1" step="0.01" x-model="cfgVenta[p.producto_id + '.' + tipo]" style="width: 90px; text-align: right"
+                                       @keydown.enter="guardarPrecioVenta(p, tipo)" :aria-label="p.producto + ' · ' + nombre">
+                                <button class="btn chico" x-show="String(cfgVenta[p.producto_id + '.' + tipo]) !== String(p.precios[tipo] ?? '')"
+                                        @click="guardarPrecioVenta(p, tipo)">Guardar</button></div></td></template></tr></template>
+                </table>
+            </div></template>
+
+            {{-- calidad, acopio y empresa: la misma lista de campos --}}
+            <template x-for="g in ['calidad', 'acopio', 'empresa']" :key="g">
+                <div x-show="seccion === 'config-' + g" class="tarjeta" style="max-width: 640px">
+                    <template x-for="c in camposDe(g)" :key="c.clave"><div>
+                        <label :for="'cfg-' + c.clave" x-text="c.etiqueta + (c.unidad ? ' (' + c.unidad + ')' : '')"></label>
+                        <input :id="'cfg-' + c.clave" :type="c.tipo === 'numero' ? 'number' : 'text'" :min="c.min" :max="c.max" step="any"
+                               :maxlength="c.tipo === 'ruc' ? 11 : (c.tipo === 'texto' ? c.max : null)" x-model="cfg[c.clave]"
+                               :class="{ cambiado: String(cfg[c.clave] ?? '').trim() !== String(c.valor ?? '') }">
+                        <p class="sub" style="margin: 4px 0 0" x-show="c.ayuda" x-text="c.ayuda"></p>
+                    </div></template>
+                    <div class="fila" style="margin-top: 14px; gap: 8px">
+                        <button class="btn" @click="guardarConfig(g)" :disabled="!cambiadosDe(g).length"
+                                x-text="cambiadosDe(g).length ? 'Guardar ' + cambiadosDe(g).length + (cambiadosDe(g).length === 1 ? ' cambio' : ' cambios') : 'Sin cambios'"></button>
+                        <button class="btn gris" x-show="cambiadosDe(g).length" @click="cargar()">Deshacer</button>
+                    </div>
+                </div>
+            </template>
+
+            {{-- historial --}}
+            <template x-if="seccion === 'config-historial'"><div>
+                <p class="sub">Los últimos 40 cambios de configuración y de precios, lo más reciente arriba.</p>
+                <table class="lista"><tr><th>Cuándo</th><th>Qué</th><th>Antes</th><th>Ahora</th><th>Quién</th></tr>
+                    <template x-for="(h, k) in d.historial || []" :key="k"><tr>
+                        <td style="white-space: nowrap" x-text="fechaCorta(h.fecha) + ' ' + hora(h.fecha)"></td>
+                        <td><span x-text="h.que"></span><div class="sub" style="margin:0" x-show="h.desde" x-text="'rige desde el ' + fechaCorta(h.desde)"></div></td>
+                        <td x-text="h.antes"></td><td><strong x-text="h.despues"></strong></td><td x-text="h.usuario || '—'"></td></tr></template>
+                    <tr x-show="!(d.historial || []).length"><td colspan="5">Todavía no se cambió nada.</td></tr>
+                </table>
+            </div></template>
+        </section>
+
         {{-- ---------------------------------------------------- COSTOS --}}
         <section x-show="seccion === 'costos' && !cargando && !error">
             <h1>Costos y rendimiento</h1>
