@@ -146,12 +146,12 @@ private fun DiagnosticoReal(irA: (Int) -> Unit) {
         }
     }
 
+    if (x == null) {
+        // sin nadie elegido: la misma lista de Muestreo, para elegir aquí mismo
+        MuestreoReal(irA, aviso = "Elige a quién analizar: toca un proveedor y aquí aparecen los valores del lactoscan.")
+        return
+    }
     PantallaScroll {
-        if (x == null) {
-            AvisoCampo("No hay muestra seleccionada. Vuelve a la cola y toca una entrega.")
-            BotonPrimario("Ir a la cola") { irA(0) }
-            return@PantallaScroll
-        }
         FilaLista(x.txt("proveedor"), "${x.txt("comunidad")} · ${x.txt("vehiculo")} · ${fechaCorta(x.txt("fecha"))}") {
             Text("${formatear(x.num("litros"))} L", style = Texto.Fila, color = Altiplano.Texto)
         }

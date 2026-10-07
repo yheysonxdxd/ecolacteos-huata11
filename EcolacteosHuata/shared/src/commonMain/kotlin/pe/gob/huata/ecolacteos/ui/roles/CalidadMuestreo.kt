@@ -18,7 +18,7 @@ import kotlin.math.abs
  * GET /calidad/muestreo → entregas de hoy y ayer sin análisis.
  */
 @Composable
-fun MuestreoReal(irA: (Int) -> Unit) {
+fun MuestreoReal(irA: (Int) -> Unit, aviso: String? = null) {
     var buscar by remember { mutableStateOf("") }
 
     CargaServidor("/api/v1/calidad/muestreo", clave = CalidadReal.version) { d, recargar ->
@@ -32,6 +32,7 @@ fun MuestreoReal(irA: (Int) -> Unit) {
         val analizadas = d.num("analizadas_hoy").toInt()
 
         PantallaScroll {
+            aviso?.let { AvisoCampo(it) }
             CalidadReal.mensaje?.let { AvisoCampo(it, esAlerta = CalidadReal.mensajeGrave) }
             Text(
                 "No hace falta analizar a todos: elige a cualquier proveedor. " +
