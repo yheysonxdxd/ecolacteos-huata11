@@ -121,6 +121,19 @@ class Configuracion
         return $cambios;
     }
 
+    /**
+     * Anota un cambio en el historial. Para almacén, vehículos y comunidades la
+     * clave ya es el texto que se muestra ("Almacén · Azúcar blanca · stock mínimo").
+     */
+    public static function anotar(string $clave, $antes, $despues, ?int $usuarioId): void
+    {
+        if ((string) $antes === (string) $despues) return;
+        DB::table('configuracion_historial')->insert([
+            'clave' => mb_substr($clave, 0, 80), 'valor_antes' => $antes === null ? null : mb_substr((string) $antes, 0, 250),
+            'valor_nuevo' => $despues === null ? null : mb_substr((string) $despues, 0, 250), 'usuario_id' => $usuarioId, 'created_at' => now(),
+        ]);
+    }
+
     /** Nombre para mostrar en el historial: "Grasa mínima", "Precio de la leche"… */
     public static function etiqueta(string $clave): string
     {

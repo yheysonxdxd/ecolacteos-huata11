@@ -42,6 +42,7 @@ function oficina() {
     error: null,
     aviso: null,
     d: {},          // datos de la sección abierta
+    dDe: null,      // de qué sección son esos datos (mientras carga otra, d sigue siendo de la anterior)
     ventana: null,  // formulario/diálogo abierto
     f: {},          // campos del formulario abierto
     fOrden: null,   // orden a medio llenar mientras se agrega un vendedor
@@ -70,6 +71,8 @@ function oficina() {
     cfg: {},        // configuración: clave => valor que se está escribiendo
     cfgLeche: { precio: '', desde: '' },
     cfgVenta: {},   // 'producto_id.TIPO' => precio que se está escribiendo
+    cfgInsumos: {}, nuevoInsumo: { nombre: '', unidad: 'kg', minimo: '' },
+    cfgVeh: {}, cfgCom: {}, nuevaCom: {}, nuevoVeh: { codigo: '', tipo: 'CARRO', acopiador_id: null },
 
     soles, num, fechaCorta, hora, TIPO_CLIENTE, ROLES, esCorreo,
 
@@ -115,7 +118,8 @@ function oficina() {
         // lo que antes solo se cambiaba en la base: precios, límites de calidad, datos de la empresa
         { id: 'config-grupo', nombre: 'Configuración', grupo: 'Administración',
           pestanas: [{ id: 'config-precios', nombre: 'Precios' }, { id: 'config-calidad', nombre: 'Calidad' },
-            { id: 'config-acopio', nombre: 'Acopio y planta' }, { id: 'config-empresa', nombre: 'Empresa' },
+            { id: 'config-acopio', nombre: 'Acopio y planta' }, { id: 'config-almacen', nombre: 'Almacén' },
+            { id: 'config-vehiculos', nombre: 'Vehículos y rutas' }, { id: 'config-empresa', nombre: 'Empresa' },
             { id: 'config-historial', nombre: 'Historial de cambios' }] },
         ...compras,
       ];
@@ -179,6 +183,7 @@ function oficina() {
 
     async cargar() {
       this.cargando = true; this.error = null;
+      if (this.dDe !== this.seccion) this.dDe = null; // se quita la pantalla anterior antes de que lleguen los datos nuevos
       try {
         switch (this.seccion) {
           case 'totales': this.d = await this.api('/admin/totales?periodo=' + this.periodo); break;
@@ -217,6 +222,16 @@ function oficina() {
             this.cfgVenta = Object.fromEntries(this.d.precios_venta.flatMap((p) =>
               Object.entries(p.precios).map(([tipo, v]) => [p.producto_id + '.' + tipo, v ?? ''])));
             break;
+          case 'config-almacen': case 'config-vehiculos':
+            this.d = await this.api('/admin/configuracion/maestros');
+            this.cfgInsumos = Object.fromEntries(this.d.insumos.map((i) => [i.id, { nombre: i.nombre, unidad: i.unidad, minimo: i.minimo }]));
+            this.nuevoInsumo = { nombre: '', unidad: 'kg', minimo: '' };
+            this.cfgVeh = Object.fromEntries(this.d.vehiculos.map((v) => [v.id, { codigo: v.codigo, tipo: v.tipo, acopiador_id: v.acopiador_id }]));
+            this.cfgCom = Object.fromEntries([...this.d.vehiculos.flatMap((v) => v.ruta.map((c) => [c.id, { nombre: c.nombre, vehiculo_id: v.id }])),
+              ...this.d.sueltas.map((c) => [c.id, { nombre: c.nombre, vehiculo_id: null }])]);
+            this.nuevaCom = {};
+            this.nuevoVeh = { codigo: '', tipo: 'CARRO', acopiador_id: null };
+            break;
           case 'formulas': this.d = await this.api('/compras/formulas'); break;
           case 'mermas': this.d = await this.api('/compras/mermas'); break;
           case 'lotes': this.d = await this.api('/planta/lotes'); this.cierre = {}; break;
@@ -234,6 +249,7 @@ function oficina() {
             break;
           }
         }
+        this.dDe = this.seccion;
       } catch (e) {
         this.error = e.message;
       } finally {
@@ -574,6 +590,54 @@ function oficina() {
           : 'Ese ya era el precio.' };
         await this.cargar();
       } catch (e) { this.aviso = { error: true, texto: e.message }; }
+    },
+
+    // configuración · almacén, vehículos y rutas
+    async guardarMaestro(ruta, cuerpo, texto) {
+      try {
+        const r = await this.api(ruta, cuerpo);
+        this.aviso = { texto: typeof texto === 'function' ? texto(r) : texto };
+        await this.cargar();
+      } catch (e) { this.aviso = { error: true, texto: e.message }; }
+    },
+    insumoCambiado(i) {
+      const f = this.cfgInsumos[i.id];
+      return f && (f.nombre.trim() !== i.nombre || f.unidad.trim() !== i.unidad || Number(f.minimo) !== i.minimo);
+    },
+    guardarInsumo(i) {
+      const f = i ? this.cfgInsumos[i.id] : this.nuevoInsumo;
+      return this.guardarMaestro('/admin/configuracion/insumos', { id: i?.id ?? null, nombre: f.nombre, unidad: f.unidad, minimo: f.minimo === '' ? null : Number(f.minimo) },
+        (r) => i ? `✓ ${r.nombre} guardado` : `✓ ${r.nombre} agregado al almacén. Su stock sube cuando se registre una compra.`);
+    },
+    vehiculoCambiado(v) {
+      const f = this.cfgVeh[v.id];
+      return f && (f.codigo.trim().toUpperCase() !== v.codigo || f.tipo !== v.tipo || (f.acopiador_id ?? null) !== (v.acopiador_id ?? null));
+    },
+    guardarVehiculo(v, activo = undefined) {
+      const f = v ? this.cfgVeh[v.id] : this.nuevoVeh;
+      return this.guardarMaestro('/admin/configuracion/vehiculos', { id: v?.id ?? null, codigo: f.codigo, tipo: f.tipo, acopiador_id: f.acopiador_id || null,
+        ...(activo === undefined ? {} : { activo }) },
+        (r) => !v ? `✓ Vehículo ${r.codigo} agregado. Ahora agrégale comunidades a su ruta.`
+          : activo === false ? `✓ El ${r.codigo} quedó sin usar` : activo ? `✓ El ${r.codigo} vuelve a estar en uso` : `✓ ${r.codigo} guardado`);
+    },
+    moverComunidad(v, k, paso) {
+      const orden = v.ruta.map((c) => c.id);
+      [orden[k], orden[k + paso]] = [orden[k + paso], orden[k]];
+      return this.guardarMaestro(`/admin/configuracion/vehiculos/${v.id}/ruta`, { orden }, `✓ Orden de la ruta del ${v.codigo} guardado`);
+    },
+    comunidadCambiada(c, vehiculoId) {
+      const f = this.cfgCom[c.id];
+      return f && (f.nombre.trim() !== c.nombre || Number(f.vehiculo_id) !== vehiculoId);
+    },
+    guardarComunidad(c, vehiculoId) {
+      const f = this.cfgCom[c.id];
+      const pasa = Number(f.vehiculo_id) !== vehiculoId;
+      return this.guardarMaestro('/admin/configuracion/comunidades', { id: c.id, nombre: f.nombre, vehiculo_id: Number(f.vehiculo_id) },
+        (r) => pasa ? `✓ ${r.nombre} ahora la recoge el ${r.vehiculo}` + (c.proveedores ? `, con sus ${c.proveedores} proveedores` : '') : `✓ ${r.nombre} guardada`);
+    },
+    agregarComunidad(v) {
+      return this.guardarMaestro('/admin/configuracion/comunidades', { nombre: this.nuevaCom[v.id] || '', vehiculo_id: v.id },
+        (r) => `✓ ${r.nombre} agregada al final de la ruta del ${r.vehiculo}. Ubícala en Acopio → Mapa de Huata.`);
     },
 
     // ---------------------------------------------------------- conciliación
@@ -1015,7 +1079,7 @@ function oficina() {
 
     // -------------------------------------------------------------- fórmulas
     // "quiero hacer 10 quesos": la leche se calcula con el rendimiento mínimo, así esa cantidad sale segura
-    unidadProducto(p) { return p.unidad.split(' ')[0]; }, // "quesos de 1 kg" → "quesos"
+    unidadProducto(p) { return String(p?.unidad || '').split(' ')[0]; }, // "quesos de 1 kg" → "quesos"
     cantidadQuiero(p) { return this.quiero[p.id] ?? 10; },
     litrosPara(p) {
       const q = Number(this.cantidadQuiero(p)) || 0;

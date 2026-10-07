@@ -98,6 +98,57 @@ class ConfiguracionTest extends TestCase
         $this->postJson("/api/v1/admin/configuracion/precio-leche/$vigente/quitar")->assertStatus(422); // ya rige
     }
 
+    public function test_almacen_insumos_y_su_minimo(): void
+    {
+        $sal = $this->postJson('/api/v1/admin/configuracion/insumos', ['nombre' => 'Sal industrial', 'unidad' => 'kg', 'minimo' => 15])
+            ->assertOk()->json('id');
+        $this->assertEquals(0, DB::table('insumos')->where('id', $sal)->value('stock')); // el stock entra con compras
+        $this->postJson('/api/v1/admin/configuracion/insumos', ['id' => $sal, 'nombre' => 'Sal industrial', 'unidad' => 'kg', 'minimo' => 20])->assertOk();
+        $this->assertEquals(20, DB::table('insumos')->where('id', $sal)->value('stock_minimo'));
+        $this->postJson('/api/v1/admin/configuracion/insumos', ['nombre' => 'Sal industrial', 'unidad' => 'kg', 'minimo' => 1])
+            ->assertStatus(422)->assertJsonValidationErrors('nombre');
+
+        $h = collect($this->getJson('/api/v1/admin/configuracion')->json('historial'));
+        $this->assertNotNull($h->firstWhere('que', 'Almacén · Sal industrial · stock mínimo'));
+        $this->assertSame('Sal industrial (kg)', $h->firstWhere('que', 'Almacén · insumo nuevo')['despues']);
+        $this->assertCount(1, $this->getJson('/api/v1/admin/configuracion/maestros')->json('insumos'));
+    }
+
+    public function test_vehiculos_y_comunidades(): void
+    {
+        $c01 = $this->vehiculo['C-01'];
+        $m01 = $this->vehiculo['M-01'];
+        ['Huatta' => $huatta, 'Carata' => $carata] = $this->comunidad;
+
+        // vehículo nuevo y su acopiador
+        $c04 = $this->postJson('/api/v1/admin/configuracion/vehiculos', ['codigo' => 'c-04', 'tipo' => 'CARRO', 'acopiador_id' => $this->usuarios['ACOPIADOR']->id])
+            ->assertOk()->assertJsonPath('codigo', 'C-04')->json('id');
+        $this->postJson('/api/v1/admin/configuracion/vehiculos', ['codigo' => 'C-01', 'tipo' => 'CARRO'])->assertStatus(422); // repetido
+        $this->postJson('/api/v1/admin/configuracion/vehiculos', ['codigo' => 'C-04', 'tipo' => 'CARRO', 'acopiador_id' => $this->usuarios['ADMIN']->id])->assertStatus(422);
+
+        // orden de la ruta: las mismas comunidades
+        $this->postJson("/api/v1/admin/configuracion/vehiculos/$c01/ruta", ['orden' => [$carata, $huatta]])->assertOk();
+        $this->assertSame([$carata, $huatta], json_decode(DB::table('vehiculos')->where('id', $c01)->value('orden_ruta'), true));
+        $this->postJson("/api/v1/admin/configuracion/vehiculos/$c01/ruta", ['orden' => [$carata]])->assertStatus(422);
+
+        // Huatta pasa al C-04 con su proveedora
+        $this->postJson('/api/v1/admin/configuracion/comunidades', ['id' => $huatta, 'nombre' => 'Huatta', 'vehiculo_id' => $c04])->assertOk();
+        $this->assertSame([$carata], json_decode(DB::table('vehiculos')->where('id', $c01)->value('orden_ruta'), true));
+        $this->assertSame([$huatta], json_decode(DB::table('vehiculos')->where('id', $c04)->value('orden_ruta'), true));
+        $this->assertEquals($c04, DB::table('proveedores')->where('id', $this->proveedorId)->value('vehiculo_id'));
+
+        // comunidad nueva al final de la ruta del motocar
+        $nueva = $this->postJson('/api/v1/admin/configuracion/comunidades', ['nombre' => 'Chucaripo', 'vehiculo_id' => $m01])->assertOk()->json('id');
+        $this->assertSame([$this->comunidad['Kapi'], $nueva], json_decode(DB::table('vehiculos')->where('id', $m01)->value('orden_ruta'), true));
+
+        // no se deja sin usar un vehículo que todavía recoge proveedores
+        $this->postJson('/api/v1/admin/configuracion/vehiculos', ['id' => $c04, 'codigo' => 'C-04', 'tipo' => 'CARRO', 'activo' => false])
+            ->assertStatus(422);
+        $m = $this->getJson('/api/v1/admin/configuracion/maestros')->assertOk();
+        $this->assertSame(['Huatta'], collect($m->json('vehiculos'))->firstWhere('codigo', 'C-04')['ruta'] ? array_column(collect($m->json('vehiculos'))->firstWhere('codigo', 'C-04')['ruta'], 'nombre') : []);
+        $this->assertNotNull(collect($this->getJson('/api/v1/admin/configuracion')->json('historial'))->firstWhere('que', 'Comunidad Huatta · vehículo'));
+    }
+
     public function test_precio_de_venta_nuevo_desde_hoy(): void
     {
         $queso = DB::table('productos')->insertGetId(['nombre' => 'Queso Paria', 'unidad' => 'quesos de 1 kg',
