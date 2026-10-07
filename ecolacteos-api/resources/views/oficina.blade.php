@@ -90,15 +90,22 @@
                 <div class="tarjeta"><div class="eti">Rechazados</div><div class="valor mal" x-text="num(d.rechazados_pct) + ' %'"></div></div>
                 <div class="tarjeta"><div class="eti">Adulterada</div><div class="valor mal" x-text="num(d.adulterada_pct) + ' %'"></div></div>
             </div>
-            <h2>Por vehículo</h2>
+            <h2>Por vehículo · litros y calidad</h2>
             <table class="lista">
-                <tr><th>Vehículo</th><th>Acopiador</th><th>Ruta</th><th class="num">Litros</th><th style="width:28%"></th></tr>
+                <tr><th>Vehículo</th><th>Acopiador</th><th>Ruta</th><th class="num">Litros</th><th style="width:18%"></th>
+                    <th class="num">Grasa</th><th class="num">Densidad</th><th class="num">Temp.</th><th class="num">Rechazo</th><th></th></tr>
                 <template x-for="v in d.vehiculos || []" :key="v.codigo">
                     <tr><td x-text="v.codigo"></td><td x-text="v.acopiador || 'sin acopiador'"></td><td x-text="v.ruta"></td>
                         <td class="num" x-text="num(v.litros, 0) + ' L'"></td>
-                        <td><div class="barra"><span :style="'width:' + (v.litros / maximo(d.vehiculos, 'litros') * 100) + '%'"></span></div></td></tr>
+                        <td><div class="barra"><span :style="'width:' + (v.litros / maximo(d.vehiculos, 'litros') * 100) + '%'"></span></div></td>
+                        <td class="num" x-text="v.analisis ? num(v.grasa, 2) + ' %' : '—'"></td>
+                        <td class="num" x-text="v.analisis ? Number(v.densidad).toFixed(4) : '—'"></td>
+                        <td class="num" x-text="v.analisis ? num(v.temperatura) + ' °C' : '—'"></td>
+                        <td class="num" :class="{ mal: v.rechazo_pct > 8 }" x-text="v.analisis ? num(v.rechazo_pct) + ' %' : '—'"></td>
+                        <td><span class="chip mal" x-show="v.adulteradas" x-text="v.adulteradas + ' adulterada(s)'"></span></td></tr>
                 </template>
             </table>
+            <p class="sub">Grasa, densidad y temperatura son promedios de los análisis de Calidad en estas fechas.</p>
         </section>
 
         {{-- ---------------------------------------------------- MAPA DE HUATA --}}
@@ -285,21 +292,6 @@
         </section>
 
         {{-- ---------------------------------------------------- CALIDAD --}}
-        <section x-show="seccion === 'calidad' && !cargando && !error">
-            <h1>Calidad por vehículo</h1>
-            <p class="sub">Promedios de los últimos 30 días.</p>
-            <table class="lista"><tr><th>Vehículo</th><th>Acopiador</th><th class="num">Análisis</th><th class="num">Grasa</th><th class="num">Densidad</th><th class="num">Temperatura</th><th class="num">Rechazo</th><th></th></tr>
-                <template x-for="v in d.vehiculos || []" :key="v.codigo"><tr>
-                    <td x-text="v.codigo"></td><td x-text="v.acopiador || 'sin acopiador'"></td>
-                    <td class="num" x-text="v.analisis"></td>
-                    <td class="num" x-text="v.analisis ? num(v.grasa, 2) + ' %' : '—'"></td>
-                    <td class="num" x-text="v.analisis ? Number(v.densidad).toFixed(4) : '—'"></td>
-                    <td class="num" x-text="v.analisis ? num(v.temperatura) + ' °C' : '—'"></td>
-                    <td class="num" x-text="num(v.rechazo_pct) + ' %'"></td>
-                    <td><span class="chip mal" x-show="v.adulteradas" x-text="v.adulteradas + ' adulterada(s)'"></span></td></tr></template>
-            </table>
-        </section>
-
         {{-- ---------------------------------------------------- ADULTERACIONES --}}
         <section x-show="seccion === 'adulteraciones' && !cargando && !error">
             <h1>Adulteraciones</h1>

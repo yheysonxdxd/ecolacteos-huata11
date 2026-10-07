@@ -101,8 +101,9 @@ function oficina() {
           pestanas: [{ id: 'totales', nombre: 'Totales' }, { id: 'mapa', nombre: 'Mapa de Huata' },
             { id: 'conciliacion', nombre: 'Conciliación campo vs. planta' }] },
         // llega la leche → se analiza → se paga; el padrón (se toca poco) al final
+        // la calidad de cada vehículo se ve en Totales, junto a sus litros
         { id: 'calidad-grupo', nombre: 'Calidad', grupo: 'Administración',
-          pestanas: [{ id: 'calidad', nombre: 'Por vehículo' }, { id: 'adulteraciones', nombre: 'Adulteraciones' }] },
+          pestanas: [{ id: 'adulteraciones', nombre: 'Adulteraciones' }] },
         { id: 'dinero-grupo', nombre: 'Dinero', grupo: 'Administración',
           pestanas: [{ id: 'dinero', nombre: 'Ventas y pagos' }, { id: 'costos', nombre: 'Costos y rendimiento' }] },
         { id: 'padron-grupo', nombre: 'Padrón', grupo: 'Administración',
@@ -185,7 +186,7 @@ function oficina() {
             this.concFecha = this.d.fecha;
             this.concLitros = Object.fromEntries(this.d.filas.map((f) => [f.vehiculo_id, f.litros_planta ?? '']));
             break;
-          case 'calidad': case 'adulteraciones': case 'solicitudes': case 'costos': case 'sesiones':
+          case 'adulteraciones': case 'solicitudes': case 'costos': case 'sesiones':
             this.d = await this.api('/admin/' + this.seccion); break;
           case 'vender': this.d = await this.api('/compras/ventas-datos'); this.nuevaVenta(); break;
           case 'inventario': this.d = await this.api('/compras/inventario'); break;

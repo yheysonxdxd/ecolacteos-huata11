@@ -59,7 +59,7 @@ fun ContenidoAdminReal(ruta: String, e: EstadoAdmin) {
         "admin/totales" -> TotalesReal(e)
         "admin/negocio" -> DineroReal(e)
         "admin/padron-old" -> PadronReal(false)
-        "admin/calidad" -> CalidadAdminReal()
+        "admin/calidad" -> AdulteracionesReal()
         "admin/solicitudes" -> SolicitudesReal()
         "admin/conciliacion" -> ConciliacionReal()
         else -> CostosReal()
@@ -88,9 +88,13 @@ private fun TotalesReal(e: EstadoAdmin) {
             }
             val pend = d.num("pendientes").toInt()
             if (pend > 0) AvisoCampo("$pend entregas esperan diagnóstico de Calidad.")
-            Seccion("Por vehículo")
+            Seccion("Por vehículo · litros y calidad")
             vehiculos.forEach { v ->
-                Tarjeta {
+                val conAnalisis = v.num("analisis") > 0
+                val rechazo = v.num("rechazo_pct")
+                val adult = v.num("adulteradas").toInt()
+                val malo = rechazo > 8 || adult > 0
+                Tarjeta(borde = if (malo) Altiplano.AlertaBorde else Altiplano.Borde) {
                     Row {
                         Text(
                             "${v.txt("codigo")} · ${v.txt("acopiador").ifEmpty { "sin acopiador" }}",
@@ -100,6 +104,23 @@ private fun TotalesReal(e: EstadoAdmin) {
                     }
                     Spacer(Modifier.height(8.dp)); BarraNivel((v.num("litros") / maximo).toFloat()); Spacer(Modifier.height(5.dp))
                     Text(v.txt("ruta"), style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+                    // promedios de los análisis de Calidad en estas mismas fechas
+                    if (conAnalisis) {
+                        Spacer(Modifier.height(10.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            MiniCifra("Grasa", "${formatear(v.num("grasa"), 2)} %")
+                            MiniCifra("Densidad", formatear(v.num("densidad"), 3))
+                            MiniCifra("Temp.", "${formatear(v.num("temperatura"))} °C")
+                            MiniCifra("Rechazo", "${formatear(rechazo)} %", if (rechazo > 8) Altiplano.Alerta else Altiplano.Texto)
+                        }
+                        if (adult > 0) {
+                            Spacer(Modifier.height(6.dp))
+                            Text("$adult ${if (adult == 1) "entrega adulterada" else "entregas adulteradas"}", style = Texto.Apoyo, color = Altiplano.Alerta)
+                        }
+                    } else {
+                        Spacer(Modifier.height(4.dp))
+                        Text("Sin análisis de Calidad en estas fechas", style = Texto.Apoyo, color = Altiplano.TextoApagado)
+                    }
                 }
             }
         }
@@ -128,45 +149,6 @@ private fun PadronReal(verTrabajadores: Boolean) {
     }
 }
 
-/** Calidad: promedios por vehículo y, en la otra pestaña, los sancionados por adulteración. */
-@Composable
-private fun CalidadAdminReal() {
-    var verAdulteraciones by remember { mutableStateOf(false) }
-    Column {
-        Box(Modifier.padding(start = Medidas.Pantalla, end = Medidas.Pantalla, top = Medidas.Pantalla)) {
-            Segmentos(listOf("Por vehículo", "Adulteraciones"), if (verAdulteraciones) 1 else 0) { verAdulteraciones = it == 1 }
-        }
-        if (verAdulteraciones) AdulteracionesReal() else CalidadVehiculosReal()
-    }
-}
-
-@Composable
-private fun CalidadVehiculosReal() {
-    CargaServidor("/api/v1/admin/calidad") { d, _ ->
-        PantallaScroll {
-            Text("Promedios de los últimos 30 días por vehículo.", style = Texto.Cuerpo, color = Altiplano.TextoTerciario)
-            d.lista("vehiculos").forEach { r ->
-                val rechazo = r.num("rechazo_pct")
-                val malo = rechazo > 8 || r.num("adulteradas") > 0
-                Tarjeta(borde = if (malo) Altiplano.AlertaBorde else Altiplano.Borde) {
-                    Row {
-                        Text("${r.txt("codigo")} · ${r.txt("acopiador").ifEmpty { "sin acopiador" }}", style = Texto.Fila, color = Altiplano.Texto, modifier = Modifier.weight(1f))
-                        ChipEstado(if (malo) Estado.RECHAZADO else Estado.ACEPTADO)
-                    }
-                    Spacer(Modifier.height(10.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        MiniCifra("Grasa", "${formatear(r.num("grasa"), 2)} %")
-                        MiniCifra("Densidad", formatear(r.num("densidad"), 3))
-                        MiniCifra("Adult.", r.num("adulteradas").toInt().toString(), if (r.num("adulteradas") > 0) Altiplano.Alerta else Altiplano.Texto)
-                        MiniCifra("Rechazo", "${formatear(rechazo)} %", if (rechazo > 8) Altiplano.Alerta else Altiplano.Texto)
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    Text("${r.num("analisis").toInt()} análisis · temp. media ${formatear(r.num("temperatura"))} °C", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
-                }
-            }
-        }
-    }
-}
 
 @Composable
 private fun SolicitudesReal() {

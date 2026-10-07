@@ -52,17 +52,31 @@ class AdminAppController extends Controller
         $pct = fn ($n) => $total ? round($n / $total * 100, 1) : 0;
 
         $comunidades = DB::table('comunidades')->pluck('nombre', 'id');
+        // calidad de cada vehículo en el mismo periodo (antes era la pestaña aparte "Calidad por vehículo")
+        $calidad = DB::table('entregas as e')->join('analisis_calidad as a', 'a.entrega_id', '=', 'e.id')
+            ->whereBetween('e.fecha', [$desde->toDateString(), $hasta->toDateString()])->where('e.ausente', false)
+            ->groupBy('e.vehiculo_id')
+            ->selectRaw("e.vehiculo_id, AVG(a.grasa) grasa, AVG(a.densidad) densidad, AVG(a.temperatura) temperatura,
+                SUM(a.veredicto = 'ADULTERADA') adulteradas, SUM(a.veredicto IN ('RECHAZADO','ADULTERADA')) rechazos, COUNT(a.id) analisis")
+            ->get()->keyBy('vehiculo_id');
         $porVehiculo = DB::table('vehiculos as v')
             ->leftJoin('users as u', 'u.id', '=', 'v.acopiador_id')
             ->select('v.id', 'v.codigo', 'v.tipo', 'v.orden_ruta', 'u.name as acopiador')
             ->orderBy('v.codigo')->get()
-            ->map(function ($v) use ($desde, $hasta, $comunidades) {
+            ->map(function ($v) use ($desde, $hasta, $comunidades, $calidad) {
                 $ruta = collect(json_decode($v->orden_ruta ?? '[]', true))->map(fn ($id) => $comunidades[$id] ?? '?');
+                $c = $calidad->get($v->id);
                 return [
                     'codigo' => $v->codigo, 'tipo' => $v->tipo, 'acopiador' => $v->acopiador,
                     'ruta' => $ruta->implode(', '),
                     'litros' => (float) DB::table('entregas')->where('vehiculo_id', $v->id)
                         ->whereBetween('fecha', [$desde->toDateString(), $hasta->toDateString()])->sum('litros'),
+                    'analisis' => (int) ($c->analisis ?? 0),
+                    'grasa' => $c ? round((float) $c->grasa, 2) : null,
+                    'densidad' => $c ? round((float) $c->densidad, 4) : null,
+                    'temperatura' => $c ? round((float) $c->temperatura, 1) : null,
+                    'adulteradas' => (int) ($c->adulteradas ?? 0),
+                    'rechazo_pct' => $c && $c->analisis ? round($c->rechazos / $c->analisis * 100, 1) : 0,
                 ];
             });
 
@@ -121,7 +135,10 @@ class AdminAppController extends Controller
         return response()->json(['proveedores' => $proveedores, 'trabajadores' => $trabajadores]);
     }
 
-    /** GET /api/v1/admin/calidad — promedios de los últimos 30 días por vehículo. */
+    /**
+     * GET /api/v1/admin/calidad — promedios de los últimos 30 días por vehículo.
+     * La web y la app nueva ya lo ven en Totales; queda para los APK anteriores (1.0 y 1.1).
+     */
     public function calidad()
     {
         $desde = $this->hoy()->subDays(29)->toDateString();
