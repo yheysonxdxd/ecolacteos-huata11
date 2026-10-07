@@ -59,12 +59,14 @@
         <tr><th>Cant.</th><th>Descripción</th><th class="num">P. unit.</th><th class="num">Importe</th></tr>
     </thead>
     <tbody>
+        @foreach($lineas as $l)
         <tr>
-            <td>{{ rtrim(rtrim(number_format($cantidad, 2, ',', '.'), '0'), ',') }}</td>
-            <td>{{ $producto }} · {{ $unidad }}</td>
-            <td class="num">S/ {{ number_format($precio, 2, ',', '.') }}</td>
-            <td class="num">S/ {{ number_format($total, 2, ',', '.') }}</td>
+            <td>{{ rtrim(rtrim(number_format($l['cantidad'], 2, ',', '.'), '0'), ',') }}</td>
+            <td>{{ $l['producto'] }} · {{ $l['unidad'] }}</td>
+            <td class="num">S/ {{ number_format($l['precio'], 2, ',', '.') }}</td>
+            <td class="num">S/ {{ number_format($l['total'], 2, ',', '.') }}</td>
         </tr>
+        @endforeach
         <tr class="total">
             <td colspan="3" class="num">TOTAL</td>
             <td class="num">S/ {{ number_format($total, 2, ',', '.') }}</td>
@@ -75,7 +77,9 @@
 <div class="letras">SON: {{ $letras }}</div>
 
 <div class="traza">
-    @if($lote)Lote {{ $lote }}@if($vence) · consumir antes del {{ $vence }}@endif<br>@endif
+    @foreach($lineas as $l)
+        @if($l['lote'])@if(count($lineas) > 1){{ $l['producto'] }}: @endif Lote {{ $l['lote'] }}@if($l['vence']) · consumir antes del {{ $l['vence'] }}@endif<br>@endif
+    @endforeach
     @if($vendedor)Atendido por {{ $vendedor }}@endif
 </div>
 

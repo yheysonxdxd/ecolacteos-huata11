@@ -616,16 +616,16 @@
         <template x-if="dDe === 'vender'">
         <section x-show="seccion === 'vender' && !cargando && !error">
             <h1>Vender</h1>
-            <p class="sub">El precio sale solo según el tipo de cliente.</p>
+            <p class="sub">El precio sale solo según el tipo de cliente. Puedes vender varios productos en la misma nota.</p>
             <div class="dos">
                 <div>
-                    <label>Producto</label>
-                    <div class="opciones">
-                        <template x-for="p in d.productos || []" :key="p.id">
-                            <button :class="{ activo: f.producto === p.id }" @click="f.producto = p.id"
-                                    x-text="p.nombre + ' · stock ' + num(p.stock, 0) + ' ' + p.unidad"></button>
-                        </template>
-                    </div>
+                    <label>Productos · cuánto lleva de cada uno (deja en blanco el que no)</label>
+                    <table class="lista">
+                        <template x-for="p in d.productos || []" :key="p.id"><tr>
+                            <td><span x-text="p.nombre"></span><div class="sub" style="margin: 0; font-size: 12px" x-text="'hay ' + num(p.stock, 0) + ' ' + p.unidad"></div></td>
+                            <td style="width: 130px"><input type="number" min="0" step="1" x-model="f.cantidades[p.id]" placeholder="0"
+                                       :class="Number(f.cantidades[p.id]) > p.stock ? 'cambiado' : ''" :aria-label="'Cantidad de ' + p.nombre"></td></tr></template>
+                    </table>
                     <div class="fila" style="margin-top: 14px"><label style="margin: 0">Cliente</label><div class="espacio"></div>
                         <button class="btn chico" @click="abrirCliente()">+ Nuevo cliente</button></div>
                     <div class="fila" style="margin: 8px 0; gap: 12px">
@@ -639,7 +639,7 @@
                                 <td><span x-text="c.nombre"></span><div class="sub" style="margin: 0; font-size: 12px" x-show="c.ruc || c.telefono"
                                         x-text="[c.ruc ? (c.ruc.length === 8 ? 'DNI ' : 'RUC ') + c.ruc : '', c.telefono ? 'Tel. ' + c.telefono : ''].filter(Boolean).join(' · ')"></div></td>
                                 <td x-text="TIPO_CLIENTE[c.tipo] || c.tipo"></td>
-                                <td class="num" x-text="productoVenta() && Number(c.activo) ? soles(productoVenta().precios?.[c.tipo]) : ''"></td>
+                                <td class="num" x-text="Number(c.activo) ? preciosCliente(c) : ''"></td>
                                 <td class="acciones"><span class="chip mal" x-show="!Number(c.activo)">desactivado</span>
                                     <button class="btn chico gris" x-show="c.tipo !== 'PLANTA'" @click.stop="abrirCliente(c)">Editar</button></td></tr></template>
                         <tr x-show="!clientesVisibles().length"><td colspan="4">Ningún cliente coincide. Agrégalo con <strong>+ Nuevo cliente</strong>.</td></tr>
@@ -648,14 +648,15 @@
                 <div>
                     <div class="tarjeta destacada">
                         <div class="eti">Total</div>
-                        <div class="valor" x-text="soles(precioVenta() * (Number(f.cantidad) || 0))"></div>
-                        <div class="apoyo" x-text="num(f.cantidad, 2) + ' × ' + soles(precioVenta()) + (productoVenta() ? ' · ' + productoVenta().unidad : '')"></div>
-                        <label>Cantidad</label>
-                        <input type="number" min="0" step="1" x-model.number="f.cantidad">
+                        <div class="valor" x-text="soles(totalVenta())"></div>
+                        <template x-for="l in lineasVenta()" :key="l.p.id">
+                            <div class="apoyo" x-text="num(l.cantidad, 2) + ' × ' + l.p.nombre + (clienteVenta() ? ' a ' + soles(l.precio) + ' = ' + soles(l.importe) : '')"></div></template>
+                        <div class="apoyo" x-show="!lineasVenta().length">Escribe cuánto lleva de cada producto.</div>
+                        <div class="apoyo" x-show="lineasVenta().length && !clienteVenta()">Elige el cliente para ver el precio.</div>
                         <label>Enviar la nota al correo (opcional)</label>
                         <input type="email" x-model="f.correo" placeholder="cliente@gmail.com">
                         <div class="aviso error" x-show="f.error" x-text="f.error"></div>
-                        <button class="btn ancho" @click="registrarVenta()" :disabled="!!f.enviando" x-text="f.enviando ? 'Registrando…' : 'Registrar venta'"></button>
+                        <button class="btn ancho" @click="registrarVenta()" :disabled="!!f.enviando" x-text="f.enviando ? 'Registrando…' : 'Registrar venta' + (lineasVenta().length > 1 ? ' (' + lineasVenta().length + ' productos, una nota)' : '')"></button>
                     </div>
                 </div>
             </div>

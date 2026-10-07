@@ -5,8 +5,10 @@
     <p>Gracias por su compra. Le enviamos su nota de venta <strong>{{ $datos['numero'] }}</strong>
        del {{ $datos['fecha'] }} en el archivo adjunto (PDF).</p>
     <table style="border-collapse: collapse; margin: 12px 0;">
-        <tr><td style="padding: 3px 12px 3px 0; color: #55606c;">Producto</td>
-            <td>{{ rtrim(rtrim(number_format($datos['cantidad'], 2, ',', '.'), '0'), ',') }} × {{ $datos['producto'] }}</td></tr>
+        @foreach($datos['lineas'] as $k => $l)
+        <tr><td style="padding: 3px 12px 3px 0; color: #55606c;">{{ $k === 0 ? (count($datos['lineas']) > 1 ? 'Productos' : 'Producto') : '' }}</td>
+            <td>{{ rtrim(rtrim(number_format($l['cantidad'], 2, ',', '.'), '0'), ',') }} × {{ $l['producto'] }}</td></tr>
+        @endforeach
         <tr><td style="padding: 3px 12px 3px 0; color: #55606c;">Total</td>
             <td><strong>S/ {{ number_format($datos['total'], 2, ',', '.') }}</strong></td></tr>
     </table>

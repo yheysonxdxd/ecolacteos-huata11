@@ -705,14 +705,25 @@ function oficina() {
     },
 
     // ---------------------------------------------------------------- ventas
+    // una venta puede llevar varios productos (queso y yogurt): cantidades = producto => cuánto (vacío = no lleva)
     nuevaVenta() {
-      this.f = { producto: this.d.productos?.[0]?.id ?? null, cliente: null, cantidad: 1, correo: '', error: null, enviando: false };
+      this.f = { cantidades: {}, cliente: null, correo: '', error: null, enviando: false };
     },
-    productoVenta() { return (this.d.productos || []).find((p) => p.id === this.f.producto); },
     clienteVenta() { return (this.d.clientes || []).find((c) => c.id === this.f.cliente); },
-    precioVenta() {
-      const p = this.productoVenta(); const c = this.clienteVenta();
-      return p && c ? Number(p.precios?.[c.tipo] || 0) : 0;
+    /** Lo que lleva el cliente: [{ p, cantidad, precio, importe }] (precio según su tipo, 0 si aún no se eligió). */
+    lineasVenta() {
+      const c = this.clienteVenta();
+      return (this.d.productos || []).map((p) => {
+        const cantidad = Number(this.f.cantidades?.[p.id]) || 0;
+        const precio = c ? Number(p.precios?.[c.tipo] || 0) : 0;
+        return { p, cantidad, precio, importe: Math.round(precio * cantidad * 100) / 100 };
+      }).filter((l) => l.cantidad > 0);
+    },
+    totalVenta() { return this.lineasVenta().reduce((t, l) => t + l.importe, 0); },
+    /** Precios del cliente para lo que se está vendiendo (o de todo, si todavía no se eligió nada). */
+    preciosCliente(c) {
+      const elegidos = this.lineasVenta().map((l) => l.p);
+      return (elegidos.length ? elegidos : this.d.productos || []).map((p) => soles(p.precios?.[c.tipo])).join(' · ');
     },
     elegirCliente(c) { this.f.cliente = c.id; this.f.correo = c.email || ''; },
     /** Clientes que coinciden con lo buscado (nombre, DNI/RUC o teléfono); los desactivados solo si se piden. */
@@ -750,16 +761,18 @@ function oficina() {
       } catch (e) { f.error = e.message; } finally { f.enviando = false; }
     },
     async registrarVenta() {
-      const f = this.f; const p = this.productoVenta(); const c = this.clienteVenta();
-      if (!p) return (f.error = 'Elige el producto');
+      const f = this.f; const lineas = this.lineasVenta(); const c = this.clienteVenta();
+      if (!lineas.length) return (f.error = 'Escribe cuánto lleva de cada producto');
       if (!c) return (f.error = 'Elige el cliente');
-      if (!(f.cantidad > 0)) return (f.error = 'La cantidad debe ser mayor a 0');
-      if (f.cantidad > p.stock) return (f.error = `Solo hay ${num(p.stock, 2)} en stock`);
+      const sinStock = lineas.find((l) => l.cantidad > l.p.stock);
+      if (sinStock) return (f.error = `Solo hay ${num(sinStock.p.stock, 2)} de ${sinStock.p.nombre} en stock`);
+      const sinPrecio = lineas.find((l) => !l.precio);
+      if (sinPrecio) return (f.error = `${sinPrecio.p.nombre} no tiene precio para ${TIPO_CLIENTE[c.tipo] || c.tipo}: ponlo en Configuración → Precios`);
       if (f.correo && !esCorreo(f.correo)) return (f.error = 'Ese correo no es válido (déjalo vacío si no quieres enviarlo)');
       f.enviando = true; f.error = null;
       try {
         const r = await this.api('/compras/ventas', {
-          cliente_id: c.id, producto_id: p.id, cantidad: Number(f.cantidad), correo: f.correo ? f.correo.trim() : null,
+          cliente_id: c.id, items: lineas.map((l) => ({ producto_id: l.p.id, cantidad: l.cantidad })), correo: f.correo ? f.correo.trim() : null,
         });
         this.aviso = {
           texto: `✓ Venta registrada: ${soles(r.total)} a ${c.nombre} · ${r.numero}` +

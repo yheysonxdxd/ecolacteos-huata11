@@ -17,13 +17,12 @@ import pe.gob.huata.ecolacteos.ui.componentes.*
 
 /** Estado de Compras con datos reales. */
 object ComprasReal {
-    var productoSel by mutableStateOf(0)
+    val cantidades = mutableStateMapOf<Long, Double>() // venta: producto → cuánto lleva (0 = no lleva); varios van en una nota
     var clienteId by mutableStateOf<Long?>(null) // por id: al agregar un cliente la lista se reordena
     var buscarCliente by mutableStateOf("")
     var verInactivos by mutableStateOf(false)
     var editandoCliente by mutableStateOf<JsonObject?>(null) // el que se edita; vacío = nuevo
     var mesVentas by mutableStateOf<String?>(null) // null = este mes · "todo"
-    var cantidadVenta by mutableStateOf(10.0)
     var mensaje by mutableStateOf<String?>(null)
     var version by mutableStateOf(0)
     var pestanaVentas by mutableStateOf(0)  // Nueva venta · Ventas y notas
@@ -110,11 +109,16 @@ private fun VentaReal(irA: (Int) -> Unit) {
         val prods = d.lista("productos")
         val clientes = d.lista("clientes")
         val inactivos = d.lista("inactivos")
-        val p = prods.getOrNull(v.productoSel) ?: return@CargaServidor
+        if (prods.isEmpty()) return@CargaServidor
         val c = clientes.find { it.num("id").toLong() == v.clienteId }
-        val precio = c?.let { p.obj("precios")?.num(it.txt("tipo")) } ?: 0.0
-        val cant = v.cantidadVenta
-        val sinStock = cant > p.num("stock")
+        // lo que lleva: (producto, cantidad, precio según el tipo de cliente)
+        val lineas = prods.mapNotNull { p ->
+            val cant = v.cantidades[p.num("id").toLong()] ?: 0.0
+            if (cant <= 0) null else Triple(p, cant, c?.let { p.obj("precios")?.num(it.txt("tipo")) } ?: 0.0)
+        }
+        val total = lineas.sumOf { (_, cant, precio) -> cant * precio }
+        val sinStock = lineas.filter { (p, cant, _) -> cant > p.num("stock") }
+        val sinPrecio = if (c == null) emptyList() else lineas.filter { it.third <= 0 }
         // buscar por nombre, DNI/RUC o teléfono; los desactivados solo si se piden
         val q = v.buscarCliente.trim().lowercase()
         val visibles = (clientes + if (v.verInactivos) inactivos else emptyList()).filter {
@@ -123,8 +127,21 @@ private fun VentaReal(irA: (Int) -> Unit) {
 
         PantallaScroll {
             v.mensaje?.takeIf { it.startsWith("✓ Cliente") }?.let { AvisoCampo(it) }
-            Segmentos(prods.map { it.txt("nombre") }, v.productoSel) { v.productoSel = it }
-            Text("En stock: ${formatear(p.num("stock"), 0)} ${p.txt("unidad")}", style = Texto.Cuerpo, color = Altiplano.TextoSecundario)
+            Seccion("Productos · cuánto lleva de cada uno")
+            Text("Deja en 0 el que no lleva. Varios productos van en la misma nota de venta.", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+            prods.forEach { p ->
+                val id = p.num("id").toLong()
+                val cant = v.cantidades[id] ?: 0.0
+                Tarjeta(borde = if (cant > 0) Altiplano.VerdeBorde else Altiplano.Borde) {
+                    Row {
+                        Text(p.txt("nombre"), style = Texto.Fila, color = Altiplano.Texto, modifier = Modifier.weight(1f))
+                        Text("hay ${formatear(p.num("stock"), 0)}", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    StepperGrande(cant, { v.cantidades[id] = (it ?: 0.0).coerceAtLeast(0.0) }, paso = 1.0, minimo = 0.0, decimales = 0,
+                        unidad = p.txt("unidad"), fueraDeRango = cant > p.num("stock"), compacto = true)
+                }
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1f)) { Seccion("Cliente") }
                 TextButton(onClick = { v.editandoCliente = JsonObject(emptyMap()) }) { Text("+ Nuevo cliente", color = Altiplano.Exito) }
@@ -142,7 +159,8 @@ private fun VentaReal(irA: (Int) -> Unit) {
                     x.txt("nombre") + if (activo) "" else " (desactivado)",
                     listOfNotNull(NOMBRE_CANAL[x.txt("tipo")], x.txt("ruc").ifEmpty { null }, x.txt("telefono").ifEmpty { null }).joinToString(" · "),
                     v.clienteId == id,
-                    derecha = if (activo) p.obj("precios")?.num(x.txt("tipo"))?.let { soles(it) } else null,
+                    // sus precios de lo que se está vendiendo (o de todo, si aún no se eligió nada)
+                    derecha = if (activo) (lineas.map { it.first }.ifEmpty { prods }).joinToString(" · ") { soles(it.obj("precios")?.num(x.txt("tipo")) ?: 0.0) } else null,
                 ) { if (activo) v.clienteId = id else v.editandoCliente = x } // un desactivado se abre para reactivarlo
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -155,16 +173,27 @@ private fun VentaReal(irA: (Int) -> Unit) {
                     Text(if (v.verInactivos) "Ocultar desactivados" else "Ver desactivados (${inactivos.size})", color = Altiplano.TextoSecundario)
                 }
             }
-            TarjetaDato("TOTAL", soles(cant * precio), apoyo = "${formatear(cant, 0)} × ${soles(precio)} · ${p.txt("unidad")}", destacada = true) {
-                Spacer(Modifier.height(12.dp))
-                StepperGrande(cant, { v.cantidadVenta = it ?: 1.0 }, paso = 1.0, minimo = 1.0, decimales = 0, unidad = p.txt("unidad"), fueraDeRango = sinStock, compacto = true)
+            TarjetaDato(
+                "TOTAL", soles(total),
+                apoyo = when { lineas.isEmpty() -> "Pon cuánto lleva de cada producto"; c == null -> "Elige el cliente para ver el precio"; else -> null },
+                destacada = true,
+            ) {
+                lineas.forEach { (p, cant, precio) ->
+                    Spacer(Modifier.height(6.dp))
+                    FilaValor("${formatear(cant, 0)} × ${p.txt("nombre")}" + if (c != null) " a ${soles(precio)}" else "",
+                        if (c != null) soles(cant * precio) else "")
+                }
             }
-            if (sinStock) AvisoCampo("No hay suficiente stock para esa cantidad.", esAlerta = true)
+            sinStock.forEach { (p, _, _) -> AvisoCampo("Solo hay ${formatear(p.num("stock"), 0)} de ${p.txt("nombre")} en stock.", esAlerta = true) }
+            sinPrecio.forEach { (p, _, _) -> AvisoCampo("${p.txt("nombre")} no tiene precio para este tipo de cliente: ponlo en Ajustes → Precios.", esAlerta = true) }
             CampoCorreoVenta(c)
             error?.let { AvisoCampo("No se pudo registrar: $it", esAlerta = true) }
             BotonPrimario(
-                when { enviando -> "Registrando…"; c == null -> "Elige el cliente"; else -> "Registrar venta" },
-                c != null && !sinStock && !enviando,
+                when {
+                    enviando -> "Registrando…"; lineas.isEmpty() -> "Pon cuánto lleva"; c == null -> "Elige el cliente"
+                    lineas.size > 1 -> "Registrar venta (${lineas.size} productos, una nota)"; else -> "Registrar venta"
+                },
+                c != null && lineas.isNotEmpty() && sinStock.isEmpty() && sinPrecio.isEmpty() && !enviando,
             ) {
                 val cli = c ?: return@BotonPrimario
                 scope.launch {
@@ -172,10 +201,12 @@ private fun VentaReal(irA: (Int) -> Unit) {
                     try {
                         val r = Sesion.enviar("/api/v1/compras/ventas", buildJsonObject {
                             put("cliente_id", cli.num("id").toLong())
-                            put("producto_id", p.num("id").toLong())
-                            put("cantidad", cant)
+                            putJsonArray("items") {
+                                lineas.forEach { (p, cant, _) -> addJsonObject { put("producto_id", p.num("id").toLong()); put("cantidad", cant) } }
+                            }
                             correoParaVenta()?.let { put("correo", it) } // opcional: mandar la nota
                         })
+                        v.cantidades.clear()
                         v.mensaje = "✓ Venta registrada: ${soles(r.num("total"))} a ${cli.txt("nombre")}" + textoCorreo(r)
                         NotaVenta.ultima = UltimaNota(r.num("id").toLong(), r.txt("numero"), r.num("total"), cli.txt("nombre"), r.txt("correo"))
                         v.mesVentas = null // la venta recién hecha está en este mes

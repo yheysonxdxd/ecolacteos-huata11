@@ -105,33 +105,61 @@ class ComprasAppController extends Controller
         return response()->json(['id' => $id, 'nombre' => $fila['nombre']], 201);
     }
 
-    /** POST /api/v1/compras/ventas { cliente_id, producto_id, cantidad } — precio según el tipo de cliente. */
+    /**
+     * POST /api/v1/compras/ventas — precio según el tipo de cliente.
+     * Un producto: { cliente_id, producto_id, cantidad, correo? }
+     * Varios en la misma venta y la misma nota: { cliente_id, items: [{ producto_id, cantidad }], correo? }
+     */
     public function vender(Request $r)
     {
+        if (! $r->has('items')) {
+            $r->merge(['items' => [['producto_id' => $r->input('producto_id'), 'cantidad' => $r->input('cantidad')]]]);
+        }
         $data = $r->validate([
             'cliente_id' => ['required', 'exists:clientes,id'],
-            'producto_id' => ['required', 'exists:productos,id'],
-            'cantidad' => ['required', 'numeric', 'min:0.01'],
+            'items' => ['required', 'array', 'min:1', 'max:10'],
+            'items.*.producto_id' => ['required', 'distinct', 'exists:productos,id'],
+            'items.*.cantidad' => ['required', 'numeric', 'min:0.01'],
             'correo' => ['nullable', 'email', 'max:120'], // opcional: mandar la nota de venta
-        ], ['correo.email' => 'Ese correo no es válido.']);
-        $cliente = DB::table('clientes')->find($data['cliente_id']);
-        $precio = DB::table('precios_venta')->where('producto_id', $data['producto_id'])
-            ->where('tipo_cliente', $cliente->tipo)->whereNull('vigente_hasta')->value('precio');
-        abort_if(! $precio, 422, 'No hay precio vigente para ese tipo de cliente');
-
-        $stock = collect($this->productos())->firstWhere('id', (int) $data['producto_id'])['stock'] ?? 0;
-        abort_if($stock < $data['cantidad'], 422, "Solo hay $stock en stock");
-
-        // el lote cerrado más antiguo que aún no vence
-        $lote = DB::table('lotes')->where('producto_id', $data['producto_id'])->where('estado', 'TERMINADO')
-            ->where('vence_el', '>=', now()->toDateString())->orderBy('iniciado_en')->value('id');
-        $total = round($precio * $data['cantidad'], 2);
-
-        $id = DB::table('ventas')->insertGetId([
-            'uuid' => (string) Str::uuid(), 'cliente_id' => $cliente->id, 'producto_id' => $data['producto_id'],
-            'lote_id' => $lote, 'cantidad' => $data['cantidad'], 'precio_unitario' => $precio, 'total' => $total,
-            'registrada_por' => $r->user()->id, 'vendida_en' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ], [
+            'correo.email' => 'Ese correo no es válido.',
+            'items.required' => 'Elige al menos un producto y cuánto vender.',
+            'items.*.producto_id.distinct' => 'Un producto está repetido: pon toda su cantidad en una sola fila.',
+            'items.*.cantidad.min' => 'La cantidad debe ser mayor a 0.',
         ]);
+        $cliente = DB::table('clientes')->find($data['cliente_id']);
+        $productos = collect($this->productos())->keyBy('id');
+
+        // primero se revisa todo (precio y stock de cada producto); si algo falla no se vende nada
+        $varios = count($data['items']) > 1;
+        $lineas = collect($data['items'])->map(function ($it) use ($cliente, $productos, $varios) {
+            $p = $productos[(int) $it['producto_id']];
+            $precio = $p['precios'][$cliente->tipo] ?? null;
+            abort_if(! $precio, 422, "No hay precio vigente de {$p['nombre']} para ese tipo de cliente");
+            abort_if($p['stock'] < $it['cantidad'], 422, $varios ? "Solo hay {$p['stock']} de {$p['nombre']} en stock" : "Solo hay {$p['stock']} en stock");
+            return ['producto_id' => $p['id'], 'cantidad' => (float) $it['cantidad'], 'precio' => (float) $precio];
+        });
+
+        $ids = DB::transaction(function () use ($lineas, $cliente, $r) {
+            $ids = [];
+            foreach ($lineas as $l) {
+                // el lote cerrado más antiguo que aún no vence
+                $lote = DB::table('lotes')->where('producto_id', $l['producto_id'])->where('estado', 'TERMINADO')
+                    ->where('vence_el', '>=', now()->toDateString())->orderBy('iniciado_en')->value('id');
+                $ids[] = DB::table('ventas')->insertGetId([
+                    'uuid' => (string) Str::uuid(), 'nota_id' => $ids[0] ?? null, 'cliente_id' => $cliente->id,
+                    'producto_id' => $l['producto_id'], 'lote_id' => $lote, 'cantidad' => $l['cantidad'],
+                    'precio_unitario' => $l['precio'], 'total' => round($l['precio'] * $l['cantidad'], 2),
+                    'registrada_por' => $r->user()->id, 'vendida_en' => now(), 'created_at' => now(), 'updated_at' => now(),
+                ]);
+            }
+            // con varios productos, la primera fila también lleva la nota (así se encuentran todas)
+            if (count($ids) > 1) DB::table('ventas')->where('id', $ids[0])->update(['nota_id' => $ids[0]]);
+            return $ids;
+        });
+        $id = $ids[0];
+        $total = round($lineas->sum(fn ($l) => round($l['precio'] * $l['cantidad'], 2)), 2);
+        $precio = $lineas->first()['precio'];
 
         // si pidieron correo, se manda la nota; si falla, la venta igual queda hecha
         $errorCorreo = ! empty($data['correo'])
@@ -179,13 +207,13 @@ class ComprasAppController extends Controller
     {
         return DB::table('ventas as v')->join('productos as p', 'p.id', '=', 'v.producto_id')
             ->join('clientes as c', 'c.id', '=', 'v.cliente_id')->orderByDesc('v.vendida_en')
-            ->select(['v.id', 'p.nombre as que', 'c.nombre as cliente', 'v.total', 'v.cantidad', 'v.vendida_en as fecha']);
+            ->select(['v.id', DB::raw('COALESCE(v.nota_id, v.id) as nota'), 'p.nombre as que', 'c.nombre as cliente', 'v.total', 'v.cantidad', 'v.vendida_en as fecha']);
     }
 
     private function filaVenta(object $v): array
     {
         return [
-            'venta_id' => $v->id, 'numero' => NotaVentaController::numero($v->id),
+            'venta_id' => $v->id, 'numero' => NotaVentaController::numero((int) $v->nota),
             'que' => $v->que, 'ref' => "Venta · {$v->cliente} · S/ ".number_format($v->total, 2),
             'fecha' => $v->fecha, 'entrada' => false,
             'delta' => '−'.rtrim(rtrim(number_format($v->cantidad, 2, '.', ''), '0'), '.'),

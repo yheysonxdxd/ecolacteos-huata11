@@ -105,12 +105,12 @@ class Kardex
         $ventas = DB::table('ventas as v')->join('clientes as c', 'c.id', '=', 'v.cliente_id')
             ->leftJoin('users as u', 'u.id', '=', 'v.registrada_por')->leftJoin('lotes as l', 'l.id', '=', 'v.lote_id')
             ->where('v.producto_id', $id)
-            ->get(['v.id', 'v.cantidad', 'v.precio_unitario', 'v.vendida_en', 'c.nombre as cliente', 'l.codigo as lote', 'u.name as usuario']);
+            ->get(['v.id', DB::raw('COALESCE(v.nota_id, v.id) as nota'), 'v.cantidad', 'v.precio_unitario', 'v.vendida_en', 'c.nombre as cliente', 'l.codigo as lote', 'u.name as usuario']);
         foreach ($ventas as $v) {
             $lista[] = self::mov((string) $v->vendida_en, 'VENTA',
-                NotaVentaPdf::numero($v->id)." · {$v->cliente} · S/ ".number_format($v->precio_unitario, 2).' c/u'.($v->lote ? " · {$v->lote}" : ''),
+                NotaVentaPdf::numero((int) $v->nota)." · {$v->cliente} · S/ ".number_format($v->precio_unitario, 2).' c/u'.($v->lote ? " · {$v->lote}" : ''),
                 $v->usuario, -(float) $v->cantidad,
-                texto: "Se vendió a {$v->cliente} a S/ ".number_format($v->precio_unitario, 2).' c/u (nota '.NotaVentaPdf::numero($v->id).')');
+                texto: "Se vendió a {$v->cliente} a S/ ".number_format($v->precio_unitario, 2).' c/u (nota '.NotaVentaPdf::numero((int) $v->nota).')');
         }
 
         foreach (self::mermas('PRODUCTO', $id) as $m) {

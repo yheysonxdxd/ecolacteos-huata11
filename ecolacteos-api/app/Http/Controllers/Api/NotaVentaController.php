@@ -37,10 +37,11 @@ class NotaVentaController extends Controller
     /** GET /api/v1/compras/ventas/{id}/nota */
     public function enlace(int $id)
     {
-        abort_unless(DB::table('ventas')->where('id', $id)->exists(), 404, 'Venta no encontrada.');
+        $nota = NotaVentaPdf::notaDe($id); // cualquier producto de la venta lleva a su nota
+        abort_unless($nota, 404, 'Venta no encontrada.');
 
         return response()->json([
-            'numero' => self::numero($id),
+            'numero' => self::numero($nota),
             'url'    => URL::temporarySignedRoute('nota-venta.pdf', now()->addMinutes(30), ['id' => $id], absolute: false),
         ]);
     }
