@@ -19,6 +19,7 @@ object AdminPestanas {
     var dinero by mutableStateOf(0)
     var padron by mutableStateOf(0)
     var planta by mutableStateOf(0)
+    var calidad by mutableStateOf(0)
 }
 
 /**
@@ -34,7 +35,11 @@ fun ContenidoAdminReal(ruta: String, e: EstadoAdmin) {
         "admin/acopio" -> ConPestanas(listOf("Totales", "Conciliación"), a.acopio, { a.acopio = it }) {
             if (a.acopio == 0) TotalesReal(e) else ConciliacionReal()
         }
-        "admin/dinero" -> ConPestanas(listOf("Ventas y pagos", "Costos"), a.dinero, { a.dinero = it }) {
+        // adulteraciones (precio reducido o baja) y los demás rechazos, que se resuelven capacitando
+        "admin/calidad" -> ConPestanas(listOf("Adulteraciones", "Rechazos"), a.calidad, { a.calidad = it }) {
+            if (a.calidad == 0) AdulteracionesReal() else RechazosReal()
+        }
+        "admin/dinero" ->ConPestanas(listOf("Ventas y pagos", "Costos"), a.dinero, { a.dinero = it }) {
             if (a.dinero == 0) DineroReal(e) else CostosReal()
         }
         "admin/padron" -> ConPestanas(listOf("Proveedores", "Trabajadores", "Cambios"), a.padron, { a.padron = it }) {
@@ -60,7 +65,6 @@ fun ContenidoAdminReal(ruta: String, e: EstadoAdmin) {
         "admin/totales" -> TotalesReal(e)
         "admin/negocio" -> DineroReal(e)
         "admin/padron-old" -> PadronReal(false)
-        "admin/calidad" -> AdulteracionesReal()
         "admin/solicitudes" -> SolicitudesReal()
         "admin/conciliacion" -> ConciliacionReal()
         else -> CostosReal()

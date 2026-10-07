@@ -52,7 +52,7 @@ fun destinosDe(rol: Rol, real: Boolean = Sesion.desdeServidor): List<Destino> = 
         // llega la leche → se analiza → se paga; el padrón (se toca poco) y la planta después
         Destino("admin/acopio", "Acopio", "Totales y conciliación", Icons.Outlined.PieChart),
         // la calidad de cada vehículo se ve en Acopio > Totales, junto a sus litros
-        Destino("admin/calidad", "Calidad", "Adulteraciones: proveedores sancionados", Icons.Outlined.Science),
+        Destino("admin/calidad", "Calidad", "Adulteraciones, rechazos y capacitación", Icons.Outlined.Science),
         Destino("admin/dinero", "Dinero", "Ventas, pagos y costos", Icons.Outlined.Savings),
         Destino("admin/padron", "Padrón", "Proveedores, trabajadores y cambios", Icons.Outlined.People),
         Destino("admin/planta", "Planta", "Compras, almacén, producción, ventas y kardex", Icons.Outlined.Inventory2),

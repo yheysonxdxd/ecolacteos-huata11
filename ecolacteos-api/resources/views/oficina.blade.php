@@ -323,6 +323,51 @@
         </section>
         </template>
 
+        {{-- ---------------------------------------------------- RECHAZOS Y CAPACITACIÓN --}}
+        <template x-if="dDe === 'rechazos'">
+        <section x-show="seccion === 'rechazos' && !cargando && !error">
+            <h1>Rechazos y capacitación</h1>
+            <p class="sub">Entregas que Calidad rechazó por grasa, proteína, densidad, temperatura, pH o leche significada (la adulteración va aparte).
+                Se pagan S/ 0 y la medida es <strong>capacitar al productor</strong>: cuando ya se habló con él, anótalo con “Ya se le capacitó”.</p>
+            <div class="fila" style="margin-bottom: 14px; gap: 8px; flex-wrap: wrap">
+                <button class="btn chico gris" @click="cambiar('semanaRech', d.anterior)" title="Semana anterior">◀</button>
+                <label class="btn chico gris" style="position: relative; cursor: pointer" title="Elegir otra semana">
+                    <span x-text="'Semana ' + fechaCorta(d.inicio) + ' – ' + fechaCorta(d.fin)"></span>
+                    <input type="date" :max="d.hasta" :value="d.inicio"
+                           @change="$event.target.value && cambiar('semanaRech', $event.target.value)"
+                           @click="$event.target.showPicker?.()"
+                           style="position: absolute; inset: 0; opacity: 0; cursor: pointer">
+                </label>
+                <button class="btn chico gris" @click="cambiar('semanaRech', d.siguiente)" :disabled="!d.siguiente" title="Semana siguiente">▶</button>
+                <div class="espacio"></div>
+                <span class="chip ojo" x-show="d.por_capacitar" x-text="'⚠ ' + d.por_capacitar + (d.por_capacitar === 1 ? ' productor espera' : ' productores esperan') + ' su capacitación'"></span>
+            </div>
+            <div class="tarjetas" style="margin-bottom: 14px">
+                <div class="tarjeta destacada"><div class="eti">Rechazos</div><div class="valor" x-text="d.resumen?.rechazos ?? 0"></div>
+                    <div class="apoyo" x-text="(d.resumen?.proveedores ?? 0) + ' productores · ' + num(d.resumen?.litros_rechazados ?? 0) + ' L sin pagar'"></div></div>
+                <div class="tarjeta" style="min-width: 260px"><div class="eti">Por causa</div>
+                    <template x-for="c in d.resumen?.por_causa || []" :key="c.causa"><div>
+                        <div class="fila" style="justify-content: space-between; margin-top: 6px"><span x-text="c.causa"></span><strong x-text="c.veces"></strong></div>
+                        <div class="barra"><span :style="'width:' + (c.veces / maximo(d.resumen.por_causa, 'veces') * 100) + '%'"></span></div></div></template>
+                    <div class="apoyo" x-show="!(d.resumen?.por_causa || []).length">Sin rechazos esta semana.</div></div>
+            </div>
+            <table class="lista"><tr><th>Día</th><th>Productor</th><th>Causa</th><th class="num">Litros</th><th>Capacitación</th></tr>
+                <template x-for="r in d.filas || []" :key="r.id"><tr>
+                    <td style="white-space: nowrap" x-text="fechaCorta(r.fecha)"></td>
+                    <td><span x-text="r.proveedor"></span>
+                        <div class="sub" style="margin:0" x-text="r.comunidad + ' · ' + r.vehiculo + (r.analista ? ' · analizó ' + r.analista : '')"></div>
+                        <span class="chip mal" x-show="r.repite" style="margin-top: 4px" x-text="r.veces_30_dias + ' rechazos en 30 días'"></span></td>
+                    <td><template x-for="c in r.causas"><div x-text="c"></div></template>
+                        <span class="chip ojo" x-show="!r.rechazada" style="margin-top: 4px">se recibió igual</span></td>
+                    <td class="num" :class="r.rechazada ? 'mal' : ''" x-text="num(r.litros) + ' L'"></td>
+                    <td><template x-if="r.capacitado_en"><div><span class="chip ok" x-text="'✓ ' + fechaCorta(r.capacitado_en)"></span>
+                            <div class="sub" style="margin: 3px 0 0" x-text="(r.capacitado_por || '') + (r.nota ? ' · “' + r.nota + '”' : '')"></div></div></template>
+                        <button class="btn chico" x-show="!r.capacitado_en" @click="abrirCapacitar(r)">Ya se le capacitó</button></td></tr></template>
+                <tr x-show="!(d.filas || []).length"><td colspan="5">Calidad no rechazó ninguna entrega esta semana.</td></tr>
+            </table>
+        </section>
+        </template>
+
         {{-- ---------------------------------------------------- CAMBIOS DE ZONA --}}
         <template x-if="dDe === 'solicitudes'">
         <section x-show="seccion === 'solicitudes' && !cargando && !error">
@@ -1027,6 +1072,18 @@
                     <div class="apoyo" style="color: var(--texto-3); font-size: 12px; margin-top: 3px" x-show="v.analista" x-text="'Analizó: ' + v.analista + (v.muestra ? ' · muestra de ' + v.muestra.toLowerCase() : '')"></div></td></tr></template>
         </table>
         <div class="pie"><button class="btn gris" @click="ventana = null">Cerrar</button></div>
+    </div>
+
+    {{-- ya se capacitó al productor --}}
+    <div class="ventana" x-show="ventana === 'capacitar'">
+        <h3 x-text="'Ya se capacitó a ' + (f.rechazo?.proveedor || '')"></h3>
+        <p class="sub" x-text="(f.rechazo?.comunidad || '') + ' · rechazada el ' + fechaCorta(f.rechazo?.fecha) + ' por ' + (f.rechazo?.causas || []).join(', ')"></p>
+        <p class="sub" x-show="f.pendientes > 1" x-text="'Vale para sus ' + f.pendientes + ' rechazos pendientes hasta ese día.'"></p>
+        <label for="cap-nota">Qué se le dijo (opcional)</label>
+        <input id="cap-nota" x-model="f.nota" maxlength="200" placeholder="Ej.: enfriar el porongo en agua apenas ordeña">
+        <div class="aviso error" x-show="f.error" x-text="f.error" style="margin-top: 10px"></div>
+        <div class="pie"><button class="btn gris" @click="ventana = null">Cancelar</button>
+            <button class="btn" :disabled="f.enviando" @click="guardarCapacitado()" x-text="f.enviando ? 'Guardando…' : 'Guardar'"></button></div>
     </div>
 
     {{-- detalle de boleta --}}

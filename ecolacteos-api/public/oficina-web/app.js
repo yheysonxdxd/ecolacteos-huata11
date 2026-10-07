@@ -51,6 +51,7 @@ function oficina() {
     periodo: 'semana',
     semana: null,
     dinero: 'ventas',
+    semanaRech: null, // rechazos de calidad: semana a la vista (null = esta semana)
     padron: 'proveedores',
     adulteracion: 'todos',
     buscar: '',
@@ -109,7 +110,7 @@ function oficina() {
         // llega la leche → se analiza → se paga; el padrón (se toca poco) al final
         // la calidad de cada vehículo se ve en Totales, junto a sus litros
         { id: 'calidad-grupo', nombre: 'Calidad', grupo: 'Administración',
-          pestanas: [{ id: 'adulteraciones', nombre: 'Adulteraciones' }] },
+          pestanas: [{ id: 'adulteraciones', nombre: 'Adulteraciones' }, { id: 'rechazos', nombre: 'Rechazos y capacitación' }] },
         { id: 'dinero-grupo', nombre: 'Dinero', grupo: 'Administración',
           pestanas: [{ id: 'dinero', nombre: 'Ventas y pagos' }, { id: 'costos', nombre: 'Costos y rendimiento' }] },
         { id: 'padron-grupo', nombre: 'Padrón', grupo: 'Administración',
@@ -198,6 +199,10 @@ function oficina() {
             this.d = await this.api('/admin/conciliacion' + (this.concFecha ? '?fecha=' + this.concFecha : ''));
             this.concFecha = this.d.fecha;
             this.concLitros = Object.fromEntries(this.d.filas.map((f) => [f.vehiculo_id, f.litros_planta ?? '']));
+            break;
+          case 'rechazos':
+            this.d = await this.api('/admin/rechazos' + (this.semanaRech ? '?semana=' + this.semanaRech : ''));
+            this.semanaRech = this.d.inicio;
             break;
           case 'adulteraciones': case 'solicitudes': case 'costos': case 'sesiones':
             this.d = await this.api('/admin/' + this.seccion); break;
@@ -381,6 +386,22 @@ function oficina() {
       return (this.d.proveedores || [])
         .filter((p) => this.adulteracion === 'todos' || (this.adulteracion === 'baja') === p.de_baja)
         .filter((p) => !b || [p.nombre, p.dni, p.comunidad, p.vehiculo].join(' ').toLowerCase().includes(b));
+    },
+    // -------------------------------------------------------- rechazos y capacitación
+    abrirCapacitar(r) {
+      const pendientes = (this.d.filas || []).filter((x) => x.proveedor_id === r.proveedor_id && !x.capacitado_en && x.fecha <= r.fecha).length;
+      this.f = { rechazo: r, nota: '', pendientes, error: null, enviando: false };
+      this.ventana = 'capacitar';
+    },
+    async guardarCapacitado() {
+      const f = this.f;
+      f.enviando = true; f.error = null;
+      try {
+        const r = await this.api(`/admin/rechazos/${f.rechazo.id}/capacitado`, { nota: f.nota.trim() || null });
+        this.ventana = null;
+        this.aviso = { texto: `✓ Anotado: ya se capacitó a ${r.proveedor}` + (r.marcados > 1 ? ` (vale para sus ${r.marcados} rechazos pendientes).` : '.') };
+        await this.cargar();
+      } catch (e) { f.error = e.message; } finally { f.enviando = false; }
     },
     verAdulterado(p) {
       this.f = { adulterado: p };

@@ -47,6 +47,9 @@ Route::prefix('v1')->group(function () {
         Route::get('admin/padron',       [Api\AdminAppController::class, 'padron']);
         Route::get('admin/calidad',      [Api\AdminAppController::class, 'calidad']);
         Route::get('admin/adulteraciones', [Api\AdminAppController::class, 'adulteraciones']);
+        // rechazos que no son adulteración (grasa, temperatura, pH…): ver y anotar la capacitación
+        Route::get('admin/rechazos',     [Api\AdminRechazosController::class, 'semana']);
+        Route::post('admin/rechazos/{id}/capacitado', [Api\AdminRechazosController::class, 'capacitado'])->whereNumber('id');
         Route::get('admin/solicitudes',  [Api\AdminAppController::class, 'solicitudes']);
         Route::post('admin/solicitudes/{id}/resolver', [Api\AdminAppController::class, 'resolverSolicitud']);
         // el productor avisó por teléfono o vino a Huata: el admin registra el cambio directamente
