@@ -661,13 +661,20 @@ function oficina() {
     },
 
     // lo más común en el Perú, para elegir con un toque (las dosis no se inventan: se escriben de la etiqueta o la guía)
-    SABORES_YOGURT: ['Fresa', 'Durazno', 'Lúcuma', 'Piña', 'Mango', 'Maracuyá', 'Aguaymanto', 'Guanábana', 'Vainilla', 'Coco', 'Mora', 'Plátano'],
+    // los de Gloria (fresa, durazno, vainilla, lúcuma, guanábana, mora, manzana verde, saúco, frutos rojos,
+    // maracuyá, fresa y plátano, piña, arándano) y otros frutos peruanos
+    SABORES_YOGURT: ['Fresa', 'Durazno', 'Vainilla', 'Lúcuma', 'Guanábana', 'Piña', 'Maracuyá', 'Mora', 'Frutos rojos', 'Arándano',
+      'Manzana verde', 'Saúco', 'Fresa y plátano', 'Mango', 'Aguaymanto', 'Coco', 'Plátano'],
     VARIEDADES_QUESO: [['Con orégano', 'Orégano seco'], ['Con ají', 'Ají molido'], ['Con hierbas', 'Hierbas finas secas'],
       ['Con aceitunas', 'Aceituna picada'], ['Con pimienta', 'Pimienta molida']],
     PRODUCTOS_COMUNES: [
       { nombre: 'Queso fresco', tipo: 'QUESO', unidad: 'quesos de 1 kg' }, { nombre: 'Queso andino', tipo: 'QUESO', unidad: 'quesos de 1 kg' },
       { nombre: 'Queso mantecoso', tipo: 'QUESO', unidad: 'quesos de 1 kg' }, { nombre: 'Queso maduro', tipo: 'QUESO', unidad: 'quesos de 1 kg' },
-      { nombre: 'Quesillo', tipo: 'QUESO', unidad: 'kg' }, { nombre: 'Yogurt griego', tipo: 'YOGURT', unidad: 'litros' },
+      { nombre: 'Quesillo', tipo: 'QUESO', unidad: 'kg' },
+      // tipos de yogurt como los de Gloria: cada uno es su propia base y luego se le agregan sabores
+      { nombre: 'Yogurt bebible', tipo: 'YOGURT', unidad: 'litros' }, { nombre: 'Yogurt batido', tipo: 'YOGURT', unidad: 'litros' },
+      { nombre: 'Yogurt griego', tipo: 'YOGURT', unidad: 'litros' }, { nombre: 'Yogurt frutado', tipo: 'YOGURT', unidad: 'vasos' },
+      { nombre: 'Yogurt descremado', tipo: 'YOGURT', unidad: 'litros' }, { nombre: 'Yogurt sin lactosa', tipo: 'YOGURT', unidad: 'litros' },
       { nombre: 'Manjar blanco', tipo: 'OTRO', unidad: 'kg' }, { nombre: 'Mantequilla', tipo: 'OTRO', unidad: 'kg' },
     ],
     opcionesSabor() { return this.f.tipo === 'YOGURT' ? this.SABORES_YOGURT : this.VARIEDADES_QUESO.map((v) => v[0]); },
