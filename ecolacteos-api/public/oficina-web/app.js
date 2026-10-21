@@ -44,6 +44,7 @@ function oficina() {
     d: {},          // datos de la sección abierta
     dDe: null,      // de qué sección son esos datos (mientras carga otra, d sigue siendo de la anterior)
     ventana: null,  // formulario/diálogo abierto
+    pregunta: null, // confirmación propia (en vez del confirm() gris del navegador), ver preguntar()
     f: {},          // campos del formulario abierto
     fOrden: null,   // orden a medio llenar mientras se agrega un vendedor
 
@@ -425,7 +426,11 @@ function oficina() {
 
     async cambiarActivo(t) {
       const accion = t.activo ? 'Desactivar' : 'Activar';
-      if (!confirm(`¿${accion} a ${t.nombre}?` + (t.activo ? '\nNo podrá entrar a la app y se cerrará en todos sus celulares.' : ''))) return;
+      if (!(await this.preguntar({
+        icono: t.activo ? '🚫' : '✅', tono: t.activo ? 'peligro' : '', titulo: `¿${accion} a ${t.nombre}?`,
+        texto: t.activo ? 'No podrá entrar a la app y se cerrará su sesión en todos sus celulares. Se puede volver a activar.' : 'Podrá volver a entrar con su DNI y contraseña.',
+        si: t.activo ? 'Sí, desactivar' : 'Sí, activar',
+      }))) return;
       try {
         await this.api(`/admin/trabajadores/${t.id}/activo`, { activo: !t.activo });
         this.aviso = { texto: t.activo ? `${t.nombre} quedó desactivado` : `✓ ${t.nombre} quedó activo` };
@@ -453,10 +458,11 @@ function oficina() {
     },
     async anularTraslado() {
       const f = this.f; const t = f.traslado;
-      const pregunta = t.programado
-        ? `¿Anular el traslado de ${f.proveedor.nombre} a ${t.destino}?\nSe queda en ${t.origen}.`
-        : `¿Anular el traslado de ${f.proveedor.nombre} a ${t.destino}?\nVuelve a ${t.origen} y lo recoge el vehículo de esa ruta.`;
-      if (!confirm(pregunta)) return;
+      if (!(await this.preguntar({
+        icono: '↩️', tono: 'peligro', titulo: `¿Anular el traslado de ${f.proveedor.nombre}?`,
+        texto: t.programado ? `Ya no pasa a ${t.destino}: se queda en ${t.origen}.` : `Vuelve a ${t.origen} y lo recoge el vehículo de esa ruta.`,
+        si: 'Sí, anular', no: 'No',
+      }))) return;
       await this.enviar(`/admin/proveedores/${f.proveedor.id}/traslado/anular`, {}, null,
         (r) => `Traslado anulado: ${f.proveedor.nombre} se queda en ${r.se_queda_en}`);
     },
@@ -556,10 +562,9 @@ function oficina() {
 
     // ---------------------------------------------------- cambios de zona
     async resolverSolicitud(s, aprobar) {
-      const pregunta = aprobar
-        ? `¿Aprobar el cambio de ${s.proveedor} a ${s.destino}?\nPasa a esa comunidad y al vehículo que la recorre.`
-        : `¿Rechazar el cambio de ${s.proveedor} a ${s.destino}?`;
-      if (!confirm(pregunta)) return;
+      if (!(await this.preguntar(aprobar
+        ? { icono: '✅', titulo: `¿Aprobar el cambio de ${s.proveedor}?`, texto: `Pasa a ${s.destino} y lo recoge el vehículo que recorre esa comunidad.`, si: 'Sí, aprobar' }
+        : { icono: '✖', tono: 'peligro', titulo: `¿Rechazar el cambio de ${s.proveedor}?`, texto: `Se queda donde está; no pasa a ${s.destino}.`, si: 'Sí, rechazar' }))) return;
       try {
         const r = await this.api(`/admin/solicitudes/${s.id}/resolver`, { aprobar });
         this.aviso = { texto: aprobar
@@ -789,7 +794,10 @@ function oficina() {
 
     // -------------------------------------------------------------- sesiones
     async cerrarSesiones(u) {
-      if (!confirm(`¿Cerrar las ${u.sesiones} sesiones de ${u.nombre}?\nTendrá que volver a ingresar en todos sus dispositivos.`)) return;
+      if (!(await this.preguntar({
+        icono: '🔒', tono: 'peligro', titulo: `¿Cerrar las ${u.sesiones} sesiones de ${u.nombre}?`,
+        texto: 'Tendrá que volver a ingresar con su DNI y contraseña en todos sus celulares y computadoras.', si: 'Sí, cerrar sesiones',
+      }))) return;
       try {
         const r = await this.api(`/admin/usuarios/${u.id}/cerrar-sesiones`, {});
         if (r.propia) return this.salir('Cerraste tus propias sesiones. Vuelve a ingresar.');
@@ -897,6 +905,14 @@ function oficina() {
         this.nuevaVenta();
       } catch (e) { f.error = e.message; } finally { f.enviando = false; }
     },
+
+    // ---------------------------------------------------------- confirmar
+    /**
+     * Pregunta con una ventana del sistema y espera la respuesta (true = sí).
+     * { titulo, texto, icono, tono: 'peligro'|'', si, no, filas: [{ k, v, clase }] }
+     */
+    preguntar(p) { return new Promise((resolver) => { this.pregunta = { no: 'Cancelar', si: 'Sí', tono: '', filas: [], ...p, resolver }; }); },
+    responder(si) { const r = this.pregunta?.resolver; this.pregunta = null; r?.(si); },
 
     // ---------------------------------------------------------- Excel
     /** Baja el .xlsx con la sesión (por eso no basta un enlace) y lo guarda con el nombre que da el servidor. */
@@ -1306,7 +1322,22 @@ function oficina() {
       if (!(obtenido >= 0) || this.cierre[l.id] === '' || this.cierre[l.id] == null) {
         this.aviso = { error: true, texto: `Escribe cuántos ${u} salieron del lote ${l.codigo}` }; return;
       }
-      if (!confirm(`¿Cerrar el lote ${l.codigo} con ${num(obtenido, 2)} ${u}?\nEntran al stock y ya se pueden vender.`)) return;
+      // igual que el servidor: fuera de lo esperado si sale 3 % menos o 3 % más
+      const medio = (Number(l.esperado_min) + Number(l.esperado_max)) / 2;
+      const desvio = medio > 0 ? ((obtenido - medio) / medio) * 100 : 0;
+      const fuera = obtenido < l.esperado_min * 0.97 || obtenido > l.esperado_max * 1.03;
+      if (!(await this.preguntar({
+        icono: fuera ? '⚠️' : '✅', tono: fuera ? 'aviso' : '', titulo: `¿Cerrar el lote ${l.codigo}?`,
+        texto: `Entran ${num(obtenido, 2)} ${u} de ${l.producto} al stock y ya se pueden vender.` +
+          (fuera ? ' Salió fuera de lo esperado: revisa que la cantidad esté bien escrita.' : ''),
+        filas: [
+          { k: 'Leche usada', v: num(l.litros_leche, 0) + ' L' },
+          { k: 'Se esperaba', v: `${num(l.esperado_min, 0)} a ${num(l.esperado_max, 0)} ${u}` },
+          { k: 'Salió', v: `${num(obtenido, 2)} ${u}`, clase: fuera ? 'mal' : 'ok' },
+          { k: 'Diferencia', v: (desvio > 0 ? '+' : '') + num(desvio, 1) + ' %', clase: fuera ? 'mal' : 'ok' },
+        ],
+        si: 'Sí, cerrar lote', no: 'Todavía no',
+      }))) return;
       try {
         const r = await this.api(`/planta/lotes/${l.id}/cerrar`, { obtenido });
         await this.cargar();

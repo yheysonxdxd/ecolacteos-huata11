@@ -1069,7 +1069,21 @@
 </div>
 
 {{-- ============================================================ VENTANAS --}}
-<div class="velo" x-show="ventana" x-cloak @keydown.escape.window="ventana = null" @click.self="ventana = null">
+{{-- confirmación propia: sale encima de todo, incluso de otra ventana abierta --}}
+<div class="velo encima" x-show="pregunta" x-cloak @keydown.escape.window="pregunta && responder(false)" @click.self="responder(false)">
+    <div class="ventana confirmar" :class="pregunta?.tono" role="alertdialog" aria-modal="true" :aria-label="pregunta?.titulo">
+        <div class="icono" x-text="pregunta?.icono || '❓'"></div>
+        <h3 x-text="pregunta?.titulo"></h3>
+        <p x-text="pregunta?.texto"></p>
+        <template x-if="(pregunta?.filas || []).length"><table class="lista">
+            <template x-for="r in pregunta.filas" :key="r.k"><tr><td x-text="r.k"></td><td class="num" :class="r.clase || ''"><strong x-text="r.v"></strong></td></tr></template>
+        </table></template>
+        <div class="pie"><button class="btn gris" @click="responder(false)" x-text="pregunta?.no"></button>
+            <button class="btn" :class="pregunta?.tono === 'peligro' ? 'rojo' : ''" @click="responder(true)" x-text="pregunta?.si" x-init="$watch('pregunta', (p) => p && $nextTick(() => $el.focus()))"></button></div>
+    </div>
+</div>
+
+<div class="velo" x-show="ventana" x-cloak @keydown.escape.window="!pregunta && (ventana = null)" @click.self="ventana = null">
 
     {{-- nuevo proveedor --}}
     <div class="ventana" x-show="ventana === 'proveedor'">

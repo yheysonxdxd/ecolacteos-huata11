@@ -150,6 +150,22 @@ input.cambiado { border-color: var(--aviso); } /* configuración: escrito pero t
 .ventana { background: #142333; border: 1px solid var(--borde); border-radius: 16px; width: 100%; max-width: 520px; max-height: 90vh; overflow-y: auto; padding: 22px 24px; }
 .ventana h3 { margin: 0 0 6px; font-size: 19px; }
 .ventana .pie { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+/* confirmación propia: centrada, con ícono y el detalle en una tabla */
+.velo.encima { z-index: 20; }
+.ventana.confirmar { max-width: 440px; text-align: center; border-color: var(--verde-borde); animation: aparecer .16s ease-out; }
+.ventana.confirmar .icono { width: 64px; height: 64px; margin: 2px auto 12px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 30px; background: var(--verde-suave); border: 1px solid var(--verde-borde); }
+.ventana.confirmar h3 { margin: 0 0 6px; font-size: 19px; }
+.ventana.confirmar p { color: var(--texto-2); margin: 0 0 14px; }
+.ventana.confirmar table { text-align: left; }
+.ventana.confirmar .pie { justify-content: center; }
+.ventana.confirmar .pie .btn { min-width: 130px; font-weight: 600; }
+.ventana.confirmar.peligro { border-color: #6b3036; }
+.ventana.confirmar.peligro .icono { background: var(--alerta-fondo); border-color: #6b3036; }
+.ventana.confirmar.aviso { border-color: var(--aviso); }
+.ventana.confirmar.aviso .icono { background: var(--aviso-fondo); border-color: var(--aviso); }
+@keyframes aparecer { from { opacity: 0; transform: scale(.96) translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .ventana.confirmar { animation: none; } }
 
 .cargando { color: var(--texto-3); padding: 30px 0; }
 
