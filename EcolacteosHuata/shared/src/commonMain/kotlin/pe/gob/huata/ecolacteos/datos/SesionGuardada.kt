@@ -2,7 +2,10 @@ package pe.gob.huata.ecolacteos.datos
 
 import io.ktor.client.request.*
 import io.ktor.http.*
+import io.ktor.util.hex
+import io.ktor.util.sha1
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -86,7 +89,8 @@ object SesionGuardada {
             Resultado.Entro(rol, sinConexion = false)
         } catch (e: Throwable) {
             if (Sesion.token == null) {
-                // 401: el token fue revocado o venció
+                // 401: el token fue revocado o venció (tampoco sirve para entrar sin conexión)
+                olvidarAcceso(g.token)
                 borrar()
                 return Resultado.Vencida
             }
@@ -100,17 +104,77 @@ object SesionGuardada {
         }
     }
 
-    /** Cerrar sesión: se borra del teléfono y se avisa al servidor si hay señal. */
-    suspend fun cerrarSesion() {
+    /**
+     * Cerrar sesión: la app ya no entra sola, pero el acceso sin conexión
+     * (ver [recordarAcceso]) y los datos guardados se quedan, para que quien
+     * salió por error en el campo pueda volver a entrar sin señal.
+     */
+    fun cerrarSesion() {
+        AlmacenLocal.borrar(CLAVE_SESION)
+    }
+
+    // --- volver a entrar sin conexión ---
+
+    /** Quién ya entró con conexión en este teléfono; su contraseña solo como huella (con sal). */
+    @Serializable
+    private data class Acceso(val dni: String, val sal: String, val huella: String, val sesion: Guardada)
+
+    private const val CLAVE_ACCESOS = "accesos_sin_conexion"
+    private const val MAX_ACCESOS = 5 // un celular lo pueden compartir varios acopiadores
+
+    private fun accesos(): List<Acceso> =
+        AlmacenLocal.leer(CLAVE_ACCESOS)
+            ?.let { runCatching { json.decodeFromString(ListSerializer(Acceso.serializer()), it) }.getOrNull() }
+            ?: emptyList()
+
+    private fun huella(sal: String, clave: String): String {
+        var h = "$sal:$clave".encodeToByteArray()
+        repeat(5_000) { h = sha1(h + sal.encodeToByteArray()) } // lento a propósito
+        return hex(h)
+    }
+
+    /** Llamar después de un login correcto contra el servidor (tras [guardar]). */
+    suspend fun recordarAcceso(dni: String, clave: String) {
         val g = AlmacenLocal.leer(CLAVE_SESION)
-            ?.let { runCatching { json.decodeFromString(Guardada.serializer(), it) }.getOrNull() }
-        borrar()
-        if (g != null) runCatching {
-            Sesion.http.post("${g.servidor}/api/v1/logout") {
-                accept(ContentType.Application.Json)
-                bearerAuth(g.token)
+            ?.let { runCatching { json.decodeFromString(Guardada.serializer(), it) }.getOrNull() } ?: return
+        val antes = accesos()
+        // el token anterior de esta persona ya no se usará: se cierra en el servidor
+        antes.firstOrNull { it.dni == dni && it.sesion.token != g.token }?.let { viejo ->
+            runCatching {
+                Sesion.http.post("${viejo.sesion.servidor}/api/v1/logout") {
+                    accept(ContentType.Application.Json)
+                    bearerAuth(viejo.sesion.token)
+                }
             }
         }
+        val sal = nuevoUuid()
+        val nuevo = Acceso(dni, sal, huella(sal, clave), g)
+        val lista = (listOf(nuevo) + antes.filter { it.dni != dni }).take(MAX_ACCESOS)
+        AlmacenLocal.guardar(CLAVE_ACCESOS, json.encodeToString(ListSerializer(Acceso.serializer()), lista))
+    }
+
+    private fun olvidarAcceso(token: String) {
+        val lista = accesos().filter { it.sesion.token != token }
+        AlmacenLocal.guardar(CLAVE_ACCESOS, json.encodeToString(ListSerializer(Acceso.serializer()), lista))
+    }
+
+    /**
+     * Entrar sin conexión con DNI y contraseña: vale solo para quien ya entró
+     * antes con conexión en este teléfono. Usa los datos guardados.
+     */
+    fun entrarSinConexion(dni: String, clave: String): Rol {
+        val a = accesos().firstOrNull { it.dni == dni }
+            ?: error("Sin conexión. Para entrar sin señal, este usuario debe haber ingresado antes con conexión en este celular.")
+        if (huella(a.sal, clave) != a.huella) error("Contraseña incorrecta")
+        val copia = AlmacenLocal.leer(CLAVE_DATOS)
+            ?.let { runCatching { json.decodeFromString(JsonObject.serializer(), it) }.getOrNull() }
+            ?: error("Sin conexión y sin datos guardados en este celular. Entra una vez con conexión.")
+        val rol = Rol.entries.firstOrNull { it.name == a.sesion.rol } ?: error("Rol desconocido: ${a.sesion.rol}")
+        ConfigServidor.baseUrl = a.sesion.servidor
+        Sesion.restaurar(a.sesion.token, a.sesion.usuarioId, a.sesion.nombre)
+        Sesion.aplicarDatos(copia)
+        AlmacenLocal.guardar(CLAVE_SESION, json.encodeToString(Guardada.serializer(), a.sesion))
+        return rol
     }
 
     private fun borrar() {

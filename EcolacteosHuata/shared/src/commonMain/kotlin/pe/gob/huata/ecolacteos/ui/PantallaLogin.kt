@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import pe.gob.huata.ecolacteos.datos.*
 import pe.gob.huata.ecolacteos.tema.*
+import pe.gob.huata.ecolacteos.ui.acopiador.ResultadoSync
 import pe.gob.huata.ecolacteos.ui.componentes.*
 
 /**
@@ -64,9 +65,20 @@ fun PantallaLogin(hayRed: Boolean, onEntrar: (Rol) -> Unit) {
                 val rol = Sesion.login(dni, clave)
                 Sesion.cargarDatos()
                 SesionGuardada.guardar(rol)
+                SesionGuardada.recordarAcceso(dni, clave)
                 onEntrar(rol)
             } catch (e: Throwable) {
-                error = e.message ?: "No se pudo conectar con ${ConfigServidor.baseUrl}"
+                if (esFaltaDeConexion(e)) {
+                    // sin señal: entra quien ya ingresó antes en este celular
+                    try {
+                        val rol = SesionGuardada.entrarSinConexion(dni, clave)
+                        ResultadoSync.huboError = true
+                        ResultadoSync.mensaje = "Sin señal: usando los datos guardados en el teléfono"
+                        onEntrar(rol)
+                    } catch (e2: Throwable) {
+                        error = e2.message
+                    }
+                } else error = e.message ?: "No se pudo conectar con ${ConfigServidor.baseUrl}"
             } finally {
                 cargando = false
             }
