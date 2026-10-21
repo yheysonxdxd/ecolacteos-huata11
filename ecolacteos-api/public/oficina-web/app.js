@@ -631,7 +631,7 @@ function oficina() {
     /** Nuevo (p = null) o editar. Rinde = cuántos salen de 100 L de leche. */
     abrirProducto(p = null) {
       this.f = p
-        ? { id: p.id, nombre: p.nombre, tipo: p.tipo, unidad: p.unidad, rinde_min: p.rinde_min, rinde_max: p.rinde_max,
+        ? { id: p.id, base_id: p.base_id, nombre: p.nombre, tipo: p.tipo, unidad: p.unidad, rinde_min: p.rinde_min, rinde_max: p.rinde_max,
             vida_util_dias: p.vida_util_dias, activo: p.activo, error: null, enviando: false }
         : { id: null, nombre: '', tipo: 'YOGURT', unidad: 'botellas de 1 L', rinde_min: '', rinde_max: '', vida_util_dias: '',
             copiar_de: '', precios: { MAYORISTA: '', DIRECTO: '', PLANTA: '' }, error: null, enviando: false };
@@ -658,6 +658,45 @@ function oficina() {
       await this.enviar('/admin/configuracion/productos', cuerpo, null, (r) => f.id
         ? `✓ ${r.nombre} guardado`
         : `✓ ${r.nombre} creado. Revisa su fórmula en Fórmulas y producción` + (f.copiar_de ? ' (se copió la del producto que elegiste).' : '.'));
+    },
+
+    /** Sabor o variedad: [base] para uno nuevo, [p] para editar uno (su base sale de p.base_id). */
+    abrirSabor(base, p = null) {
+      const b = base || (this.d.productos || []).find((x) => x.id === p.base_id);
+      const propio = p?.propios?.[0];
+      this.f = {
+        id: p?.id ?? null, base_id: b.id, base: b.nombre, tipo: b.tipo,
+        sabor: p?.variante ?? '', nombre: p?.nombre ?? '', nombreTocado: !!p,
+        insumo_id: propio ? String(propio.insumo_id) : '', insumo_nombre: '', insumo_unidad: 'L',
+        por_100l: propio?.por_100l ?? '', paso: p?.paso_variante ?? '',
+        precios: { MAYORISTA: '', DIRECTO: '', PLANTA: '' }, error: null, enviando: false,
+      };
+      this.ventana = 'sabor';
+    },
+    /** "Durazno" → "Yogurt de durazno"; para quesos: "Queso Paria con orégano". Se puede cambiar a mano. */
+    nombreSabor() {
+      const f = this.f; if (f.nombreTocado) return;
+      const s = f.sabor.trim(); if (!s) { f.nombre = ''; return; }
+      const base = f.base.replace(/\s+natural$/i, '');
+      f.nombre = f.tipo === 'YOGURT' ? `${base} de ${s.toLowerCase()}` : `${f.base} ${/^con\s/i.test(s) ? s.toLowerCase() : 'con ' + s.toLowerCase()}`;
+    },
+    unidadSabor() { return this.f.insumo_id === 'nuevo' ? this.f.insumo_unidad : this.unidadInsumo(this.f.insumo_id); },
+    async guardarSabor() {
+      const f = this.f;
+      if (f.sabor.trim().length < 2) return (f.error = f.tipo === 'YOGURT' ? 'Escribe el sabor' : 'Escribe la variedad');
+      if (f.nombre.trim().length < 3) return (f.error = 'Escribe el nombre como se vende');
+      if (!f.insumo_id) return (f.error = 'Elige qué lleva (o crea el insumo)');
+      if (f.insumo_id === 'nuevo' && f.insumo_nombre.trim().length < 3) return (f.error = 'Escribe el nombre del insumo nuevo');
+      if (!(Number(f.por_100l) > 0)) return (f.error = '¿Cuánto lleva por cada 100 L?');
+      const cuerpo = { sabor: f.sabor.trim(), nombre: f.nombre.trim(), por_100l: Number(f.por_100l), paso: f.paso.trim() || null };
+      if (f.insumo_id === 'nuevo') cuerpo.insumo_nuevo = { nombre: f.insumo_nombre.trim(), unidad: f.insumo_unidad.trim() || 'L' };
+      else cuerpo.insumo_id = Number(f.insumo_id);
+      if (!f.id) {
+        cuerpo.base_id = f.base_id;
+        cuerpo.precios = Object.fromEntries(Object.entries(f.precios).filter(([, v]) => v !== '' && v !== null).map(([k, v]) => [k, Number(v)]));
+      }
+      await this.enviar(f.id ? `/admin/sabores/${f.id}` : '/admin/sabores', cuerpo, null,
+        (r) => f.id ? `✓ ${r.nombre} guardado` : `✓ ${r.nombre} agregado: ya se puede producir y vender`);
     },
 
     guardarInsumo(i) {

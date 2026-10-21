@@ -495,11 +495,14 @@
             <template x-if="seccion === 'config-productos' && d.productos"><div>
                 <div class="fila" style="margin: -8px 0 12px">
                     <p class="sub" style="margin: 0">Lo que la planta produce y vende. Para un yogurt de otro sabor, crea uno nuevo y <strong>copia la fórmula</strong> de uno parecido;
-                        luego ajusta su fórmula en <strong>Fórmulas y producción</strong>. Los precios se cambian en <strong>Precios</strong>.</p>
+                        luego ajusta su fórmula en <strong>Fórmulas y producción</strong>. Los precios se cambian en <strong>Precios</strong>.
+                    Un <strong>sabor</strong> (yogurt de durazno) o una <strong>variedad</strong> (queso con orégano) se agrega en Fórmulas con <strong>+ Agregar sabor</strong>.</p>
                     <div class="espacio"></div><button class="btn" @click="abrirProducto()">+ Nuevo producto</button></div>
                 <table class="lista"><tr><th>Producto</th><th>Tipo</th><th>Se cuenta en</th><th class="num">Sale de 100 L</th><th class="num">Dura</th><th>Fórmula</th><th>Estado</th><th></th></tr>
                     <template x-for="p in d.productos" :key="p.id"><tr :class="p.activo ? '' : 'tenue'">
-                        <td x-text="p.nombre"></td><td x-text="TIPOS_PRODUCTO[p.tipo]"></td><td x-text="p.unidad"></td>
+                        <td><span x-text="(p.base_id ? '↳ ' : '') + p.nombre"></span>
+                            <div class="sub" style="margin: 0" x-show="p.base_id" x-text="(p.tipo === 'YOGURT' ? 'sabor' : 'variedad') + ' · su fórmula sale de la base'"></div></td>
+                        <td x-text="TIPOS_PRODUCTO[p.tipo]"></td><td x-text="p.unidad"></td>
                         <td class="num" x-text="(p.rinde_min === p.rinde_max ? num(p.rinde_min, 2) : num(p.rinde_min, 2) + '–' + num(p.rinde_max, 2))"></td>
                         <td class="num" x-text="p.vida_util_dias + ' días'"></td>
                         <td><span class="chip" :class="p.insumos_en_formula ? 'ok' : 'ojo'" x-text="p.insumos_en_formula ? p.insumos_en_formula + ' insumo(s)' : 'Sin fórmula'"></span></td>
@@ -911,7 +914,13 @@
                         <div class="espacio"></div>
                         <span class="chip" :class="p.alcanza_litros !== null && p.alcanza_litros < Math.max(d.tanque, 100) ? 'mal' : 'ok'"
                               x-text="p.alcanza_litros === null ? 'Sin insumos en la fórmula' : 'Con el stock de hoy alcanza para ' + num(p.alcanza_litros, 0) + ' L'"></span>
-                        <button class="btn chico" x-show="usuario?.rol === 'ADMIN'" @click="abrirFormula(p)">Editar fórmula</button></div>
+                        <button class="btn chico gris" x-show="usuario?.rol === 'ADMIN' && !p.base_id" @click="abrirSabor(p)"
+                                x-text="p.tipo === 'YOGURT' ? '+ Agregar sabor' : '+ Agregar variedad'"></button>
+                        <button class="btn chico" x-show="usuario?.rol === 'ADMIN' && !p.base_id" @click="abrirFormula(p)">Editar fórmula</button>
+                        <button class="btn chico" x-show="usuario?.rol === 'ADMIN' && p.base_id" @click="abrirSabor(null, p)"
+                                x-text="p.tipo === 'YOGURT' ? 'Editar sabor' : 'Editar variedad'"></button></div>
+                    <p class="sub" style="margin: 6px 0 0" x-show="p.base_id"
+                       x-text="(p.tipo === 'YOGURT' ? 'Sabor ' : 'Variedad ') + (p.variante || '').toLowerCase() + ' de ' + p.base + ': lleva todo lo del ' + p.base + ' (si cambias su fórmula, cambia aquí también) más lo marcado como propio.'"></p>
                     <p class="sub" style="margin: 6px 0 12px"
                        x-text="'Rinde ' + num(p.rendimiento_min * 100) + (p.rendimiento_max !== p.rendimiento_min ? '–' + num(p.rendimiento_max * 100) : '') + ' ' + p.unidad + ' por cada 100 L · vida útil ' + p.vida_util_dias + ' días'"></p>
                     {{-- "quiero hacer 10 quesos": cuánta leche y cuánto de cada insumo, y qué falta --}}
@@ -924,7 +933,9 @@
                     <table class="lista"><tr><th>Insumo</th><th class="num">Por 100 L</th>
                         <th class="num" x-text="'Necesitas para ' + num(cantidadQuiero(p), 0) + ' ' + unidadProducto(p)"></th><th class="num">Hay en almacén</th><th></th></tr>
                         <template x-for="i in p.insumos" :key="i.id"><tr>
-                            <td x-text="i.nombre"></td><td class="num" x-text="num(i.por_100l, 3) + ' ' + i.unidad"></td>
+                            <td><span x-text="i.nombre"></span> <span class="chip ok" x-show="(p.propios || []).some((x) => x.insumo_id === i.id)"
+                                x-text="p.tipo === 'YOGURT' ? 'del sabor' : 'de la variedad'"></span></td>
+                            <td class="num" x-text="num(i.por_100l, 3) + ' ' + i.unidad"></td>
                             <td class="num" :class="necesita(i, p) > i.stock ? 'mal' : ''"><strong x-text="num(necesita(i, p), 3) + ' ' + i.unidad"></strong></td>
                             <td class="num" x-text="num(i.stock, 3) + ' ' + i.unidad"></td>
                             <td><span class="chip" :class="necesita(i, p) > i.stock ? 'mal' : 'ok'"
@@ -1490,6 +1501,39 @@
             <button class="btn" @click="guardarAjuste()" :disabled="!!f.enviando" x-text="f.enviando ? 'Guardando…' : 'Guardar'"></button></div>
     </div>
 
+    {{-- sabor o variedad: lo que le agrega a su base --}}
+    <div class="ventana" x-show="ventana === 'sabor'">
+        <h3 x-text="(f.id ? 'Editar ' : 'Nuevo ') + (f.tipo === 'YOGURT' ? 'sabor' : 'variedad') + ' de ' + (f.base || '')"></h3>
+        <p class="sub" x-text="'Lleva todo lo del ' + (f.base || '') + ' (insumos, pasos, rendimiento y días que dura). Aquí solo escribes lo que le agrega.'"></p>
+        <label for="sab-sabor" x-text="f.tipo === 'YOGURT' ? 'Sabor' : 'Variedad'"></label>
+        <input id="sab-sabor" x-model="f.sabor" @input="nombreSabor()" maxlength="40" :placeholder="f.tipo === 'YOGURT' ? 'Ej.: Durazno, Lúcuma' : 'Ej.: Con orégano'">
+        <label for="sab-nombre">Nombre como se vende</label>
+        <input id="sab-nombre" x-model="f.nombre" @input="f.nombreTocado = true" maxlength="60">
+        <label for="sab-insumo" x-text="f.tipo === 'YOGURT' ? '¿Qué le da el sabor?' : '¿Qué lleva de más?'"></label>
+        <select id="sab-insumo" x-model="f.insumo_id">
+            <option value="">— Elige un insumo —</option>
+            <template x-for="i in d.insumos || []" :key="i.id"><option :value="i.id" x-text="i.nombre + ' (' + i.unidad + ')'"></option></template>
+            <option value="nuevo">+ Es un insumo nuevo</option></select>
+        <template x-if="f.insumo_id === 'nuevo'"><div class="fila" style="gap: 8px; flex-wrap: nowrap; margin-top: 8px">
+            <input x-model="f.insumo_nombre" maxlength="80" placeholder="Nombre (ej.: Saborizante durazno)" aria-label="Nombre del insumo nuevo">
+            <input x-model="f.insumo_unidad" maxlength="12" placeholder="L, kg" style="width: 90px" aria-label="Unidad del insumo nuevo"></div></template>
+        <label for="sab-cant" x-text="'¿Cuánto por cada 100 L de leche?' + (unidadSabor() ? ' (' + unidadSabor() + ')' : '')"></label>
+        <input id="sab-cant" type="number" min="0" step="any" x-model="f.por_100l" placeholder="Ej.: 0.3">
+        <p class="sub" style="margin: 4px 0 0">Usa la dosis de la etiqueta del saborizante o de la guía técnica.</p>
+        <label for="sab-paso">Paso que se agrega (opcional)</label>
+        <input id="sab-paso" x-model="f.paso" maxlength="300" :placeholder="f.tipo === 'YOGURT' ? 'Si lo dejas vacío: al batir, agregar el saborizante…' : 'Si lo dejas vacío: al salar la cuajada, mezclar…'">
+        <template x-if="!f.id"><div>
+            <label x-text="'Precios (vacío = los mismos del ' + (f.base || '') + ')'"></label>
+            <div class="fila" style="gap: 8px; flex-wrap: nowrap">
+                <input type="number" min="0" step="0.1" x-model="f.precios.MAYORISTA" placeholder="Mayorista S/" aria-label="Precio mayorista">
+                <input type="number" min="0" step="0.1" x-model="f.precios.DIRECTO" placeholder="Cliente S/" aria-label="Precio cliente directo">
+                <input type="number" min="0" step="0.1" x-model="f.precios.PLANTA" placeholder="Proveedor S/" aria-label="Precio para proveedor de leche"></div>
+        </div></template>
+        <div class="aviso error" x-show="f.error" x-text="f.error"></div>
+        <div class="pie"><button class="btn gris" @click="ventana = null">Cancelar</button>
+            <button class="btn" @click="guardarSabor()" :disabled="!!f.enviando" x-text="f.enviando ? 'Guardando…' : (f.id ? 'Guardar' : 'Agregar')"></button></div>
+    </div>
+
     {{-- producto nuevo o editar --}}
     <div class="ventana" x-show="ventana === 'producto'">
         <h3 x-text="f.id ? 'Editar ' + (f.nombre || 'producto') : 'Producto nuevo'"></h3>
@@ -1505,6 +1549,8 @@
         <label>Tipo</label>
         <div class="opciones"><template x-for="(t, k) in TIPOS_PRODUCTO" :key="k">
             <button :class="{ activo: f.tipo === k }" @click="f.tipo = k" x-text="t"></button></template></div>
+        <p class="sub" x-show="f.base_id" style="margin: 8px 0 0">Es un sabor: tipo, unidad, rendimiento y días que dura salen de su base.</p>
+        <div x-show="!f.base_id">
         <label for="prod-unidad">Se cuenta en</label>
         <input id="prod-unidad" x-model="f.unidad" maxlength="20" placeholder="Ej.: quesos de 1 kg, botellas de 1 L">
         <label>¿Cuánto sale de 100 L de leche? (mínimo y máximo)</label>
@@ -1516,6 +1562,7 @@
         <p class="sub" style="margin: 4px 0 0">Con el mínimo se calcula cuánta leche hace falta, así la cantidad pedida sale segura.</p>
         <label for="prod-dura">¿Cuántos días dura?</label>
         <input id="prod-dura" type="number" min="1" step="1" x-model="f.vida_util_dias" placeholder="Ej.: 21">
+        </div>
         <template x-if="!f.id"><div>
             <label>Precios de venta (opcional, se pueden poner después en Precios)</label>
             <div class="fila" style="gap: 8px; flex-wrap: nowrap">

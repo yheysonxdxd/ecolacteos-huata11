@@ -55,7 +55,7 @@ class PlantaAppController extends Controller
             ->orderByRaw("l.estado = 'EN_PROCESO' DESC")->orderByDesc('l.iniciado_en')->limit(15)
             ->select('l.id', 'l.codigo', 'l.estado', 'l.litros_leche', 'l.esperado_min', 'l.esperado_max',
                 'l.obtenido', 'l.desvio_pct', 'l.fuera_referencia', 'l.vence_el', 'l.iniciado_en',
-                'p.nombre as producto', 'p.unidad', 'p.procedimiento')
+                'p.nombre as producto', 'p.unidad', 'p.procedimiento', 'p.base_id', 'p.paso_variante')
             ->get();
 
         // fórmula con la que se hizo cada lote: insumos que se le descontaron y pasos
@@ -63,7 +63,8 @@ class PlantaAppController extends Controller
             ->where('m.origen_type', 'lote')->whereIn('m.origen_id', $filas->pluck('id'))->orderBy('i.nombre')
             ->get(['m.origen_id', 'i.nombre', 'i.unidad', 'm.cantidad'])->groupBy('origen_id');
         $filas = $filas->map(function ($l) use ($usados) {
-            $l->procedimiento = json_decode($l->procedimiento ?? '[]', true) ?: [];
+            $l->procedimiento = Formulas::pasos($l);
+            unset($l->base_id, $l->paso_variante);
             $l->insumos = ($usados[$l->id] ?? collect())->map(fn ($m) => [
                 'nombre' => $m->nombre, 'unidad' => $m->unidad, 'cantidad' => round(abs((float) $m->cantidad), 3),
             ])->values();
@@ -132,9 +133,8 @@ class PlantaAppController extends Controller
                 : "Solo hay {$hay} L de leche aceptada disponible.");
 
             // lo que necesita cada insumo, sumando los productos que lo comparten (ej.: cultivo láctico)
-            $recetas = DB::table('recetas_insumo as r')->join('insumos as i', 'i.id', '=', 'r.insumo_id')
-                ->whereIn('r.producto_id', array_column($pedidos, 0))
-                ->select('r.producto_id', 'i.id', 'i.nombre', 'i.unidad', 'i.stock', 'r.cantidad_por_100l')->get()->groupBy('producto_id');
+            // la de la base más lo del sabor (Yogurt de fresa = natural + saborizante)
+            $recetas = Formulas::recetas(array_column($pedidos, 0));
             $necesita = [];
             foreach ($pedidos as [$prod, $litros]) {
                 foreach ($recetas[$prod] ?? [] as $i) {

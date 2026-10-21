@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\Configuracion;
+use App\Services\Formulas;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -35,9 +36,11 @@ class ConfigMaestrosController extends Controller
 
         return response()->json([
             // rinde por 100 L (como se habla en la planta); en la base va por litro
-            'productos' => DB::table('productos')->orderByDesc('activo')->orderBy('tipo')->orderBy('nombre')->get()
+            'productos' => DB::table('productos')->orderBy('nombre')->get()
+                ->sortBy(fn ($p) => [$p->activo ? 0 : 1, $p->base_id ?? $p->id, $p->base_id ? 1 : 0])->values()
                 ->map(fn ($p) => [
                     'id' => $p->id, 'nombre' => $p->nombre, 'tipo' => $p->tipo, 'unidad' => $p->unidad,
+                    'base_id' => $p->base_id, 'variante' => $p->variante,
                     'rinde_min' => round((float) $p->rendimiento_min * 100, 2), 'rinde_max' => round((float) $p->rendimiento_max * 100, 2),
                     'vida_util_dias' => (int) $p->vida_util_dias, 'activo' => (bool) $p->activo,
                     'insumos_en_formula' => (int) ($recetas[$p->id] ?? 0),
@@ -93,6 +96,13 @@ class ConfigMaestrosController extends Controller
         return DB::transaction(function () use ($d, $fila, $u) {
             if ($id = $d['id'] ?? null) {
                 $antes = DB::table('productos')->find($id);
+                if ($antes->base_id) {
+                    // un sabor hereda de su base todo menos el nombre y si se produce
+                    $base = DB::table('productos')->find($antes->base_id);
+                    $fila = array_merge($fila, ['tipo' => $base->tipo, 'unidad' => $base->unidad, 'rendimiento_min' => $base->rendimiento_min,
+                        'rendimiento_max' => $base->rendimiento_max, 'vida_util_dias' => $base->vida_util_dias]);
+                    $d['rinde_min'] = (float) $base->rendimiento_min * 100; $d['rinde_max'] = (float) $base->rendimiento_max * 100;
+                }
                 DB::table('productos')->where('id', $id)->update($fila);
                 $q = "Productos · {$fila['nombre']}";
                 Configuracion::anotar("$q · nombre", $antes->nombre, $fila['nombre'], $u);
@@ -103,18 +113,24 @@ class ConfigMaestrosController extends Controller
                 if (isset($fila['activo'])) {
                     Configuracion::anotar("$q · estado", $antes->activo ? 'se produce' : 'ya no se produce', $fila['activo'] ? 'se produce' : 'ya no se produce', $u);
                 }
+                // los sabores siguen a su base (mismo tipo, unidad, rendimiento y vida útil)
+                DB::table('productos')->where('base_id', $id)->update(['tipo' => $fila['tipo'], 'unidad' => $fila['unidad'],
+                    'rendimiento_min' => $fila['rendimiento_min'], 'rendimiento_max' => $fila['rendimiento_max'],
+                    'vida_util_dias' => $fila['vida_util_dias'], 'updated_at' => now()]);
             } else {
                 $id = DB::table('productos')->insertGetId($fila + ['activo' => $fila['activo'] ?? true, 'created_at' => now()]);
                 Configuracion::anotar('Productos · producto nuevo', null, "{$fila['nombre']} ({$fila['unidad']})", $u);
-                // "yogurt de durazno" = la fórmula del de fresa con otro saborizante: se copia y luego se ajusta
+                // un queso nuevo parecido a otro: se copia su fórmula completa (si es un sabor, la de su base
+                // más lo suyo) y sus pasos, y luego se ajusta. Para un sabor se usa "Agregar sabor".
                 if ($origen = $d['copiar_de'] ?? null) {
-                    foreach (DB::table('recetas_insumo')->where('producto_id', $origen)->get() as $x) {
+                    foreach (Formulas::recetas([$origen])[$origen] ?? [] as $x) {
                         DB::table('recetas_insumo')->insert([
-                            'producto_id' => $id, 'insumo_id' => $x->insumo_id, 'cantidad_por_100l' => $x->cantidad_por_100l,
+                            'producto_id' => $id, 'insumo_id' => $x->id, 'cantidad_por_100l' => $x->cantidad_por_100l,
                             'created_at' => now(), 'updated_at' => now(),
                         ]);
                     }
-                    DB::table('productos')->where('id', $id)->update(['procedimiento' => DB::table('productos')->where('id', $origen)->value('procedimiento')]);
+                    $pasos = Formulas::pasos(DB::table('productos')->find($origen));
+                    DB::table('productos')->where('id', $id)->update(['procedimiento' => json_encode($pasos, JSON_UNESCAPED_UNICODE)]);
                 }
             }
             // precios que vengan escritos: rigen desde hoy (los demás se ponen luego en Precios)

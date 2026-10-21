@@ -31,7 +31,9 @@ class FormulasController extends Controller
      */
     public function guardar(Request $r, int $producto)
     {
-        abort_if(! DB::table('productos')->where('id', $producto)->exists(), 404, 'Producto no encontrado');
+        $p = DB::table('productos')->find($producto);
+        abort_if(! $p, 404, 'Producto no encontrado');
+        abort_if($p->base_id, 422, 'Es un sabor: usa la fórmula de su base. Cambia lo suyo con "Editar sabor".');
         $data = $r->validate([
             'insumos' => ['present', 'array'],
             'insumos.*.insumo_id' => ['required', 'distinct', 'exists:insumos,id'],
