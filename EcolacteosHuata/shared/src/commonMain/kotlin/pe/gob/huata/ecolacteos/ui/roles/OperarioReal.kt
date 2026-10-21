@@ -1,5 +1,6 @@
 package pe.gob.huata.ecolacteos.ui.roles
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -16,10 +17,7 @@ import pe.gob.huata.ecolacteos.ui.componentes.*
 
 /** Estado del operario con datos reales. */
 object OperarioReal {
-    var receta by mutableStateOf(0)
-    var litros by mutableStateOf(100.0)
     var cierre = mutableStateMapOf<String, Double>() // cantidad obtenida por lote abierto
-    var mensaje by mutableStateOf<String?>(null)
     var version by mutableStateOf(0)
 }
 
@@ -45,31 +43,7 @@ private fun RecetasReal() {
     CargaServidor("/api/v1/planta/recetas", clave = OperarioReal.version) { d, _ ->
         PantallaScroll {
             d.lista("avisos").forEach { a -> AvisoCampo(a.txt("texto"), esAlerta = a.txt("nivel") == "FALTA") }
-            d.lista("recetas").forEach { r ->
-                Tarjeta(fondo = Color(0xFF1B2A36), borde = Color(0xFF3A4A52)) {
-                    Row(verticalAlignment = Alignment.Bottom) {
-                        Text(r.txt("nombre"), style = Texto.TituloPantalla.copy(fontSize = 19.sp), color = Altiplano.Texto, modifier = Modifier.weight(1f))
-                        Text("base 100 L", style = Texto.Apoyo, color = Altiplano.CelesteAcento)
-                    }
-                    Spacer(Modifier.height(10.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
-                        MiniCifra("Rinde", "${formatear(r.num("min_100l"), 0)} a ${formatear(r.num("max_100l"), 0)} ${unidadCorta(r.txt("unidad"))}")
-                        MiniCifra("Vida útil", "${r.txt("vida_util_dias")} días")
-                    }
-                    HorizontalDivider(Modifier.padding(vertical = 12.dp), color = Altiplano.BordeSuave)
-                    val ins = r.lista("insumos")
-                    if (ins.isEmpty()) Text("Sin insumos registrados en la receta.", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
-                    ins.forEach { i -> FilaValor("${i.txt("nombre")} (${i.txt("unidad")})", formatear(i.num("por_100l"), 3)) }
-                    // litros que se pueden procesar con el stock de hoy
-                    r.txt("alcanza_litros").toDoubleOrNull()?.let { alcanza ->
-                        Spacer(Modifier.height(8.dp))
-                        Text("Con el stock de hoy alcanza para ${formatear(alcanza, 0)} L", style = Texto.Apoyo,
-                            color = if (alcanza < maxOf(d.num("tanque"), 100.0)) Altiplano.Alerta else Altiplano.Exito)
-                    }
-                    PasosFormula(pasosDe(r))
-                }
-            }
-            Text("Unidad del queso: ${d.lista("recetas").firstOrNull()?.txt("unidad") ?: ""}.", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+            RecetasCompactas(d.lista("recetas"))
         }
     }
 }
@@ -87,76 +61,16 @@ private fun PasosFormula(pasos: List<String>) {
     }
 }
 
+/** Nueva orden: la misma pantalla de producir que en la web (uno o varios productos a la vez). */
 @Composable
 private fun NuevaOrdenReal(irA: (Int) -> Unit) {
-    val scope = rememberCoroutineScope()
-    var enviando by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-
-    CargaServidor("/api/v1/planta/recetas", clave = OperarioReal.version) { d, recargar ->
+    CargaServidor("/api/v1/planta/recetas", clave = OperarioReal.version) { d, _ ->
         val recetas = d.lista("recetas")
-        val tanque = d.num("tanque")
-        if (recetas.isEmpty()) { PantallaScroll { AvisoCampo("No hay productos registrados.") }; return@CargaServidor }
-        val r = recetas[OperarioReal.receta.coerceIn(0, recetas.lastIndex)]
-        val litros = OperarioReal.litros
-        val reqs = r.lista("insumos")
-        val necesita = { i: JsonObject -> i.num("por_100l") * litros / 100 }
-        val faltan = reqs.filter { necesita(it) > it.num("stock") }
-        val sinLeche = litros > tanque
-
         PantallaScroll {
-            if (recetas.size > 1) Segmentos(listOf("Un producto", "Varios a la vez"), VariosApp.modo) { VariosApp.modo = it }
-            if (VariosApp.modo == 1 && recetas.size > 1) {
-                ProducirVarios(recetas, tanque, puedeIniciar = true) { msg -> OperarioReal.mensaje = msg; OperarioReal.version++; irA(2) }
-                return@PantallaScroll
-            }
-            Segmentos(recetas.map { it.txt("nombre") }, OperarioReal.receta) { OperarioReal.receta = it; LimiteOrden.aviso = null }
-            ElegirQuesos(r, tanque)
-            Tarjeta {
-                Text("Litros a procesar · leche aceptada disponible ${formatear(tanque)} L", style = Texto.Cuerpo, color = Altiplano.TextoSecundario)
-                Spacer(Modifier.height(10.dp))
-                StepperGrande(litros, { val (l, aviso) = limitarLitros(it ?: 50.0, tanque); OperarioReal.litros = l; LimiteOrden.aviso = aviso }, paso = 50.0, minimo = 50.0, decimales = 0, unidad = "litros · pasos de 50", fueraDeRango = sinLeche)
-            }
-            // la fórmula del producto elegido, calculada para estos litros
-            Tarjeta(fondo = Color(0xFF1B2A36), borde = Color(0xFF3A4A52)) {
-                Text("Fórmula de ${r.txt("nombre")} · ${formatear(litros, 0)} L", style = Texto.TituloPantalla.copy(fontSize = 18.sp), color = Altiplano.Texto)
-                Spacer(Modifier.height(8.dp))
-                if (reqs.isEmpty()) Text("Sin insumos registrados en la fórmula.", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
-                reqs.forEach { i ->
-                    val falta = necesita(i) > i.num("stock")
-                    FilaValor(
-                        "${i.txt("nombre")} · ${formatear(i.num("por_100l"), 3)} por 100 L · stock ${formatear(i.num("stock"), 2)}",
-                        "${formatear(necesita(i), 3)} ${i.txt("unidad")}",
-                        if (falta) Altiplano.Alerta else Altiplano.Texto,
-                    )
-                }
-                HorizontalDivider(Modifier.padding(vertical = 10.dp), color = Altiplano.BordeSuave)
-                FilaValor("Rendimiento esperado", "${formatear(litros * r.num("min_100l") / 100, 0)} a ${formatear(litros * r.num("max_100l") / 100, 0)} ${unidadCorta(r.txt("unidad"))}", Altiplano.Exito)
-                FilaValor("Vence en", "${r.txt("vida_util_dias")} días")
-                PasosFormula(pasosDe(r))
-            }
-            if (sinLeche) AvisoCampo(
-                if (tanque <= 0) "No hay leche aceptada sin procesar. Llega cuando el acopiador sincroniza y Calidad la acepta."
-                else "Solo hay ${formatear(tanque)} L de leche aceptada disponible.", esAlerta = true,
-            )
-            if (faltan.isNotEmpty()) AvisoCampo("Falta " + faltan.joinToString(" y ") {
-                "${it.txt("nombre").lowercase()} (${formatear(necesita(it) - it.num("stock"), 3)} ${it.txt("unidad")})"
-            } + ". Pide a Compras que reponga.", esAlerta = true)
-            error?.let { AvisoCampo("No se pudo iniciar: $it", esAlerta = true) }
-            BotonPrimario(if (enviando) "Iniciando…" else "Iniciar lote", faltan.isEmpty() && !sinLeche && !enviando) {
-                scope.launch {
-                    enviando = true; error = null
-                    try {
-                        val res = Sesion.enviar("/api/v1/planta/lotes", buildJsonObject {
-                            put("producto_id", r.num("id").toLong()); put("litros", litros)
-                        })
-                        OperarioReal.mensaje = "✓ Lote ${res.txt("codigo")} iniciado con ${formatear(litros, 0)} L"
-                        OperarioReal.version++
-                        irA(2)
-                    } catch (t: Throwable) { error = t.message; recargar() }
-                    enviando = false
-                }
-            }
+            Notificacion(Produccion.noti)
+            d.lista("avisos").filter { it.txt("nivel") == "FALTA" }.forEach { AvisoCampo(it.txt("texto"), esAlerta = true) }
+            if (recetas.isEmpty()) AvisoCampo("No hay productos que se estén produciendo.")
+            else ProducirVarios(recetas, d.num("tanque"), puedeIniciar = true) { n -> Produccion.noti = n; OperarioReal.version++; irA(2) }
         }
     }
 }
@@ -165,10 +79,11 @@ private fun NuevaOrdenReal(irA: (Int) -> Unit) {
 internal fun LotesReal() {
     val scope = rememberCoroutineScope()
     var cerrando by remember { mutableStateOf<String?>(null) }
+    var confirmar by remember { mutableStateOf<Pair<JsonObject, Double>?>(null) } // lote y lo que salió
 
     CargaServidor("/api/v1/planta/lotes", clave = OperarioReal.version) { d, _ ->
         PantallaScroll {
-            OperarioReal.mensaje?.let { AvisoCampo(it, esAlerta = it.startsWith("No se pudo")) }
+            Notificacion(Produccion.noti)
             d.lista("lotes").forEach { l ->
                 val id = l.txt("id")
                 val abierto = l.txt("estado") == "EN_PROCESO"
@@ -206,21 +121,73 @@ internal fun LotesReal() {
                         Text("Cantidad obtenida al cierre", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
                         StepperGrande(valor, { OperarioReal.cierre[id] = it ?: 0.0 }, paso = 1.0, decimales = 0, unidad = u, compacto = true)
                         Spacer(Modifier.height(10.dp))
-                        BotonPrimario(if (cerrando == id) "Cerrando…" else "Cerrar lote", cerrando == null) {
-                            scope.launch {
-                                cerrando = id
-                                try {
-                                    val r = Sesion.enviar("/api/v1/planta/lotes/$id/cerrar", buildJsonObject { put("obtenido", valor) })
-                                    OperarioReal.mensaje = "✓ ${r.txt("codigo")} cerrado · desvío ${formatear(r.num("desvio_pct"))} %"
-                                    OperarioReal.cierre.remove(id)
-                                    OperarioReal.version++
-                                } catch (t: Throwable) { OperarioReal.mensaje = "No se pudo cerrar: ${t.message}" }
-                                cerrando = null
-                            }
-                        }
+                        BotonPrimario(if (cerrando == id) "Cerrando…" else "Cerrar lote", cerrando == null) { confirmar = l to valor }
                     }
                 }
             }
         }
+        confirmar?.let { (l, valor) ->
+            ConfirmarCierre(l, valor, onNo = { confirmar = null }) {
+                confirmar = null
+                val id = l.txt("id")
+                scope.launch {
+                    cerrando = id
+                    val u = unidadCorta(l.txt("unidad"))
+                    try {
+                        val r = Sesion.enviar("/api/v1/planta/lotes/$id/cerrar", buildJsonObject { put("obtenido", valor) })
+                        val fuera = r.txt("fuera_referencia") == "true" || r.txt("fuera_referencia") == "1"
+                        val desv = r.num("desvio_pct")
+                        Produccion.noti = Noti(
+                            "Lote ${r.txt("codigo")} cerrado",
+                            "Entraron ${formatear(valor, 2)} $u de ${l.txt("producto")} al stock. Ya se pueden vender.",
+                            "Diferencia con lo esperado: ${if (desv > 0) "+" else ""}${formatear(desv)} % · " +
+                                if (fuera) "salió fuera de lo esperado" else "dentro de lo esperado",
+                            icono = if (fuera) "⚠" else "✓",
+                        )
+                        OperarioReal.cierre.remove(id)
+                        OperarioReal.version++
+                    } catch (t: Throwable) { Produccion.noti = Noti("No se pudo cerrar el lote", t.message ?: "sin conexión", error = true) }
+                    cerrando = null
+                }
+            }
+        }
     }
+}
+
+
+/**
+ * "¿Cerrar el lote?" con lo que salió frente a lo esperado. Fuera de lo
+ * esperado (3 % menos o más, como el servidor) se avisa en amarillo para
+ * revisar la cantidad antes de cerrar.
+ */
+@Composable
+private fun ConfirmarCierre(l: JsonObject, obtenido: Double, onNo: () -> Unit, onSi: () -> Unit) {
+    val min = l.num("esperado_min"); val max = l.num("esperado_max")
+    val u = unidadCorta(l.txt("unidad"))
+    val medio = (min + max) / 2
+    val desvio = if (medio > 0) (obtenido - medio) / medio * 100 else 0.0
+    val fuera = obtenido < min * 0.97 || obtenido > max * 1.03
+    val color = if (fuera) Altiplano.Aviso else Altiplano.Exito
+    AlertDialog(
+        onDismissRequest = onNo, containerColor = Color(0xFF142333),
+        icon = {
+            Box(Modifier.size(56.dp).background(color.copy(alpha = .15f), androidx.compose.foundation.shape.CircleShape),
+                contentAlignment = Alignment.Center) { Text(if (fuera) "⚠" else "✓", color = color, fontSize = 26.sp) }
+        },
+        title = { Text("¿Cerrar el lote ${l.txt("codigo")}?", color = Altiplano.Texto) },
+        text = {
+            Column {
+                Text("Entran ${formatear(obtenido, 2)} $u de ${l.txt("producto")} al stock y ya se pueden vender." +
+                    if (fuera) " Salió fuera de lo esperado: revisa que la cantidad esté bien." else "",
+                    style = Texto.Cuerpo, color = Altiplano.TextoSecundario)
+                Spacer(Modifier.height(10.dp))
+                FilaValor("Leche usada", "${formatear(l.num("litros_leche"), 0)} L")
+                FilaValor("Se esperaba", "${formatear(min, 0)} a ${formatear(max, 0)} $u")
+                FilaValor("Salió", "${formatear(obtenido, 2)} $u", if (fuera) Altiplano.Alerta else Altiplano.Exito)
+                FilaValor("Diferencia", "${if (desvio > 0) "+" else ""}${formatear(desvio)} %", if (fuera) Altiplano.Alerta else Altiplano.Exito)
+            }
+        },
+        confirmButton = { BotonPrimario("Sí, cerrar lote") { onSi() } },
+        dismissButton = { TextButton(onClick = onNo) { Text("Todavía no", color = Altiplano.TextoTerciario) } },
+    )
 }

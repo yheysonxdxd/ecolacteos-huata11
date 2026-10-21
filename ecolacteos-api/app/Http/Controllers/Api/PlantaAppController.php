@@ -22,6 +22,8 @@ class PlantaAppController extends Controller
     {
         return collect($productos)->map(fn ($p) => [
             'id' => $p['id'], 'nombre' => $p['nombre'], 'unidad' => $p['unidad'],
+            // sabor: de qué base sale y qué le agrega (la app los muestra debajo de su base)
+            'tipo' => $p['tipo'], 'base_id' => $p['base_id'], 'base' => $p['base'], 'variante' => $p['variante'], 'propios' => $p['propios'],
             'por_100l' => round(($p['rendimiento_min'] + $p['rendimiento_max']) / 2 * 100, 2),
             'min_100l' => round($p['rendimiento_min'] * 100, 2), 'max_100l' => round($p['rendimiento_max'] * 100, 2),
             'vida_util_dias' => $p['vida_util_dias'],

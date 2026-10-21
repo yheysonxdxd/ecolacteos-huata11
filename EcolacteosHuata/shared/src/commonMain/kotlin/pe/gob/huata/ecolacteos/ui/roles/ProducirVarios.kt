@@ -27,16 +27,17 @@ private class Elegido(val p: JsonObject, val q: Double, val litros: Double, val 
 private class Uso(val nombre: String, val unidad: String, val stock: Double, val necesita: Double, val productos: List<String>)
 
 /** Rendimiento mínimo por litro: /compras/formulas lo trae así; /planta/recetas, por cada 100 L. */
-private fun rendMin(p: JsonObject) = p.num("rendimiento_min").takeIf { it > 0 } ?: (p.num("min_100l") / 100)
-private fun rendMax(p: JsonObject) = p.num("rendimiento_max").takeIf { it > 0 } ?: (p.num("max_100l") / 100)
+internal fun rendMin(p: JsonObject) = p.num("rendimiento_min").takeIf { it > 0 } ?: (p.num("min_100l") / 100)
+internal fun rendMax(p: JsonObject) = p.num("rendimiento_max").takeIf { it > 0 } ?: (p.num("max_100l") / 100)
 
 /**
- * "Producir varios a la vez", como en la web: cuánto de cada producto, la leche
+ * "¿Qué vas a producir hoy?", como en la web: la única forma de producir, sea uno
+ * o varios. Cuánto de cada producto (los sabores debajo de su base), la leche
  * total y los insumos sumados (el cultivo láctico lo usan el queso y el yogurt).
  * Con [puedeIniciar] se abren todos los lotes juntos; si algo falta, ninguno.
  */
 @Composable
-fun ProducirVarios(productos: List<JsonObject>, tanque: Double, puedeIniciar: Boolean, onListo: (String) -> Unit) {
+fun ProducirVarios(productos: List<JsonObject>, tanque: Double, puedeIniciar: Boolean, onListo: (Noti) -> Unit) {
     var confirmar by remember { mutableStateOf(false) }
     val elegidos = productos.mapNotNull { p ->
         val q = VariosApp.cantidad[p.num("id").toLong()] ?: 0.0
@@ -50,7 +51,7 @@ fun ProducirVarios(productos: List<JsonObject>, tanque: Double, puedeIniciar: Bo
         .map { (_, usos) ->
             val i = usos.first().first
             Uso(i.txt("nombre"), i.txt("unidad"), i.num("stock"),
-                usos.sumOf { (x, e) -> x.num("por_100l") * e.litros / 100 }, usos.map { it.second.p.txt("nombre") })
+                usos.sumOf { (x, e) -> cantidadInsumo(x.num("por_100l"), e.litros, x.txt("unidad")) }, usos.map { it.second.p.txt("nombre") })
         }
         .sortedWith(compareByDescending<Uso> { it.productos.size }.thenBy { it.nombre })
     val faltan = buildList {
@@ -60,8 +61,8 @@ fun ProducirVarios(productos: List<JsonObject>, tanque: Double, puedeIniciar: Bo
     val texto = elegidos.joinToString(" y ") { "${formatear(it.q, 0)} ${it.unidad} de ${it.p.txt("nombre")}" }
 
     Tarjeta(fondo = Color(0xFF1B2A36), borde = when { elegidos.isEmpty() -> Altiplano.Borde; faltan.isEmpty() -> Altiplano.VerdeBorde; else -> Altiplano.AlertaBorde }) {
-        Text("Producir varios a la vez", style = Texto.TituloPantalla.copy(fontSize = 19.sp), color = Altiplano.Texto)
-        Text("Pon cuánto quieres de cada uno (0 = no se hace). Se revisa que la leche y los insumos alcancen para todo junto. " +
+        Text("¿Qué vas a producir hoy?", style = Texto.TituloPantalla.copy(fontSize = 19.sp), color = Altiplano.Texto)
+        Text("Pon cuánto quieres de cada uno (0 = no se hace). Se revisa que la leche y los insumos alcancen. " +
             "En el tanque hay ${formatear(tanque)} L.", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
         productos.forEach { p ->
             val id = p.num("id").toLong()
@@ -69,7 +70,8 @@ fun ProducirVarios(productos: List<JsonObject>, tanque: Double, puedeIniciar: Bo
             val q = VariosApp.cantidad[id] ?: 0.0
             val e = elegidos.firstOrNull { it.p === p }
             Spacer(Modifier.height(12.dp))
-            Text(p.txt("nombre"), style = Texto.Fila, color = Altiplano.Texto)
+            val sabor = p.txt("base_id").isNotEmpty()
+            Text(nombreCorto(p), style = Texto.Fila, color = Altiplano.Texto, modifier = Modifier.padding(start = if (sabor) 16.dp else 0.dp))
             StepperGrande(q, { VariosApp.cantidad[id] = (it ?: 0.0).coerceAtLeast(0.0) }, paso = if (u == "litros") 10.0 else 1.0,
                 minimo = 0.0, decimales = 0, unidad = u + (e?.let { " · ${formatear(it.litros, 0)} L de leche" } ?: ""), compacto = true)
         }
@@ -87,9 +89,9 @@ fun ProducirVarios(productos: List<JsonObject>, tanque: Double, puedeIniciar: Bo
             }
             Spacer(Modifier.height(8.dp))
             if (faltan.isEmpty()) Tarjeta(fondo = Altiplano.VerdeMarcaSuave, borde = Altiplano.VerdeBorde) {
-                Text("✓ Sí se puede hacer $texto a la vez.", style = Texto.Cuerpo, color = Altiplano.Exito)
+                Text("✓ Sí se puede hacer $texto.", style = Texto.Cuerpo, color = Altiplano.Exito)
             }
-            else AvisoCampo("✗ No se puede todo junto: falta ${faltan.joinToString(", ")}. Baja alguna cantidad o consigue lo que falta.", esAlerta = true)
+            else AvisoCampo("✗ No alcanza: falta ${faltan.joinToString(", ")}. Baja alguna cantidad o consigue lo que falta.", esAlerta = true)
             if (puedeIniciar) {
                 BotonPrimario("Aceptar: iniciar ${elegidos.size} ${if (elegidos.size == 1) "lote" else "lotes"}", habilitado = faltan.isEmpty()) { confirmar = true }
             } else if (faltan.isEmpty()) {
@@ -102,7 +104,7 @@ fun ProducirVarios(productos: List<JsonObject>, tanque: Double, puedeIniciar: Bo
 }
 
 @Composable
-private fun ConfirmarVarios(elegidos: List<Elegido>, texto: String, onCerrar: () -> Unit, onListo: (String) -> Unit) {
+private fun ConfirmarVarios(elegidos: List<Elegido>, texto: String, onCerrar: () -> Unit, onListo: (Noti) -> Unit) {
     val scope = rememberCoroutineScope()
     var enviando by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -111,7 +113,8 @@ private fun ConfirmarVarios(elegidos: List<Elegido>, texto: String, onCerrar: ()
         title = { Text("Hacer $texto", color = Altiplano.Texto) },
         text = {
             Column {
-                Text("Al aceptar se inician los lotes a la vez y se descuenta del almacén:", color = Altiplano.TextoTerciario)
+                Text(if (elegidos.size == 1) "Al aceptar se inicia el lote y se descuenta del almacén:" else "Al aceptar se inician los lotes a la vez y se descuenta del almacén:",
+                    color = Altiplano.TextoTerciario)
                 Spacer(Modifier.height(8.dp))
                 elegidos.forEach { e ->
                     FilaValor("Leche para ${e.p.txt("nombre")}", "${formatear(e.litros, 0)} L")
@@ -134,13 +137,15 @@ private fun ConfirmarVarios(elegidos: List<Elegido>, texto: String, onCerrar: ()
                         val lotes = r.lista("lotes")
                         VariosApp.cantidad.clear()
                         onCerrar()
-                        onListo("✓ ${lotes.size} lotes iniciados a la vez: " +
-                            lotes.joinToString(", ") { "${it.txt("codigo")} ${it.txt("producto")} (${formatear(it.num("litros"), 0)} L)" } +
-                            ". Ciérralos en Lotes cuando terminen.")
+                        onListo(Noti(
+                            if (lotes.size == 1) "Lote ${lotes[0].txt("codigo")} iniciado" else "${lotes.size} lotes iniciados",
+                            lotes.joinToString(", ") { "${it.txt("producto")} con ${formatear(it.num("litros"), 0)} L" } + ". Se descontaron la leche y los insumos.",
+                            "Ciérralo en Lotes cuando termine, con lo que salió.",
+                        ))
                     } catch (t: Throwable) { error = t.message }
                     enviando = false
                 }
-            }) { Text(if (enviando) "Iniciando…" else "Aceptar e iniciar ${elegidos.size} lotes", color = Altiplano.Exito) }
+            }) { Text(if (enviando) "Iniciando…" else "Aceptar e iniciar ${elegidos.size} ${if (elegidos.size == 1) "lote" else "lotes"}", color = Altiplano.Exito) }
         },
         dismissButton = { TextButton(onClick = onCerrar) { Text("Cancelar", color = Altiplano.TextoTerciario) } },
     )
