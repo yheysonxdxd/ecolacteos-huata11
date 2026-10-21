@@ -119,7 +119,7 @@ function oficina() {
             { id: 'sesiones', nombre: 'Sesiones abiertas' }] },
         // lo que antes solo se cambiaba en la base: precios, límites de calidad, datos de la empresa
         { id: 'config-grupo', nombre: 'Configuración', grupo: 'Administración',
-          pestanas: [{ id: 'config-precios', nombre: 'Precios' }, { id: 'config-calidad', nombre: 'Calidad' },
+          pestanas: [{ id: 'config-precios', nombre: 'Precios' }, { id: 'config-productos', nombre: 'Productos' }, { id: 'config-calidad', nombre: 'Calidad' },
             { id: 'config-acopio', nombre: 'Acopio y planta' }, { id: 'config-almacen', nombre: 'Almacén' },
             { id: 'config-vehiculos', nombre: 'Vehículos y rutas' }, { id: 'config-empresa', nombre: 'Empresa' },
             { id: 'config-historial', nombre: 'Historial de cambios' }] },
@@ -228,7 +228,7 @@ function oficina() {
             this.cfgVenta = Object.fromEntries(this.d.precios_venta.flatMap((p) =>
               Object.entries(p.precios).map(([tipo, v]) => [p.producto_id + '.' + tipo, v ?? ''])));
             break;
-          case 'config-almacen': case 'config-vehiculos':
+          case 'config-almacen': case 'config-vehiculos': case 'config-productos':
             this.d = await this.api('/admin/configuracion/maestros');
             this.cfgInsumos = Object.fromEntries(this.d.insumos.map((i) => [i.id, { nombre: i.nombre, unidad: i.unidad, minimo: i.minimo }]));
             this.nuevoInsumo = { nombre: '', unidad: 'kg', minimo: '' };
@@ -626,6 +626,40 @@ function oficina() {
       const f = this.cfgInsumos[i.id];
       return f && (f.nombre.trim() !== i.nombre || f.unidad.trim() !== i.unidad || Number(f.minimo) !== i.minimo);
     },
+    // ------------------------------------------------- productos (otro queso, yogurt de sabores)
+    TIPOS_PRODUCTO: { QUESO: 'Queso', YOGURT: 'Yogurt', OTRO: 'Otro' },
+    /** Nuevo (p = null) o editar. Rinde = cuántos salen de 100 L de leche. */
+    abrirProducto(p = null) {
+      this.f = p
+        ? { id: p.id, nombre: p.nombre, tipo: p.tipo, unidad: p.unidad, rinde_min: p.rinde_min, rinde_max: p.rinde_max,
+            vida_util_dias: p.vida_util_dias, activo: p.activo, error: null, enviando: false }
+        : { id: null, nombre: '', tipo: 'YOGURT', unidad: 'botellas de 1 L', rinde_min: '', rinde_max: '', vida_util_dias: '',
+            copiar_de: '', precios: { MAYORISTA: '', DIRECTO: '', PLANTA: '' }, error: null, enviando: false };
+      this.ventana = 'producto';
+    },
+    /** Al copiar la fórmula de otro producto, también sus datos (se cambia solo lo distinto). */
+    copiarDatosDe(id) {
+      const o = (this.d.productos || []).find((p) => p.id === Number(id));
+      if (!o) return;
+      Object.assign(this.f, { tipo: o.tipo, unidad: o.unidad, rinde_min: o.rinde_min, rinde_max: o.rinde_max, vida_util_dias: o.vida_util_dias });
+    },
+    async guardarProducto() {
+      const f = this.f;
+      if (f.nombre.trim().length < 3) return (f.error = 'Escribe el nombre del producto');
+      if (!(Number(f.rinde_min) > 0)) return (f.error = '¿Cuánto sale de 100 L de leche? Escribe lo mínimo');
+      if (f.rinde_max === '' || f.rinde_max === null) f.rinde_max = f.rinde_min;
+      const cuerpo = { id: f.id, nombre: f.nombre.trim(), tipo: f.tipo, unidad: f.unidad.trim(), rinde_min: Number(f.rinde_min),
+        rinde_max: Number(f.rinde_max), vida_util_dias: Number(f.vida_util_dias) };
+      if (f.id) cuerpo.activo = !!f.activo;
+      else {
+        if (f.copiar_de) cuerpo.copiar_de = Number(f.copiar_de);
+        cuerpo.precios = Object.fromEntries(Object.entries(f.precios).filter(([, v]) => v !== '' && v !== null).map(([k, v]) => [k, Number(v)]));
+      }
+      await this.enviar('/admin/configuracion/productos', cuerpo, null, (r) => f.id
+        ? `✓ ${r.nombre} guardado`
+        : `✓ ${r.nombre} creado. Revisa su fórmula en Fórmulas y producción` + (f.copiar_de ? ' (se copió la del producto que elegiste).' : '.'));
+    },
+
     guardarInsumo(i) {
       const f = i ? this.cfgInsumos[i.id] : this.nuevoInsumo;
       return this.guardarMaestro('/admin/configuracion/insumos', { id: i?.id ?? null, nombre: f.nombre, unidad: f.unidad, minimo: f.minimo === '' ? null : Number(f.minimo) },

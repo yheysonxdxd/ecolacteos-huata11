@@ -25,11 +25,11 @@ class ComprasAppController extends Controller
         $precios = DB::table('precios_venta')->whereNull('vigente_hasta')->get()->groupBy('producto_id');
         return DB::table('productos')->orderBy('id')->get()->map(function ($p) use ($precios) {
             return [
-                'id' => $p->id, 'nombre' => $p->nombre, 'unidad' => $p->unidad,
+                'id' => $p->id, 'nombre' => $p->nombre, 'tipo' => $p->tipo, 'unidad' => $p->unidad, 'activo' => (bool) $p->activo,
                 'stock' => Mermas::stockProducto($p->id),
                 'precios' => ($precios[$p->id] ?? collect())->mapWithKeys(fn ($x) => [$x->tipo_cliente => (float) $x->precio]),
             ];
-        });
+        })->filter(fn ($p) => $p['activo'] || $p['stock'] > 0)->values(); // el que ya no se produce sale mientras quede stock
     }
 
     /** GET /api/v1/compras/inventario */

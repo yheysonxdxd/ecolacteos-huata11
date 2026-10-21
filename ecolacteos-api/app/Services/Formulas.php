@@ -97,7 +97,8 @@ class Formulas
             ->select('r.producto_id', 'i.id', 'i.nombre', 'i.unidad', 'i.stock', 'i.stock_minimo', 'r.cantidad_por_100l')
             ->orderBy('i.nombre')->get()->groupBy('producto_id');
 
-        return DB::table('productos')->orderBy('id')->get()->map(function ($p) use ($receta, $tanque) {
+        // solo lo que se sigue produciendo (un producto que se dejó de hacer no sale aquí)
+        return DB::table('productos')->where('activo', true)->orderBy('id')->get()->map(function ($p) use ($receta, $tanque) {
             $insumos = ($receta[$p->id] ?? collect())->map(function ($i) use ($tanque) {
                 $por100 = (float) $i->cantidad_por_100l;
                 $necesita = round($por100 * $tanque / 100, 3);
@@ -112,7 +113,7 @@ class Formulas
             $alcances = $insumos->pluck('alcanza_litros')->filter(fn ($x) => $x !== null);
 
             return [
-                'id' => $p->id, 'nombre' => $p->nombre, 'unidad' => $p->unidad,
+                'id' => $p->id, 'nombre' => $p->nombre, 'tipo' => $p->tipo, 'unidad' => $p->unidad,
                 'rendimiento_min' => (float) $p->rendimiento_min, 'rendimiento_max' => (float) $p->rendimiento_max,
                 'vida_util_dias' => $p->vida_util_dias,
                 'procedimiento' => json_decode($p->procedimiento ?? '[]', true) ?: [],

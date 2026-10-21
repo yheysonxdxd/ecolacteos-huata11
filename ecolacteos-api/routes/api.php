@@ -84,6 +84,7 @@ Route::prefix('v1')->group(function () {
         Route::post('admin/configuracion/precio-leche/{id}/quitar', [Api\ConfiguracionController::class, 'quitarPrecioLeche'])->whereNumber('id');
         Route::post('admin/configuracion/precio-venta',         [Api\ConfiguracionController::class, 'precioVenta']);
         Route::get('admin/configuracion/maestros',              [Api\ConfigMaestrosController::class, 'index']);
+        Route::post('admin/configuracion/productos',            [Api\ConfigMaestrosController::class, 'producto']);
         Route::post('admin/configuracion/insumos',              [Api\ConfigMaestrosController::class, 'insumo']);
         Route::post('admin/configuracion/vehiculos',            [Api\ConfigMaestrosController::class, 'vehiculo']);
         Route::post('admin/configuracion/vehiculos/{id}/ruta',  [Api\ConfigMaestrosController::class, 'ordenRuta'])->whereNumber('id');

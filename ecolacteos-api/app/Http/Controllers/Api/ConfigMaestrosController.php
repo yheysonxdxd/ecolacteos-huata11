@@ -10,10 +10,11 @@ use Illuminate\Validation\Rule;
 
 /**
  * Configuración, parte 2: los datos fijos de la planta que antes solo se
- * cambiaban en la base. Almacén (insumos, su unidad y su stock mínimo) y
- * vehículos con su ruta (qué comunidades recoge y en qué orden).
+ * cambiaban en la base. Productos (otro queso, yogurt de sabores), almacén
+ * (insumos, su unidad y su stock mínimo) y vehículos con su ruta (qué
+ * comunidades recoge y en qué orden).
  * El stock no se cambia aquí: entra con compras y sale con producción o
- * con "Corregir stock" en el kardex, para que todo quede explicado.
+ * con "Corregir" en Almacén, para que todo quede explicado.
  */
 class ConfigMaestrosController extends Controller
 {
@@ -29,7 +30,19 @@ class ConfigMaestrosController extends Controller
 
         $fila = fn ($c) => ['id' => $c->id, 'nombre' => $c->nombre, 'proveedores' => (int) ($proveedores[$c->id] ?? 0), 'con_gps' => $c->latitud !== null];
 
+        $recetas = DB::table('recetas_insumo')->selectRaw('producto_id, COUNT(*) n')->groupBy('producto_id')->pluck('n', 'producto_id');
+        $precios = DB::table('precios_venta')->whereNull('vigente_hasta')->get()->groupBy('producto_id');
+
         return response()->json([
+            // rinde por 100 L (como se habla en la planta); en la base va por litro
+            'productos' => DB::table('productos')->orderByDesc('activo')->orderBy('tipo')->orderBy('nombre')->get()
+                ->map(fn ($p) => [
+                    'id' => $p->id, 'nombre' => $p->nombre, 'tipo' => $p->tipo, 'unidad' => $p->unidad,
+                    'rinde_min' => round((float) $p->rendimiento_min * 100, 2), 'rinde_max' => round((float) $p->rendimiento_max * 100, 2),
+                    'vida_util_dias' => (int) $p->vida_util_dias, 'activo' => (bool) $p->activo,
+                    'insumos_en_formula' => (int) ($recetas[$p->id] ?? 0),
+                    'precios' => ($precios[$p->id] ?? collect())->mapWithKeys(fn ($x) => [$x->tipo_cliente => (float) $x->precio]),
+                ]),
             'insumos' => DB::table('insumos')->orderBy('nombre')->get(['id', 'nombre', 'unidad', 'stock', 'stock_minimo'])
                 ->map(fn ($i) => ['id' => $i->id, 'nombre' => $i->nombre, 'unidad' => $i->unidad, 'stock' => (float) $i->stock, 'minimo' => (float) $i->stock_minimo]),
             'vehiculos' => $vehiculos->map(fn ($v) => [
@@ -42,6 +55,89 @@ class ConfigMaestrosController extends Controller
             'acopiadores' => DB::table('users')->where('rol', 'ACOPIADOR')->where('activo', true)->orderBy('name')->get(['id', 'name'])
                 ->map(fn ($u) => ['id' => $u->id, 'nombre' => $u->name]),
         ]);
+    }
+
+    /**
+     * POST /api/v1/admin/configuracion/productos — nuevo o editar.
+     * { id?, nombre, tipo, unidad, rinde_min, rinde_max (unidades por 100 L de leche), vida_util_dias, activo?,
+     *   copiar_de? (producto cuya fórmula y pasos se copian, solo al crear), precios?: { MAYORISTA, DIRECTO, PLANTA } }
+     */
+    public function producto(Request $r)
+    {
+        $d = $r->validate([
+            'id' => ['nullable', 'exists:productos,id'],
+            'nombre' => ['required', 'string', 'min:3', 'max:60', Rule::unique('productos', 'nombre')->ignore($r->input('id'))],
+            'tipo' => ['required', 'in:QUESO,YOGURT,OTRO'],
+            'unidad' => ['required', 'string', 'min:2', 'max:20'],
+            'rinde_min' => ['required', 'numeric', 'gt:0', 'max:1000'],
+            'rinde_max' => ['required', 'numeric', 'gte:rinde_min', 'max:1000'],
+            'vida_util_dias' => ['required', 'integer', 'min:1', 'max:3650'],
+            'activo' => ['sometimes', 'boolean'],
+            'copiar_de' => ['nullable', 'exists:productos,id'],
+            'precios' => ['sometimes', 'array'],
+            'precios.*' => ['nullable', 'numeric', 'min:0.1', 'max:10000'],
+        ], [
+            'nombre.required' => 'Escribe el nombre del producto.', 'nombre.unique' => 'Ya hay un producto con ese nombre.',
+            'unidad.required' => 'Escribe cómo se cuenta (ej.: quesos de 1 kg, botellas de 1 L).',
+            'rinde_min.required' => '¿Cuánto sale de 100 L de leche? Escribe lo mínimo.',
+            'rinde_max.gte' => 'Lo máximo que sale no puede ser menor que lo mínimo.',
+            'vida_util_dias.required' => 'Escribe cuántos días dura el producto.',
+        ]);
+        $u = $r->user()->id;
+        $fila = [
+            'nombre' => trim($d['nombre']), 'tipo' => $d['tipo'], 'unidad' => trim($d['unidad']),
+            'rendimiento_min' => round($d['rinde_min'] / 100, 4), 'rendimiento_max' => round($d['rinde_max'] / 100, 4),
+            'vida_util_dias' => $d['vida_util_dias'], 'updated_at' => now(),
+        ] + (array_key_exists('activo', $d) ? ['activo' => $d['activo']] : []);
+
+        return DB::transaction(function () use ($d, $fila, $u) {
+            if ($id = $d['id'] ?? null) {
+                $antes = DB::table('productos')->find($id);
+                DB::table('productos')->where('id', $id)->update($fila);
+                $q = "Productos · {$fila['nombre']}";
+                Configuracion::anotar("$q · nombre", $antes->nombre, $fila['nombre'], $u);
+                Configuracion::anotar("$q · unidad", $antes->unidad, $fila['unidad'], $u);
+                Configuracion::anotar("$q · rinde por 100 L",
+                    (float) $antes->rendimiento_min * 100 . '–' . (float) $antes->rendimiento_max * 100, $d['rinde_min'] . '–' . $d['rinde_max'], $u);
+                Configuracion::anotar("$q · días que dura", (int) $antes->vida_util_dias, (int) $fila['vida_util_dias'], $u);
+                if (isset($fila['activo'])) {
+                    Configuracion::anotar("$q · estado", $antes->activo ? 'se produce' : 'ya no se produce', $fila['activo'] ? 'se produce' : 'ya no se produce', $u);
+                }
+            } else {
+                $id = DB::table('productos')->insertGetId($fila + ['activo' => $fila['activo'] ?? true, 'created_at' => now()]);
+                Configuracion::anotar('Productos · producto nuevo', null, "{$fila['nombre']} ({$fila['unidad']})", $u);
+                // "yogurt de durazno" = la fórmula del de fresa con otro saborizante: se copia y luego se ajusta
+                if ($origen = $d['copiar_de'] ?? null) {
+                    foreach (DB::table('recetas_insumo')->where('producto_id', $origen)->get() as $x) {
+                        DB::table('recetas_insumo')->insert([
+                            'producto_id' => $id, 'insumo_id' => $x->insumo_id, 'cantidad_por_100l' => $x->cantidad_por_100l,
+                            'created_at' => now(), 'updated_at' => now(),
+                        ]);
+                    }
+                    DB::table('productos')->where('id', $id)->update(['procedimiento' => DB::table('productos')->where('id', $origen)->value('procedimiento')]);
+                }
+            }
+            // precios que vengan escritos: rigen desde hoy (los demás se ponen luego en Precios)
+            $hoy = now('America/Lima')->toDateString();
+            foreach (array_filter($d['precios'] ?? [], fn ($p) => $p !== null) as $tipo => $precio) {
+                if (! in_array($tipo, ['MAYORISTA', 'DIRECTO', 'PLANTA'], true)) continue;
+                $actual = DB::table('precios_venta')->where('producto_id', $id)->where('tipo_cliente', $tipo)->whereNull('vigente_hasta')->first();
+                if ($actual && (float) $actual->precio === (float) $precio) continue;
+                if ($actual && $actual->vigente_desde === $hoy) {
+                    // cambiado dos veces el mismo día: se corrige ese mismo (igual que en Precios)
+                    DB::table('precios_venta')->where('id', $actual->id)->update(['precio' => $precio, 'updated_at' => now()]);
+                } else {
+                    if ($actual) DB::table('precios_venta')->where('id', $actual->id)->update(['vigente_hasta' => $hoy, 'updated_at' => now()]);
+                    DB::table('precios_venta')->insert([
+                        'producto_id' => $id, 'tipo_cliente' => $tipo, 'precio' => $precio, 'vigente_desde' => $hoy,
+                        'vigente_hasta' => null, 'created_at' => now(), 'updated_at' => now(),
+                    ]);
+                }
+                Configuracion::anotar("Productos · {$fila['nombre']} · precio $tipo", $actual ? (float) $actual->precio : null, (float) $precio, $u);
+            }
+
+            return response()->json(['id' => $id, 'nombre' => $fila['nombre']]);
+        });
     }
 
     /** POST /api/v1/admin/configuracion/insumos { id?, nombre, unidad, minimo } — nuevo o editar. */

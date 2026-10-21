@@ -422,7 +422,7 @@
         <template x-if="dDe?.startsWith('config-')">
         <section x-show="seccion?.startsWith('config-') && !cargando && !error">
             <h1 x-text="{ 'config-precios': 'Precios', 'config-calidad': 'Límites de calidad', 'config-acopio': 'Acopio y planta',
-                'config-almacen': 'Almacén · insumos', 'config-vehiculos': 'Vehículos y rutas',
+                'config-productos': 'Productos', 'config-almacen': 'Almacén · insumos', 'config-vehiculos': 'Vehículos y rutas',
                 'config-empresa': 'Datos de la empresa', 'config-historial': 'Historial de cambios' }[seccion]"></h1>
             <p class="sub" x-show="seccion !== 'config-historial'">Lo que cambies aquí rige para lo que se registre desde ahora; lo ya registrado no cambia.
                 Cada cambio queda en el <strong>Historial de cambios</strong> con quién lo hizo.</p>
@@ -490,6 +490,23 @@
                     </div>
                 </div>
             </template>
+
+            {{-- productos: otro queso, yogurt de sabores; el que ya no se hace se desactiva (no se borra su historia) --}}
+            <template x-if="seccion === 'config-productos' && d.productos"><div>
+                <div class="fila" style="margin: -8px 0 12px">
+                    <p class="sub" style="margin: 0">Lo que la planta produce y vende. Para un yogurt de otro sabor, crea uno nuevo y <strong>copia la fórmula</strong> de uno parecido;
+                        luego ajusta su fórmula en <strong>Fórmulas y producción</strong>. Los precios se cambian en <strong>Precios</strong>.</p>
+                    <div class="espacio"></div><button class="btn" @click="abrirProducto()">+ Nuevo producto</button></div>
+                <table class="lista"><tr><th>Producto</th><th>Tipo</th><th>Se cuenta en</th><th class="num">Sale de 100 L</th><th class="num">Dura</th><th>Fórmula</th><th>Estado</th><th></th></tr>
+                    <template x-for="p in d.productos" :key="p.id"><tr :class="p.activo ? '' : 'tenue'">
+                        <td x-text="p.nombre"></td><td x-text="TIPOS_PRODUCTO[p.tipo]"></td><td x-text="p.unidad"></td>
+                        <td class="num" x-text="(p.rinde_min === p.rinde_max ? num(p.rinde_min, 2) : num(p.rinde_min, 2) + '–' + num(p.rinde_max, 2))"></td>
+                        <td class="num" x-text="p.vida_util_dias + ' días'"></td>
+                        <td><span class="chip" :class="p.insumos_en_formula ? 'ok' : 'ojo'" x-text="p.insumos_en_formula ? p.insumos_en_formula + ' insumo(s)' : 'Sin fórmula'"></span></td>
+                        <td><span class="chip" :class="p.activo ? 'ok' : ''" x-text="p.activo ? 'Se produce' : 'Ya no se produce'"></span></td>
+                        <td class="num"><button class="btn chico gris" @click="abrirProducto(p)">Editar</button></td></tr></template>
+                </table>
+            </div></template>
 
             {{-- almacén: insumos, unidad y stock mínimo --}}
             <template x-if="seccion === 'config-almacen' && d.insumos"><div>
@@ -847,7 +864,7 @@
         <template x-if="dDe === 'formulas'">
         <section x-show="seccion === 'formulas' && !cargando && !error">
             <h1>Fórmulas</h1>
-            <p class="sub" x-text="'Cómo se hace el queso y el yogurt. Escribe cuánto quieres hacer y te dice qué necesitas. En el tanque hay ' + num(d.tanque) + ' L de leche aceptada.'"></p>
+            <p class="sub" x-text="'Cómo se hace cada producto. Escribe cuánto quieres hacer y te dice qué necesitas. En el tanque hay ' + num(d.tanque) + ' L de leche aceptada.'"></p>
             {{-- aquí solo lo que impide producir; lo que está bajo el mínimo se ve en Almacén --}}
             <template x-for="a in (d.avisos || []).filter((a) => a.nivel === 'FALTA')" :key="a.nivel + a.insumo_id + a.producto">
                 <div class="aviso" :class="a.nivel === 'FALTA' ? 'error' : ''">
@@ -1471,6 +1488,51 @@
         <div class="aviso error" x-show="f.error" x-text="f.error"></div>
         <div class="pie"><button class="btn gris" @click="ventana = null">Cancelar</button>
             <button class="btn" @click="guardarAjuste()" :disabled="!!f.enviando" x-text="f.enviando ? 'Guardando…' : 'Guardar'"></button></div>
+    </div>
+
+    {{-- producto nuevo o editar --}}
+    <div class="ventana" x-show="ventana === 'producto'">
+        <h3 x-text="f.id ? 'Editar ' + (f.nombre || 'producto') : 'Producto nuevo'"></h3>
+        <template x-if="!f.id"><div>
+            <label for="prod-copiar">Copiar la fórmula de (opcional)</label>
+            <select id="prod-copiar" x-model="f.copiar_de" @change="copiarDatosDe(f.copiar_de)">
+                <option value="">— Empezar sin fórmula —</option>
+                <template x-for="p in d.productos || []" :key="p.id"><option :value="p.id" x-text="p.nombre"></option></template></select>
+            <p class="sub" style="margin: 4px 0 0">Ej.: para un yogurt de durazno, copia el de fresa y luego cambia el saborizante.</p>
+        </div></template>
+        <label for="prod-nombre">Nombre</label>
+        <input id="prod-nombre" x-model="f.nombre" maxlength="60" placeholder="Ej.: Yogurt de durazno, Queso fresco">
+        <label>Tipo</label>
+        <div class="opciones"><template x-for="(t, k) in TIPOS_PRODUCTO" :key="k">
+            <button :class="{ activo: f.tipo === k }" @click="f.tipo = k" x-text="t"></button></template></div>
+        <label for="prod-unidad">Se cuenta en</label>
+        <input id="prod-unidad" x-model="f.unidad" maxlength="20" placeholder="Ej.: quesos de 1 kg, botellas de 1 L">
+        <label>¿Cuánto sale de 100 L de leche? (mínimo y máximo)</label>
+        <div class="fila" style="gap: 8px; flex-wrap: nowrap">
+            <input type="number" min="0" step="any" x-model="f.rinde_min" placeholder="mín." aria-label="Mínimo que sale de 100 L">
+            <span>a</span>
+            <input type="number" min="0" step="any" x-model="f.rinde_max" placeholder="máx." aria-label="Máximo que sale de 100 L">
+            <span x-text="(f.unidad || '').split(' ')[0]"></span></div>
+        <p class="sub" style="margin: 4px 0 0">Con el mínimo se calcula cuánta leche hace falta, así la cantidad pedida sale segura.</p>
+        <label for="prod-dura">¿Cuántos días dura?</label>
+        <input id="prod-dura" type="number" min="1" step="1" x-model="f.vida_util_dias" placeholder="Ej.: 21">
+        <template x-if="!f.id"><div>
+            <label>Precios de venta (opcional, se pueden poner después en Precios)</label>
+            <div class="fila" style="gap: 8px; flex-wrap: nowrap">
+                <input type="number" min="0" step="0.1" x-model="f.precios.MAYORISTA" placeholder="Mayorista S/" aria-label="Precio mayorista">
+                <input type="number" min="0" step="0.1" x-model="f.precios.DIRECTO" placeholder="Cliente S/" aria-label="Precio cliente directo">
+                <input type="number" min="0" step="0.1" x-model="f.precios.PLANTA" placeholder="Proveedor S/" aria-label="Precio para proveedor de leche"></div>
+        </div></template>
+        <template x-if="f.id"><div>
+            <label>¿Se sigue produciendo?</label>
+            <div class="opciones">
+                <button :class="{ activo: f.activo }" @click="f.activo = true">Sí, se produce</button>
+                <button :class="{ activo: !f.activo }" @click="f.activo = false">Ya no se produce</button></div>
+            <p class="sub" style="margin: 4px 0 0" x-show="!f.activo">Deja de salir para producir; lo que quede en stock se puede seguir vendiendo. Sus ventas y lotes no se borran.</p>
+        </div></template>
+        <div class="aviso error" x-show="f.error" x-text="f.error"></div>
+        <div class="pie"><button class="btn gris" @click="ventana = null">Cancelar</button>
+            <button class="btn" @click="guardarProducto()" :disabled="!!f.enviando" x-text="f.enviando ? 'Guardando…' : (f.id ? 'Guardar' : 'Crear producto')"></button></div>
     </div>
 
     {{-- editar fórmula (solo admin) --}}

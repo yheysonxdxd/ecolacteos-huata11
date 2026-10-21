@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 /** Operario de planta: fórmulas, leche disponible, iniciar y cerrar lotes. */
 class PlantaAppController extends Controller
@@ -79,7 +80,7 @@ class PlantaAppController extends Controller
     public function iniciar(Request $r)
     {
         $data = $r->validate([
-            'producto_id' => ['required', 'exists:productos,id'],
+            'producto_id' => ['required', Rule::exists('productos', 'id')->where('activo', true)],
             'litros'      => ['required', 'numeric', 'min:1'],
         ]);
 
@@ -97,7 +98,7 @@ class PlantaAppController extends Controller
     {
         $data = $r->validate([
             'lotes' => ['required', 'array', 'min:1', 'max:10'],
-            'lotes.*.producto_id' => ['required', 'distinct', 'exists:productos,id'],
+            'lotes.*.producto_id' => ['required', 'distinct', Rule::exists('productos', 'id')->where('activo', true)],
             'lotes.*.litros' => ['required', 'numeric', 'min:1'],
         ], [
             'lotes.required' => 'Elige al menos un producto y cuánto hacer.',

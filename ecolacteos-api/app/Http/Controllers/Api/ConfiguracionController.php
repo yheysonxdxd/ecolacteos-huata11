@@ -41,7 +41,7 @@ class ConfiguracionController extends Controller
                     ->map(fn ($p) => ['precio' => (float) $p->precio, 'desde' => $p->vigente_desde]),
             ],
             'tipos_cliente' => self::TIPOS_CLIENTE,
-            'precios_venta' => DB::table('productos')->orderBy('id')->get(['id', 'nombre', 'unidad'])->map(fn ($p) => [
+            'precios_venta' => DB::table('productos')->where('activo', true)->orderBy('id')->get(['id', 'nombre', 'unidad'])->map(fn ($p) => [
                 'producto_id' => $p->id, 'producto' => $p->nombre, 'unidad' => $p->unidad,
                 'precios' => collect(self::TIPOS_CLIENTE)->mapWithKeys(fn ($_, $tipo) => [
                     $tipo => ($x = ($precios[$p->id] ?? collect())->firstWhere('tipo_cliente', $tipo)) ? (float) $x->precio : null,
