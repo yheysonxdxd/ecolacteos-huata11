@@ -12,7 +12,10 @@ import kotlinx.serialization.json.*
 import pe.gob.huata.ecolacteos.datos.*
 import pe.gob.huata.ecolacteos.tema.*
 import kotlin.time.Clock
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 import kotlin.time.ExperimentalTime
 
 /** Mensaje del último envío, para mostrarlo debajo de la cabecera. */
@@ -20,6 +23,25 @@ object ResultadoSync {
     var enviando by mutableStateOf(false)
     var mensaje by mutableStateOf<String?>(null)
     var huboError by mutableStateOf(false)
+
+    // envío automático: 10 s después del último registro, si hay señal
+    private var ultimoCambio: TimeSource.Monotonic.ValueTimeMark? = null
+    private var ultimoIntento: TimeSource.Monotonic.ValueTimeMark? = null
+
+    fun huboCambio() { ultimoCambio = TimeSource.Monotonic.markNow() }
+
+    /**
+     * true si toca enviar solo: pasaron 10 s sin anotar nada (así una
+     * corrección rápida no viaja como corrección) y, si el último envío
+     * falló, ya pasó un minuto (para no insistir con el mismo error).
+     */
+    fun tocaEnvioAutomatico(): Boolean {
+        if (enviando) return false
+        if ((ultimoCambio?.elapsedNow() ?: Duration.INFINITE) < 10.seconds) return false
+        if (huboError && (ultimoIntento?.elapsedNow() ?: Duration.INFINITE) < 60.seconds) return false
+        ultimoIntento = TimeSource.Monotonic.markNow()
+        return true
+    }
 }
 
 // uuid de servidor por entrega local: reintentar no duplica (idempotencia)

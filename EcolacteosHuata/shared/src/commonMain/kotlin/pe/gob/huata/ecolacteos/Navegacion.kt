@@ -144,9 +144,10 @@ fun AppEcolacteos(rolInicial: Rol = Rol.ACOPIADOR, pendientes: Int = 0, hayRed: 
                 if (conectado && r == Rol.ACOPIADOR) {
                     // volvió la señal: se borra el aviso viejo y se envía lo anotado sin señal
                     if (ResultadoSync.huboError && ResultadoSync.mensaje?.startsWith("No se pudo conectar") == true) ResultadoSync.mensaje = null
-                    if (!antes && acopio.pendientes > 0) sincronizarAcopio(acopio, scope)
+                    // lo registrado se envía solo, sin tocar el botón de arriba
+                    if (acopio.pendientes > 0 && (!antes || ResultadoSync.tocaEnvioAutomatico())) sincronizarAcopio(acopio, scope)
                 }
-                kotlinx.coroutines.delay(10_000)
+                kotlinx.coroutines.delay(5_000)
             }
         }
 

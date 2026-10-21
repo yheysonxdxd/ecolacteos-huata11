@@ -72,7 +72,10 @@ fun RecordarAcopio(estado: EstadoAcopio) {
         val atrasadas = restaurar(estado, clave)
         if (atrasadas > 0) sincronizarAcopio(estado, scope)
         snapshotFlow { estado.entregas.toMap() to estado.enviados.toList() }
-            .collect { (entregas, enviados) -> guardar(clave, entregas, enviados) }
+            .collect { (entregas, enviados) ->
+                guardar(clave, entregas, enviados)
+                ResultadoSync.huboCambio() // el envío automático espera 10 s desde aquí
+            }
     }
 }
 
