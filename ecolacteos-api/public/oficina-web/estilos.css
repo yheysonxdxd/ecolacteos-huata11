@@ -73,8 +73,13 @@ h2 { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: v
 .marca-sub { text-align: center; color: #5faa78; letter-spacing: .12em; font-size: 12px; margin: 4px 0 22px; }
 
 /* --- estructura --- */
-.app { display: grid; grid-template-columns: 230px 1fr; min-height: 100vh; }
-nav.menu { background: #13202e; border-right: 1px solid var(--borde); padding: 18px 12px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+.app { display: grid; grid-template-columns: 230px 1fr; min-height: 100vh; position: relative; isolation: isolate; }
+/* la misma foto de la entrada detrás de todo, quieta al bajar, con un velo verde oscuro para que se lea;
+   tarjetas y tablas siguen sólidas encima */
+.app::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background: linear-gradient(180deg, rgba(6,24,16,.80), rgba(8,20,24,.88)),
+              url("img/vaca-brown-swiss.jpg") center 28% / cover no-repeat; }
+nav.menu { background: rgba(13,30,24,.78); backdrop-filter: blur(8px); border-right: 1px solid var(--borde); padding: 18px 12px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
 nav.menu .marca { font-size: 18px; text-align: left; padding: 0 8px 4px; }
 nav.menu .rol { color: var(--texto-3); font-size: 12px; padding: 0 8px 14px; border-bottom: 1px solid var(--borde); margin-bottom: 10px; }
 nav.menu .grupo { color: var(--texto-3); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; margin: 16px 8px 6px; }
@@ -182,7 +187,7 @@ ol.historial li.futuro::before { background: var(--aviso); }
 
 @media print {
   html, body { background: #fff; color: #000; }
-  nav.menu, .no-imprimir, .aviso, .velo { display: none !important; }
+  nav.menu, .no-imprimir, .aviso, .velo, .app::before { display: none !important; }
   .app { display: block; }
   main { padding: 0; max-width: none; }
   .solo-imprimir { display: block; }
