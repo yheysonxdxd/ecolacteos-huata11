@@ -784,6 +784,26 @@ function oficina() {
       } catch (e) { f.error = e.message; } finally { f.enviando = false; }
     },
 
+    // ---------------------------------------------------------- Excel
+    /** Baja el .xlsx con la sesión (por eso no basta un enlace) y lo guarda con el nombre que da el servidor. */
+    async excel(ruta) {
+      this.aviso = { texto: 'Preparando el Excel…' };
+      try {
+        const r = await fetch(API + ruta, { headers: { Authorization: 'Bearer ' + this.token, Accept: 'application/json' } });
+        if (r.status === 401) { this.salir('Tu sesión venció o tu usuario fue desactivado. Vuelve a ingresar.'); return; }
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message || 'El servidor respondió ' + r.status);
+        const nombre = (r.headers.get('Content-Disposition') || '').match(/filename="?([^";]+)"?/)?.[1] || 'ecolacteos.xlsx';
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(await r.blob());
+        a.download = nombre;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+        this.aviso = { texto: `✓ ${nombre} quedó en tus Descargas` };
+      } catch (e) {
+        this.aviso = { error: true, texto: 'No se pudo descargar el Excel: ' + e.message };
+      }
+    },
+
     // ---------------------------------------------------------- nota de venta
     async verNota(id) {
       // se abre la pestaña al toque (si no, el navegador la bloquea) y luego se le pone el PDF

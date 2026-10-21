@@ -45,6 +45,10 @@ Route::prefix('v1')->group(function () {
         Route::post('admin/pagos/pagar', [Api\AdminPagosController::class, 'pagar']);
         Route::get('admin/pagos/{id}',   [Api\AdminPagosController::class, 'detalle'])->whereNumber('id');
         Route::get('admin/padron',       [Api\AdminAppController::class, 'padron']);
+        // descargas en Excel de la web de oficina (?mes=AAAA-MM o ?semana=AAAA-MM-DD)
+        Route::get('admin/excel/pagos',    [Api\ExcelController::class, 'pagos']);
+        Route::get('admin/excel/entregas', [Api\ExcelController::class, 'entregas']);
+        Route::get('admin/excel/padron',   [Api\ExcelController::class, 'padron']);
         Route::get('admin/calidad',      [Api\AdminAppController::class, 'calidad']);
         Route::get('admin/adulteraciones', [Api\AdminAppController::class, 'adulteraciones']);
         // rechazos que no son adulteración (grasa, temperatura, pH…): ver y anotar la capacitación
@@ -111,6 +115,8 @@ Route::prefix('v1')->group(function () {
         Route::get('compras/movimientos',         [Api\ComprasAppController::class, 'movimientos']);
         Route::get('compras/formulas',            [Api\FormulasController::class, 'index']);
         Route::get('compras/kardex',              [Api\KardexController::class, 'ver']);
+        Route::get('compras/excel/ventas',        [Api\ExcelController::class, 'ventas']);
+        Route::get('compras/excel/compras',       [Api\ExcelController::class, 'compras']);
         Route::post('compras/ajustes',            [Api\KardexController::class, 'ajustar']);
         Route::get('compras/mermas',              [Api\MermasController::class, 'index']);
         Route::post('compras/mermas',             [Api\MermasController::class, 'guardar']);
@@ -131,6 +137,7 @@ Route::prefix('v1')->group(function () {
         Route::get('calidad/pendientes',  [Api\CalidadAppController::class, 'pendientes']);
         Route::get('calidad/muestreo',    [Api\CalidadMuestreoController::class, 'entregas']);
         Route::get('calidad/historial',   [Api\CalidadAppController::class, 'historial']);
+        Route::get('calidad/excel/analisis', [Api\ExcelController::class, 'analisis']);
 
         /*
          * PENDIENTE: estas rutas apuntan a controladores que todavía no

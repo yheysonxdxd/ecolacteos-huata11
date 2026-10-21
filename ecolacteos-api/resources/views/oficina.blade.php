@@ -220,6 +220,7 @@
                                        style="position: absolute; inset: 0; opacity: 0; cursor: pointer">
                             </label>
                             <button class="btn chico gris" @click="cambiar('semana', d.siguiente)" :disabled="!d.siguiente" title="Semana siguiente">▶</button>
+                            <button class="btn chico gris" @click="excel('/admin/excel/pagos?semana=' + d.inicio)" title="Descargar en Excel">⬇ Excel</button>
                             <div class="espacio"></div>
                             <span class="chip ojo" x-show="(d.otras_con_pendientes || []).length"
                                   x-text="'⚠ ' + (d.otras_con_pendientes || []).length + ' semana(s) más con pagos pendientes'"></span>
@@ -263,6 +264,7 @@
                     <button :class="{ activo: padron === 'trabajadores' }" @click="padron = 'trabajadores'" x-text="'Trabajadores · ' + (d.trabajadores || []).length"></button>
                 </div>
                 <div class="espacio"></div>
+                <button class="btn gris" x-show="padron === 'proveedores'" @click="excel('/admin/excel/padron')" title="Descargar en Excel">⬇ Excel</button>
                 <button class="btn" x-show="padron === 'proveedores'" @click="abrirNuevoProveedor()">+ Nuevo proveedor</button>
                 <button class="btn" x-show="padron === 'trabajadores'" @click="abrirNuevoTrabajador()">+ Nuevo trabajador</button>
             </div>
@@ -339,6 +341,7 @@
                            style="position: absolute; inset: 0; opacity: 0; cursor: pointer">
                 </label>
                 <button class="btn chico gris" @click="cambiar('semanaRech', d.siguiente)" :disabled="!d.siguiente" title="Semana siguiente">▶</button>
+                <button class="btn chico gris" @click="excel('/calidad/excel/analisis?mes=' + d.inicio.slice(0, 7))" title="Descargar en Excel">⬇ Análisis del mes en Excel</button>
                 <div class="espacio"></div>
                 <span class="chip ojo" x-show="d.por_capacitar" x-text="'⚠ ' + d.por_capacitar + (d.por_capacitar === 1 ? ' productor espera' : ' productores esperan') + ' su capacitación'"></span>
             </div>
@@ -396,7 +399,8 @@
         <template x-if="dDe === 'conciliacion'">
         <section x-show="seccion === 'conciliacion' && !cargando && !error">
             <div class="fila"><h1>Conciliación campo vs. planta</h1><div class="espacio"></div>
-                <input type="date" x-model="concFecha" @change="cargar()" :max="hoy()" style="width:auto" title="Día"></div>
+                <input type="date" x-model="concFecha" @change="cargar()" :max="hoy()" style="width:auto" title="Día">
+                <button class="btn chico gris" @click="excel('/admin/excel/entregas?mes=' + (concFecha || hoy()).slice(0, 7))" title="Descargar en Excel">⬇ Entregas del mes en Excel</button></div>
             <p class="sub">Compara lo que el acopiador anotó en las casas (campo) con lo que se midió al descargar en la tina (planta).
                 Escribe los litros que llegaron de cada vehículo y la diferencia se calcula sola · tolerancia ±<span x-text="num(d.tolerancia)"></span> %.</p>
             <table class="lista"><tr><th>Vehículo</th><th class="num">Litros en campo</th><th class="num">Litros en planta</th><th class="num">Diferencia</th><th></th></tr>
@@ -981,6 +985,7 @@
                            style="position: absolute; inset: 0; opacity: 0; cursor: pointer"></label>
                 <button class="btn chico gris" @click="cambiar('mesCompras', d.periodo.siguiente)" :disabled="!d.periodo?.siguiente" title="Mes siguiente">▶</button>
                 <button class="btn chico gris" @click="cambiar('mesCompras', 'todo')">Ver todo</button></span></template>
+                <button class="btn chico gris" @click="excel('/compras/excel/compras?mes=' + (d.periodo?.mes || 'actual'))" title="Descargar en Excel">⬇ Excel</button>
             </div>
             <div class="tarjetas" x-show="d.periodo">
                 <div class="tarjeta destacada"><div class="eti" x-text="d.periodo?.mes === 'todo' ? 'Gastado en total' : 'Gastado en ' + nombreMes(d.periodo?.mes).toLowerCase()"></div><div class="valor" x-text="soles(d.periodo?.gastado)"></div>
@@ -1029,6 +1034,7 @@
                            style="position: absolute; inset: 0; opacity: 0; cursor: pointer"></label>
                 <button class="btn chico gris" @click="cambiar('mesVentas', d.periodo.siguiente)" :disabled="!d.periodo?.siguiente" title="Mes siguiente">▶</button>
                 <button class="btn chico gris" @click="cambiar('mesVentas', 'todo')">Ver todo</button></span></template>
+                <button class="btn chico gris" @click="excel('/compras/excel/ventas?mes=' + (d.periodo?.mes || 'actual'))" title="Descargar en Excel">⬇ Excel</button>
             </div>
             <div class="tarjetas" x-show="d.periodo">
                 <div class="tarjeta destacada"><div class="eti" x-text="d.periodo?.mes === 'todo' ? 'Vendido en total' : 'Vendido en ' + nombreMes(d.periodo?.mes).toLowerCase()"></div><div class="valor" x-text="soles(d.periodo?.vendido)"></div>
