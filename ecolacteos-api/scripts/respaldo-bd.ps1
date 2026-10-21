@@ -8,6 +8,8 @@
 # Uso manual:
 #   powershell -ExecutionPolicy Bypass -File scripts\respaldo-bd.ps1
 #   powershell -ExecutionPolicy Bypass -File scripts\respaldo-bd.ps1 -Destino E:\Respaldos -Dias 60
+#   powershell -ExecutionPolicy Bypass -File scripts\respaldo-bd.ps1 -EsperarMinutos 240
+#     (espera hasta 4 horas a que prendan MySQL: asi la tarea corre al encender la PC y a las 13:00)
 #
 # Restaurar (OJO: reemplaza los datos de la base indicada):
 #   1. Descomprimir el .zip
@@ -16,7 +18,8 @@
 param(
     [string]$Destino = "D:\Respaldos\EcolacteosHuata",
     [int]$Dias = 30,
-    [string]$MysqlBin = "C:\xampp82\mysql\bin"
+    [string]$MysqlBin = "C:\xampp82\mysql\bin",
+    [int]$EsperarMinutos = 0
 )
 
 $ErrorActionPreference = "Stop"
@@ -44,6 +47,15 @@ try {
     $puerto = if ($env_["DB_PORT"]) { $env_["DB_PORT"] } else { "3306" }
     $usuario = if ($env_["DB_USERNAME"]) { $env_["DB_USERNAME"] } else { "root" }
 
+    # MySQL de XAMPP se prende a mano: se espera a que alguien lo prenda
+    $limite = (Get-Date).AddMinutes($EsperarMinutos)
+    while ($true) {
+        $c = New-Object Net.Sockets.TcpClient
+        try { $c.Connect($hostBd, [int]$puerto); break } catch {} finally { $c.Close() }
+        if ((Get-Date) -ge $limite) { throw "MySQL no esta prendido ($hostBd`:$puerto)" }
+        Start-Sleep -Seconds 60
+    }
+
     # la clave va por variable de entorno, no en la linea de comandos
     $env:MYSQL_PWD = $env_["DB_PASSWORD"]
 
@@ -55,7 +67,10 @@ try {
         "--host=$hostBd" "--port=$puerto" "--user=$usuario" `
         --single-transaction --routines --triggers --default-character-set=utf8mb4 `
         "--result-file=$sql" $bd
-    if ($LASTEXITCODE -ne 0) { throw "mysqldump termino con codigo $LASTEXITCODE" }
+    if ($LASTEXITCODE -ne 0) {
+        Remove-Item $sql -ErrorAction SilentlyContinue  # no dejar archivos vacios
+        throw "mysqldump termino con codigo $LASTEXITCODE"
+    }
 
     # un volcado completo termina con "-- Dump completed"
     $final = Get-Content $sql -Tail 3 -Encoding UTF8
