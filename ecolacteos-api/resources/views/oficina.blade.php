@@ -648,20 +648,19 @@
         {{-- ---------------------------------------------------- VENDER --}}
         <template x-if="dDe === 'vender'">
         <section x-show="seccion === 'vender' && !cargando && !error">
-            <h1>Vender</h1>
-            <p class="sub">El precio sale solo según el tipo de cliente. Puedes vender varios productos en la misma nota.</p>
-            <div class="dos">
+            <h1>Nueva venta</h1>
+            <p class="sub">Elige el cliente, escribe cuánto lleva de cada producto y registra la venta. El precio sale solo según el tipo de cliente.</p>
+            <div class="venta">
                 <div>
-                    <label>Productos · cuánto lleva de cada uno (deja en blanco el que no)</label>
-                    <table class="lista">
-                        <template x-for="p in d.productos || []" :key="p.id"><tr>
-                            <td><span x-text="p.nombre"></span><div class="sub" style="margin: 0; font-size: 12px" x-text="'hay ' + num(p.stock, 0) + ' ' + p.unidad"></div></td>
-                            <td style="width: 130px"><input type="number" min="0" step="1" x-model="f.cantidades[p.id]" placeholder="0"
-                                       :class="Number(f.cantidades[p.id]) > p.stock ? 'cambiado' : ''" :aria-label="'Cantidad de ' + p.nombre"></td></tr></template>
-                    </table>
-                    <div class="fila" style="margin-top: 14px"><label style="margin: 0">Cliente</label><div class="espacio"></div>
-                        <button class="btn chico" @click="abrirCliente()">+ Nuevo cliente</button></div>
-                    <div class="fila" style="margin: 8px 0; gap: 12px">
+                    <div class="fila paso-titulo"><h2><span class="paso">1</span> Cliente</h2><div class="espacio"></div>
+                        <button class="btn chico gris" x-show="!clienteVenta()" @click="abrirCliente()">+ Nuevo cliente</button></div>
+                    <template x-if="clienteVenta()"><div class="cliente-elegido">
+                        <div><strong x-text="clienteVenta().nombre"></strong>
+                            <small x-text="[TIPO_CLIENTE[clienteVenta().tipo] || clienteVenta().tipo, clienteVenta().ruc ? (clienteVenta().ruc.length === 8 ? 'DNI ' : 'RUC ') + clienteVenta().ruc : '', clienteVenta().telefono ? 'Tel. ' + clienteVenta().telefono : ''].filter(Boolean).join(' · ')"></small></div>
+                        <div class="espacio"></div>
+                        <button class="btn chico gris" @click="f.cliente = null">Cambiar</button></div></template>
+                    <div x-show="!clienteVenta()">
+                    <div class="fila" style="margin: 0 0 8px; gap: 12px">
                         <input type="search" x-model="buscarCliente" placeholder="Buscar por nombre, DNI/RUC o teléfono">
                         <label style="display: flex; align-items: center; gap: 6px; margin: 0; white-space: nowrap; cursor: pointer" x-show="(d.inactivos || []).length">
                             <input type="checkbox" x-model="verClientesInactivos" style="width: auto"> Ver desactivados</label>
@@ -672,25 +671,40 @@
                                 <td><span x-text="c.nombre"></span><div class="sub" style="margin: 0; font-size: 12px" x-show="c.ruc || c.telefono"
                                         x-text="[c.ruc ? (c.ruc.length === 8 ? 'DNI ' : 'RUC ') + c.ruc : '', c.telefono ? 'Tel. ' + c.telefono : ''].filter(Boolean).join(' · ')"></div></td>
                                 <td x-text="TIPO_CLIENTE[c.tipo] || c.tipo"></td>
-                                <td class="num" x-text="Number(c.activo) ? preciosCliente(c) : ''"></td>
                                 <td class="acciones"><span class="chip mal" x-show="!Number(c.activo)">desactivado</span>
                                     <button class="btn chico gris" x-show="c.tipo !== 'PLANTA'" @click.stop="abrirCliente(c)">Editar</button></td></tr></template>
-                        <tr x-show="!clientesVisibles().length"><td colspan="4">Ningún cliente coincide. Agrégalo con <strong>+ Nuevo cliente</strong>.</td></tr>
+                        <tr x-show="!clientesVisibles().length"><td colspan="3">Ningún cliente coincide. Agrégalo con <strong>+ Nuevo cliente</strong>.</td></tr>
+                    </table>
+                    </div>
+
+                    <div class="fila paso-titulo"><h2><span class="paso">2</span> Productos</h2></div>
+                    <table class="lista productos-venta"><tr><th>Producto</th><th class="num">Precio</th><th class="num">Cantidad</th><th class="num">Importe</th></tr>
+                        <template x-for="p in d.productos || []" :key="p.id"><tr :class="{ tenue: !(p.stock > 0), lleva: Number(f.cantidades[p.id]) > 0 }">
+                            <td><span x-text="p.nombre"></span>
+                                <small :class="{ mal: Number(f.cantidades[p.id]) > p.stock }" x-text="p.stock > 0 ? 'Hay ' + num(p.stock, 0) + ' ' + p.unidad : 'Sin stock'"></small></td>
+                            <td class="num" x-text="clienteVenta() ? soles(p.precios?.[clienteVenta().tipo]) : '—'"></td>
+                            <td class="num"><div class="cantidad">
+                                <button class="btn chico gris" @click="sumarCantidad(p, -1)" :disabled="!(Number(f.cantidades[p.id]) > 0)" :aria-label="'Uno menos de ' + p.nombre">−</button>
+                                <input type="number" min="0" step="1" x-model="f.cantidades[p.id]" placeholder="0" :disabled="!(p.stock > 0)"
+                                       :class="Number(f.cantidades[p.id]) > p.stock ? 'cambiado' : ''" :aria-label="'Cantidad de ' + p.nombre">
+                                <button class="btn chico gris" @click="sumarCantidad(p, 1)" :disabled="!(p.stock > 0)" :aria-label="'Uno más de ' + p.nombre">+</button></div></td>
+                            <td class="num" x-text="clienteVenta() && Number(f.cantidades[p.id]) > 0 ? soles((p.precios?.[clienteVenta().tipo] || 0) * f.cantidades[p.id]) : ''"></td></tr></template>
                     </table>
                 </div>
-                <div>
-                    <div class="tarjeta destacada">
-                        <div class="eti">Total</div>
-                        <div class="valor" x-text="soles(totalVenta())"></div>
-                        <template x-for="l in lineasVenta()" :key="l.p.id">
-                            <div class="apoyo" x-text="num(l.cantidad, 2) + ' × ' + l.p.nombre + (clienteVenta() ? ' a ' + soles(l.precio) + ' = ' + soles(l.importe) : '')"></div></template>
-                        <div class="apoyo" x-show="!lineasVenta().length">Escribe cuánto lleva de cada producto.</div>
-                        <div class="apoyo" x-show="lineasVenta().length && !clienteVenta()">Elige el cliente para ver el precio.</div>
-                        <label>Enviar la nota al correo (opcional)</label>
-                        <input type="email" x-model="f.correo" placeholder="cliente@gmail.com">
-                        <div class="aviso error" x-show="f.error" x-text="f.error"></div>
-                        <button class="btn ancho" @click="registrarVenta()" :disabled="!!f.enviando" x-text="f.enviando ? 'Registrando…' : 'Registrar venta' + (lineasVenta().length > 1 ? ' (' + lineasVenta().length + ' productos, una nota)' : '')"></button>
-                    </div>
+
+                <div class="tarjeta resumen-venta">
+                    <div class="eti">Nota de venta</div>
+                    <div class="cliente" x-text="clienteVenta()?.nombre || 'Falta elegir el cliente'" :class="{ falta: !clienteVenta() }"></div>
+                    <template x-for="l in lineasVenta()" :key="l.p.id"><div class="renglon">
+                        <span x-text="num(l.cantidad, 2) + ' × ' + l.p.nombre"></span>
+                        <span x-text="clienteVenta() ? soles(l.importe) : ''"></span></div></template>
+                    <div class="apoyo" x-show="!lineasVenta().length">Todavía no lleva ningún producto.</div>
+                    <div class="total"><span>Total</span><strong x-text="soles(totalVenta())"></strong></div>
+                    <label>Enviar la nota al correo (opcional)</label>
+                    <input type="email" x-model="f.correo" placeholder="cliente@gmail.com">
+                    <div class="aviso error" x-show="f.error" x-text="f.error"></div>
+                    <button class="btn ancho" @click="registrarVenta()" :disabled="!!f.enviando || !clienteVenta() || !lineasVenta().length"
+                            x-text="f.enviando ? 'Registrando…' : 'Registrar venta'"></button>
                 </div>
             </div>
         </section>
@@ -773,7 +787,7 @@
                 <tr><th>Fecha</th><th>Qué pasó</th><th class="num">Entró</th><th class="num">Salió</th><th class="num">Queda</th></tr>
                 <template x-for="(m, k) in dDe === 'kardex' ? (d.filas || []) : []" :key="k"><tr :class="m.tipo === 'ANTERIOR' || m.tipo === 'INICIAL' ? 'tenue' : ''">
                     <td x-text="fechaCorta(m.fecha) + ' ' + hora(m.fecha)"></td>
-                    <td><span :class="m.tipo === 'MERMA' ? 'mal' : ''" x-text="m.texto"></span><div class="quien" x-show="m.usuario" x-text="'Registró: ' + m.usuario"></div></td>
+                    <td><strong class="que-kardex" x-show="m.que" x-text="m.que"></strong><span :class="m.tipo === 'MERMA' ? 'mal' : ''" x-text="m.texto"></span><div class="quien" x-show="m.usuario" x-text="'Registró: ' + m.usuario"></div></td>
                     <td class="num ok"><strong x-text="m.entrada ? '+ ' + num(m.entrada.cantidad, 3) + ' ' + d.item.unidad : ''"></strong></td>
                     <td class="num sale"><strong x-text="m.salida ? '− ' + num(m.salida.cantidad, 3) + ' ' + d.item.unidad : ''"></strong></td>
                     <td class="num" :class="m.saldo.cantidad < 0 ? 'mal' : ''"><strong x-text="num(m.saldo.cantidad, 3) + ' ' + d.item.unidad"></strong></td></tr></template>
@@ -790,7 +804,7 @@
                 <template x-for="(m, k) in dDe === 'kardex' ? (d.filas || []) : []" :key="k"><tr :class="m.tipo === 'ANTERIOR' || m.tipo === 'INICIAL' ? 'tenue' : ''">
                     <td x-text="fechaCorta(m.fecha) + ' ' + hora(m.fecha)"></td>
                     <td><span class="chip" :class="['COMPRA', 'ACOPIO'].includes(m.tipo) || (m.tipo === 'PRODUCCION' && m.entrada) ? 'ok' : (m.tipo === 'AJUSTE' ? 'ojo' : (m.tipo === 'MERMA' ? 'mal' : ''))" x-text="TIPO_KARDEX[m.tipo]"></span></td>
-                    <td x-text="m.detalle + (m.usuario ? ' · ' + m.usuario : '')"></td>
+                    <td x-text="(m.que ? m.que + ' · ' : '') + m.detalle + (m.usuario ? ' · ' + m.usuario : '')"></td>
                     <td class="num ok" x-text="m.entrada ? num(m.entrada.cantidad, 3) : ''"></td>
                     <td class="num" x-text="m.entrada ? cu(m.entrada.costo) : ''"></td>
                     <td class="num" x-text="m.entrada ? soles(m.entrada.total) : ''"></td>
@@ -845,14 +859,15 @@
                         <div style="flex: 1; min-width: 220px">
                             <strong style="font-size: 18px" x-text="l.codigo + ' · ' + l.producto"></strong>
                             <div class="sub" style="margin: 2px 0 0" x-text="'Iniciado el ' + fechaCorta(l.iniciado_en) + ' ' + hora(l.iniciado_en) + ' con ' + num(l.litros_leche, 0) + ' L de leche · vence el ' + fechaCorta(l.vence_el)"></div>
-                            <div style="margin-top: 6px" x-text="'Deben salir entre ' + num(l.esperado_min, 0) + ' y ' + num(l.esperado_max, 0) + ' ' + l.unidad.split(' ')[0]"></div>
+                            <div style="margin-top: 6px"><span x-text="'Se espera que salgan ' + esperadoLote(l)"></span>
+                                <span class="sub" style="margin: 0" x-text="' · se acepta de ' + aceptadoLote(l)"></span></div>
                             <div class="sub" style="margin: 4px 0 0" x-show="(l.insumos || []).length"
                                  x-text="'Se usó: ' + l.insumos.map((i) => i.nombre.toLowerCase() + ' ' + num(i.cantidad, 3) + ' ' + i.unidad).join(', ')"></div>
                         </div>
                         <div style="min-width: 260px">
                             <label style="margin-top: 0" x-text="'¿Cuántos ' + l.unidad.split(' ')[0] + ' salieron?'"></label>
                             <div class="fila">
-                                <input type="number" min="0" step="1" style="width: 120px" x-model="cierre[l.id]" :placeholder="num(l.esperado_min, 0)">
+                                <input type="number" min="0" step="1" style="width: 120px" x-model="cierre[l.id]" :placeholder="num(l.esperado_min, 2)">
                                 <button class="btn" @click="cerrarLote(l)">Cerrar lote</button>
                             </div>
                         </div>
@@ -865,8 +880,8 @@
                 <template x-for="l in (d.lotes || []).filter((l) => l.estado !== 'EN_PROCESO')" :key="l.id"><tr>
                     <td x-text="l.codigo + ' · ' + fechaCorta(l.iniciado_en)"></td><td x-text="l.producto"></td>
                     <td class="num" x-text="num(l.litros_leche, 0) + ' L'"></td>
-                    <td class="num" x-text="num(l.esperado_min, 0) + '–' + num(l.esperado_max, 0)"></td>
-                    <td class="num"><strong x-text="num(l.obtenido, 0) + ' ' + l.unidad.split(' ')[0]"></strong></td>
+                    <td class="num" x-text="esperadoLote(l)"></td>
+                    <td class="num"><strong x-text="num(l.obtenido, 2) + ' ' + l.unidad.split(' ')[0]"></strong></td>
                     <td class="num" :class="l.fuera_referencia == 1 ? 'mal' : 'ok'" x-text="(l.desvio_pct > 0 ? '+' : '') + num(l.desvio_pct, 1) + ' %'"></td></tr></template>
             </table>
         </section>
@@ -1063,14 +1078,125 @@
                 <div class="tarjeta destacada"><div class="eti" x-text="d.periodo?.mes === 'todo' ? 'Vendido en total' : 'Vendido en ' + nombreMes(d.periodo?.mes).toLowerCase()"></div><div class="valor" x-text="soles(d.periodo?.vendido)"></div>
                     <div class="apoyo" x-text="(d.periodo?.ventas || 0) + ' venta(s)'"></div></div>
             </div>
-            <table class="lista"><tr><th>Fecha</th><th>Producto</th><th>Cliente y total</th><th class="num">Cantidad</th><th>Nota de venta</th></tr>
-                <template x-for="(m, k) in (d.movimientos || []).filter((m) => m.venta_id)" :key="k"><tr>
-                    <td x-text="fechaCorta(m.fecha) + ' ' + hora(m.fecha)"></td><td x-text="m.que"></td><td x-text="m.ref"></td>
-                    <td class="num" :class="m.entrada ? 'ok' : ''" x-text="m.delta"></td>
-                    <td><template x-if="m.venta_id"><span>
-                        <button class="btn chico gris" @click="verNota(m.venta_id)" x-text="m.numero"></button>
-                        <button class="btn chico gris" @click="abrirCorreo(m.venta_id, m.numero)">Correo</button></span></template></td></tr></template>
-                <tr x-show="!(d.movimientos || []).length"><td colspan="5" x-text="d.periodo?.mes === 'todo' ? 'Todavía no hay ventas.' : 'No hubo ventas en ' + nombreMes(d.periodo?.mes).toLowerCase() + '.'"></td></tr>
+            <table class="lista ventas"><tr><th>Nota</th><th>Fecha</th><th>Cliente</th><th>Productos</th><th class="num">Total</th><th></th></tr>
+                <template x-for="n in notasVenta()" :key="n.nota"><tr>
+                    <td><strong x-text="n.numero"></strong></td>
+                    <td class="fecha"><span x-text="fechaCorta(n.fecha)"></span><small x-text="hora(n.fecha)"></small></td>
+                    <td x-text="n.cliente"></td>
+                    <td><template x-for="(p, k) in n.productos" :key="k"><div class="producto">
+                        <span x-text="p.que"></span><small x-text="num(p.cantidad) + ' ' + p.unidad"></small></div></template></td>
+                    <td class="num"><strong x-text="soles(n.total)"></strong></td>
+                    <td class="acciones"><button class="btn chico gris" @click="verNota(n.venta_id)" title="Ver o imprimir la nota">📄 Ver nota</button>
+                        <button class="btn chico gris" @click="abrirCorreo(n.venta_id, n.numero)" title="Mandar la nota por correo">✉ Correo</button></td></tr></template>
+                <tr x-show="!(d.movimientos || []).length"><td colspan="6" x-text="d.periodo?.mes === 'todo' ? 'Todavía no hay ventas.' : 'No hubo ventas en ' + nombreMes(d.periodo?.mes).toLowerCase() + '.'"></td></tr>
+            </table>
+        </section>
+        </template>
+
+        {{-- ---------------------------------------------------- CALIDAD: MUESTREO (rol Calidad) --}}
+        <template x-if="dDe === 'muestreo'">
+        <section x-show="seccion === 'muestreo' && !cargando && !error">
+            <div class="fila"><h1>Muestreo</h1><div class="espacio"></div>
+                <button class="btn gris" @click="cargar()">Actualizar</button></div>
+            <p class="sub">No hace falta analizar a todos: elige a cualquier proveedor y escribe lo que marca el lactoscan.
+                Las entregas ya cuentan como aceptadas; si la muestra sale mal, el diagnóstico la corrige.</p>
+            <div class="tarjetas">
+                <div class="tarjeta"><div class="eti">Analizadas hoy</div><div class="valor ok" x-text="d.analizadas_hoy || 0"></div></div>
+                <div class="tarjeta"><div class="eti">Sin analizar (hoy y ayer)</div><div class="valor" x-text="(d.entregas || []).length"></div></div>
+            </div>
+            <div class="muestreo">
+                <div>
+                    <input type="search" x-model="buscarMuestra" placeholder="Buscar proveedor, comunidad o vehículo" style="margin-top: 14px">
+                    <template x-for="[titulo, lista] in muestrasVisibles()" :key="titulo">
+                        <div><h2 x-text="titulo + ' · ' + lista.length"></h2>
+                        <table class="lista">
+                            <template x-for="e in lista" :key="e.id">
+                                <tr class="clic" :class="{ elegida: muestra?.entrega.id === e.id }" @click="elegirMuestra(e)">
+                                    <td><strong x-text="e.proveedor"></strong>
+                                        <small class="apoyo-fila" x-text="e.comunidad + ' · ' + e.vehiculo + ' · ' + e.hora"></small></td>
+                                    <td class="num"><span x-text="num(e.litros) + ' L'"></span>
+                                        <small class="apoyo-fila ojo" x-show="Math.abs(desvioMuestra(e)) >= 20"
+                                               x-text="(desvioMuestra(e) > 0 ? '+' : '') + num(desvioMuestra(e), 0) + ' % vs. su promedio'"></small></td></tr>
+                            </template>
+                        </table></div>
+                    </template>
+                    <div class="aviso bien" style="margin-top: 14px" x-show="!(d.entregas || []).length">No hay entregas de hoy ni de ayer sin analizar.</div>
+                    <div class="aviso" style="margin-top: 14px" x-show="(d.entregas || []).length && !muestrasVisibles().length" x-text="'Nadie coincide con “' + buscarMuestra + '”.'"></div>
+                </div>
+
+                <div class="tarjeta analisis">
+                    <template x-if="!muestra"><div class="vacio">
+                        <div style="font-size: 34px">🧪</div>
+                        <strong>Elige un proveedor de la lista</strong>
+                        <p class="sub" style="margin: 4px 0 0">Aquí escribes lo que marca el lactoscan y ves el veredicto al momento.</p></div></template>
+                    <template x-if="muestra"><div>
+                        <div class="fila"><div><div class="eti">Análisis de</div><strong style="font-size: 18px" x-text="muestra.entrega.proveedor"></strong>
+                            <small class="apoyo-fila" x-text="muestra.entrega.comunidad + ' · ' + muestra.entrega.vehiculo + ' · ' + fechaCorta(muestra.entrega.fecha) + ' · ' + num(muestra.entrega.litros) + ' L'"></small></div>
+                            <div class="espacio"></div><button class="btn chico gris" @click="muestra = null" :disabled="muestra.enviando">Cancelar</button></div>
+                        <div class="pestanas" style="margin: 12px 0 4px">
+                            <button :class="{ activo: muestra.tipo === 'CAMPO' }" @click="muestra.tipo = 'CAMPO'">Muestra de ruta</button>
+                            <button :class="{ activo: muestra.tipo === 'PLANTA' }" @click="muestra.tipo = 'PLANTA'">Muestra de planta</button>
+                        </div>
+                        <div class="medidas">
+                            <template x-for="x in medidasMuestra()" :key="x.k"><div>
+                                <label :for="'m-' + x.k" x-text="x.nombre"></label>
+                                <input :id="'m-' + x.k" type="number" min="0" :step="x.paso" x-model="muestra[x.k]" :class="{ cambiado: x.fuera }">
+                                <small class="apoyo-fila" :class="{ mal: x.fuera }" x-text="x.ayuda"></small></div></template>
+                        </div>
+                        <label style="display: flex; gap: 8px; align-items: center; cursor: pointer">
+                            <input type="checkbox" x-model="muestra.significada" style="width: auto"> Leche significada (expuesta al sol antes del recojo)</label>
+                        <div class="veredicto" :class="veredictoMuestra().resultado === 'ACEPTADO' ? 'bien' : 'mal'">
+                            <div class="eti">Veredicto en vivo</div>
+                            <strong x-text="veredictoMuestra().resultado"></strong>
+                            <div x-text="veredictoMuestra().causas.length ? veredictoMuestra().causas.join(' · ') : 'Todos los parámetros dentro de rango.'"></div>
+                        </div>
+                        <div class="aviso error" x-show="muestra.error" x-text="muestra.error"></div>
+                        <div class="fila" style="gap: 10px; margin-top: 12px">
+                            <button class="btn rojo" style="flex: 1" @click="guardarAnalisis(false)" :disabled="muestra.enviando">Rechazar</button>
+                            <button class="btn" style="flex: 1" @click="guardarAnalisis(true)" :disabled="muestra.enviando" x-text="muestra.enviando ? 'Guardando…' : 'Aceptar'"></button>
+                        </div>
+                        <p class="sub" style="margin: 8px 0 0">El servidor recalcula el veredicto y aplica la sanción que corresponda. Queda registrado con tu nombre.</p>
+                    </div></template>
+                </div>
+            </div>
+        </section>
+        </template>
+
+        {{-- ---------------------------------------------------- CALIDAD: INFRACTORES --}}
+        <template x-if="dDe === 'infractores'">
+        <section x-show="seccion === 'infractores' && !cargando && !error">
+            <h1>Infractores</h1>
+            <p class="sub">Sanciones registradas: adulteración 1.ª vez = precio reducido, 2.ª vez = baja definitiva; acidez o leche significada = capacitación.</p>
+            <table class="lista"><tr><th>Fecha</th><th>Proveedor</th><th>Falta</th><th class="num">Vez</th><th>Medida</th></tr>
+                <template x-for="s in d.data || []" :key="s.id"><tr>
+                    <td x-text="fechaCorta(s.created_at)"></td>
+                    <td><strong x-text="s.proveedor?.nombre || '—'"></strong><small class="apoyo-fila" x-text="s.proveedor?.comunidad?.nombre || ''"></small></td>
+                    <td><span class="chip" :class="s.tipo === 'ADULTERACION' ? 'mal' : 'ojo'"
+                              x-text="{ ADULTERACION: 'Adulteración', SIGNIFICADA: 'Leche significada' }[s.tipo] || 'Acidez'"></span></td>
+                    <td class="num" x-text="s.nivel + '.ª'"></td>
+                    <td :class="s.medida === 'BAJA_DEFINITIVA' ? 'mal' : ''"
+                        x-text="s.medida === 'PRECIO_REDUCIDO' ? 'Precio reducido' + (s.precio_aplicado ? ' (' + soles(s.precio_aplicado) + '/L)' : '') : (s.medida === 'BAJA_DEFINITIVA' ? 'Baja definitiva' : 'Capacitación')"></td></tr></template>
+                <tr x-show="!(d.data || []).length"><td colspan="5">No hay infractores registrados.</td></tr>
+            </table>
+        </section>
+        </template>
+
+        {{-- ---------------------------------------------------- CALIDAD: HISTORIAL --}}
+        <template x-if="dDe === 'historial-calidad'">
+        <section x-show="seccion === 'historial-calidad' && !cargando && !error">
+            <h1>Historial de análisis</h1>
+            <p class="sub" x-text="'Últimos ' + (d.analisis || []).length + ' análisis, con quién los hizo.'"></p>
+            <table class="lista"><tr><th>Fecha</th><th>Proveedor</th><th class="num">Litros</th><th class="num">Grasa</th><th class="num">Agua</th><th>Veredicto</th><th>Analizó</th></tr>
+                <template x-for="a in d.analisis || []" :key="a.id"><tr>
+                    <td x-text="fechaCorta(a.fecha) + ' ' + a.hora"></td>
+                    <td><strong x-text="a.proveedor"></strong><small class="apoyo-fila" x-text="a.vehiculo + ' · muestra de ' + (a.muestra === 'PLANTA' ? 'planta' : 'ruta')"></small></td>
+                    <td class="num" x-text="num(a.litros) + ' L'"></td>
+                    <td class="num" x-text="num(a.grasa, 2) + ' %'"></td>
+                    <td class="num" x-text="num(a.agua, 2) + ' %'"></td>
+                    <td><span class="chip" :class="a.veredicto === 'ACEPTADO' ? 'ok' : 'mal'" x-text="a.veredicto.toLowerCase()"></span>
+                        <small class="apoyo-fila" x-show="a.causas.length" x-text="a.causas.join(' · ')"></small></td>
+                    <td x-text="a.analista || '—'"></td></tr></template>
+                <tr x-show="!(d.analisis || []).length"><td colspan="7">Todavía no hay análisis.</td></tr>
             </table>
         </section>
         </template>
@@ -1459,7 +1585,7 @@
             </template>
         </table>
         <template x-for="e in f.plan?.elegidos || []" :key="'r' + e.p.id">
-            <p class="sub" style="margin: 8px 0 0" x-text="e.p.nombre + ': deben salir entre ' + num(e.litros * e.p.rendimiento_min, 0) + ' y ' + num(e.litros * e.p.rendimiento_max, 0) + ' ' + unidadProducto(e.p) + '. Vence en ' + e.p.vida_util_dias + ' días.'"></p>
+            <p class="sub" style="margin: 8px 0 0" x-text="e.p.nombre + ': se espera que salgan ' + (e.p.rendimiento_min === e.p.rendimiento_max ? num(e.litros * e.p.rendimiento_min, 2) : 'entre ' + num(e.litros * e.p.rendimiento_min, 2) + ' y ' + num(e.litros * e.p.rendimiento_max, 2)) + ' ' + unidadProducto(e.p) + '. Vence en ' + e.p.vida_util_dias + ' días.'"></p>
         </template>
         <div class="aviso error" x-show="f.error" x-text="f.error" style="margin-top: 10px"></div>
         <div class="pie"><button class="btn gris" @click="ventana = null">Cancelar</button>

@@ -25,7 +25,7 @@ class ComprasAppController extends Controller
         $precios = DB::table('precios_venta')->whereNull('vigente_hasta')->get()->groupBy('producto_id');
         return DB::table('productos')->orderBy('id')->get()->map(function ($p) use ($precios) {
             return [
-                'id' => $p->id, 'nombre' => $p->nombre, 'tipo' => $p->tipo, 'unidad' => $p->unidad, 'activo' => (bool) $p->activo,
+                'id' => $p->id, 'nombre' => $p->nombre, 'tipo' => $p->tipo, 'base_id' => $p->base_id, 'unidad' => $p->unidad, 'activo' => (bool) $p->activo,
                 'stock' => Mermas::stockProducto($p->id),
                 'precios' => ($precios[$p->id] ?? collect())->mapWithKeys(fn ($x) => [$x->tipo_cliente => (float) $x->precio]),
             ];
@@ -207,7 +207,7 @@ class ComprasAppController extends Controller
     {
         return DB::table('ventas as v')->join('productos as p', 'p.id', '=', 'v.producto_id')
             ->join('clientes as c', 'c.id', '=', 'v.cliente_id')->orderByDesc('v.vendida_en')
-            ->select(['v.id', DB::raw('COALESCE(v.nota_id, v.id) as nota'), 'p.nombre as que', 'c.nombre as cliente', 'v.total', 'v.cantidad', 'v.vendida_en as fecha']);
+            ->select(['v.id', DB::raw('COALESCE(v.nota_id, v.id) as nota'), 'p.nombre as que', 'p.unidad', 'c.nombre as cliente', 'v.total', 'v.cantidad', 'v.vendida_en as fecha']);
     }
 
     private function filaVenta(object $v): array
@@ -217,6 +217,9 @@ class ComprasAppController extends Controller
             'que' => $v->que, 'ref' => "Venta · {$v->cliente} · S/ ".number_format($v->total, 2),
             'fecha' => $v->fecha, 'entrada' => false,
             'delta' => '−'.rtrim(rtrim(number_format($v->cantidad, 2, '.', ''), '0'), '.'),
+            // la web arma una fila por nota con estos datos sueltos (la app usa ref y delta)
+            'nota' => (int) $v->nota, 'cliente' => $v->cliente, 'total' => round((float) $v->total, 2),
+            'cantidad' => (float) $v->cantidad, 'unidad' => $v->unidad,
         ];
     }
 }

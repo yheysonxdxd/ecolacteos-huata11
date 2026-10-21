@@ -85,41 +85,59 @@ class Kardex
         return [$item, $lista, (float) ($costoDe($ordenes->first()) ?? 0)];
     }
 
+    /** Un solo kardex para todos los quesos y otro para todos los yogures (con la misma unidad, para poder sumarlos). */
+    public const NOMBRE_FAMILIA = ['YOGURT' => 'Yogurt', 'QUESO' => 'Queso'];
+
     private static function producto(?int $id): array
     {
         $p = DB::table('productos')->find($id);
         abort_if(! $p, 404, 'Producto no encontrado');
+        // Queso Paria y andino juntos; Yogurt natural, de fresa, de maracuyá… juntos. Lo demás, con sus sabores.
+        $familia = (isset(self::NOMBRE_FAMILIA[$p->tipo])
+            ? DB::table('productos')->where('tipo', $p->tipo)->where('unidad', $p->unidad)
+            : DB::table('productos')->where('id', $p->base_id ?? $p->id)->orWhere('base_id', $p->base_id ?? $p->id))
+            ->orderBy('id')->pluck('nombre', 'id');
+        $base = DB::table('productos')->find($familia->keys()->first());
+        $ids = $familia->keys()->all();
+        $varios = count($ids) > 1;
         $costoLote = self::costosDeLotes();
-        $u = explode(' ', $p->unidad)[0]; // "quesos de 1 kg" → "quesos"
+        $u = explode(' ', $base->unidad)[0]; // "quesos de 1 kg" → "quesos"
+        $con = function (array $m, int $productoId) use ($familia, $varios) {
+            $m['que'] = $varios ? $familia[$productoId] : null; // cuál de la familia, para leerlo en la fila
+            return $m;
+        };
 
         $lista = [];
         $lotes = DB::table('lotes as l')->leftJoin('users as u', 'u.id', '=', 'l.operario_id')
-            ->where('l.producto_id', $id)->where('l.estado', 'TERMINADO')->where('l.obtenido', '>', 0)
-            ->get(['l.id', 'l.codigo', 'l.litros_leche', 'l.obtenido', 'l.cerrado_en', 'l.iniciado_en', 'u.name as usuario']);
+            ->whereIn('l.producto_id', $ids)->where('l.estado', 'TERMINADO')->where('l.obtenido', '>', 0)
+            ->get(['l.id', 'l.producto_id', 'l.codigo', 'l.litros_leche', 'l.obtenido', 'l.cerrado_en', 'l.iniciado_en', 'u.name as usuario']);
         foreach ($lotes as $l) {
             $cu = ($costoLote[$l->id] ?? 0) / $l->obtenido;
-            $lista[] = self::mov((string) ($l->cerrado_en ?? $l->iniciado_en), 'PRODUCCION',
+            $lista[] = $con(self::mov((string) ($l->cerrado_en ?? $l->iniciado_en), 'PRODUCCION',
                 "{$l->codigo} · lote cerrado con ".self::n($l->litros_leche).' L de leche', $l->usuario, (float) $l->obtenido, $cu,
-                texto: "Se hizo en el lote {$l->codigo} con ".self::n($l->litros_leche).' L de leche');
+                texto: "Se hizo en el lote {$l->codigo} con ".self::n($l->litros_leche).' L de leche'), $l->producto_id);
         }
         $ventas = DB::table('ventas as v')->join('clientes as c', 'c.id', '=', 'v.cliente_id')
             ->leftJoin('users as u', 'u.id', '=', 'v.registrada_por')->leftJoin('lotes as l', 'l.id', '=', 'v.lote_id')
-            ->where('v.producto_id', $id)
-            ->get(['v.id', DB::raw('COALESCE(v.nota_id, v.id) as nota'), 'v.cantidad', 'v.precio_unitario', 'v.vendida_en', 'c.nombre as cliente', 'l.codigo as lote', 'u.name as usuario']);
+            ->whereIn('v.producto_id', $ids)
+            ->get(['v.id', 'v.producto_id', DB::raw('COALESCE(v.nota_id, v.id) as nota'), 'v.cantidad', 'v.precio_unitario', 'v.vendida_en', 'c.nombre as cliente', 'l.codigo as lote', 'u.name as usuario']);
         foreach ($ventas as $v) {
-            $lista[] = self::mov((string) $v->vendida_en, 'VENTA',
+            $lista[] = $con(self::mov((string) $v->vendida_en, 'VENTA',
                 NotaVentaPdf::numero((int) $v->nota)." · {$v->cliente} · S/ ".number_format($v->precio_unitario, 2).' c/u'.($v->lote ? " · {$v->lote}" : ''),
                 $v->usuario, -(float) $v->cantidad,
-                texto: "Se vendió a {$v->cliente} a S/ ".number_format($v->precio_unitario, 2).' c/u (nota '.NotaVentaPdf::numero((int) $v->nota).')');
+                texto: "Se vendió a {$v->cliente} a S/ ".number_format($v->precio_unitario, 2).' c/u (nota '.NotaVentaPdf::numero((int) $v->nota).')'), $v->producto_id);
         }
 
-        foreach (self::mermas('PRODUCTO', $id) as $m) {
-            $lista[] = self::mov((string) $m->fecha, 'MERMA', $m->motivo_texto.($m->detalle ? " · {$m->detalle}" : ''), $m->usuario,
+        foreach (self::mermas('PRODUCTO', $ids) as $m) {
+            $lista[] = $con(self::mov((string) $m->fecha, 'MERMA', $m->motivo_texto.($m->detalle ? " · {$m->detalle}" : ''), $m->usuario,
                 -(float) $m->cantidad, texto: 'Se perdió: '.mb_strtolower($m->motivo_texto).($m->detalle ? " ({$m->detalle})" : '')
-                    .($m->lote ? " · lote {$m->lote}" : ''));
+                    .($m->lote ? " · lote {$m->lote}" : '')), $m->producto_id);
         }
 
-        $item = ['tipo' => 'producto', 'id' => $p->id, 'nombre' => $p->nombre, 'unidad' => $u, 'stock' => Mermas::stockProducto($id), 'minimo' => 0];
+        $item = ['tipo' => 'producto', 'id' => $base->id, 'unidad' => $u, 'minimo' => 0,
+            'nombre' => $varios ? (self::NOMBRE_FAMILIA[$base->tipo] ?? $base->nombre) : $base->nombre,
+            'productos' => $varios ? $familia->values() : [], // los que entran en este kardex
+            'stock' => array_sum(array_map(fn ($i) => Mermas::stockProducto($i), $ids))];
 
         // si una venta quedó antes del cierre de su lote, sale al costo del primer lote
         $lista = self::ordenar($lista);
@@ -182,12 +200,12 @@ class Kardex
     }
 
     /** Pérdidas registradas, con el motivo en palabras. */
-    private static function mermas(string $tipo, ?int $productoId = null)
+    private static function mermas(string $tipo, array $productos = [])
     {
         return DB::table('mermas as m')->leftJoin('users as u', 'u.id', '=', 'm.registrado_por')
             ->leftJoin('lotes as l', 'l.id', '=', 'm.lote_id')
-            ->where('m.tipo', $tipo)->when($productoId, fn ($q) => $q->where('m.producto_id', $productoId))
-            ->get(['m.fecha', 'm.cantidad', 'm.motivo', 'm.detalle', 'l.codigo as lote', 'u.name as usuario'])
+            ->where('m.tipo', $tipo)->when($productos, fn ($q) => $q->whereIn('m.producto_id', $productos))
+            ->get(['m.fecha', 'm.producto_id', 'm.cantidad', 'm.motivo', 'm.detalle', 'l.codigo as lote', 'u.name as usuario'])
             ->map(function ($m) use ($tipo) {
                 $m->motivo_texto = Mermas::MOTIVOS[$tipo][$m->motivo] ?? $m->motivo;
                 return $m;
@@ -226,7 +244,7 @@ class Kardex
             }
             // un saldo negativo (stock corregido a mano) se valora al costo vigente para no inflar el promedio
             if ($cant > 0.0005) $cpp = $valor / $cant; else $valor = $cant * $cpp;
-            $filas[] = ['fecha' => $m['fecha'], 'tipo' => $m['tipo'], 'detalle' => $m['detalle'], 'usuario' => $m['usuario'], 'lote' => $m['lote'], 'texto' => $m['texto']]
+            $filas[] = ['fecha' => $m['fecha'], 'tipo' => $m['tipo'], 'detalle' => $m['detalle'], 'usuario' => $m['usuario'], 'lote' => $m['lote'], 'texto' => $m['texto'], 'que' => $m['que'] ?? null]
                 + $fila + ['saldo' => ['cantidad' => $cant, 'costo' => $cpp, 'total' => $valor]];
         }
 
@@ -249,7 +267,7 @@ class Kardex
 
         $redondear = fn ($v) => $v === null ? null
             : ['cantidad' => round($v['cantidad'], 3), 'costo' => round($v['costo'], 4), 'total' => round($v['total'], 2)];
-        $periodo = array_map(fn ($f) => ['fecha' => $f['fecha'], 'tipo' => $f['tipo'], 'detalle' => $f['detalle'], 'texto' => $f['texto'], 'usuario' => $f['usuario'],
+        $periodo = array_map(fn ($f) => ['fecha' => $f['fecha'], 'tipo' => $f['tipo'], 'detalle' => $f['detalle'], 'texto' => $f['texto'], 'usuario' => $f['usuario'], 'que' => $f['que'] ?? null,
             'entrada' => $redondear($f['entrada']), 'salida' => $redondear($f['salida']), 'saldo' => $redondear($f['saldo'])], $periodo);
         $suma = fn ($lado, $campo) => round(array_sum(array_map(fn ($f) => $f['tipo'] === 'ANTERIOR' ? 0 : ($f[$lado][$campo] ?? 0), $periodo)), $campo === 'total' ? 2 : 3);
 

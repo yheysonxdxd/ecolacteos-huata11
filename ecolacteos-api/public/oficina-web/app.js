@@ -1,5 +1,5 @@
 /*
- * Ecolácteos Huata · Oficina (web para Admin y Compras).
+ * Ecolácteos Huata · Oficina (web para Admin, Compras y el laboratorio de Calidad).
  *
  * Usa las MISMAS rutas /api/v1 que la app del celular: mismos permisos por
  * rol, mismas validaciones y mismos datos. La sesión (token) vive solo en
@@ -22,6 +22,11 @@ const hora = (iso) => String(iso || '').slice(11, 16);
 const TIPO_CLIENTE = { MAYORISTA: 'Mayorista', DIRECTO: 'Cliente directo', PLANTA: 'Proveedor de leche' };
 const ROLES = { ACOPIADOR: 'Acopiador', CALIDAD: 'Calidad', OPERARIO: 'Operario', COMPRAS: 'Compras', ADMIN: 'Administrador', PRODUCTOR: 'Productor' };
 const esCorreo = (s) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(s || '').trim());
+// los compañeros entran por http://IP:8000, donde crypto.randomUUID no existe (solo en https o localhost)
+const nuevoUuid = () => crypto.randomUUID?.() ?? '10000000-1000-4000-8000-100000000000'.replace(/[018]/g,
+  (c) => (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16));
+/** "2026-10-21 11:40:05" en hora de Perú, como manda la app. */
+const ahoraLima = () => new Date().toLocaleString('sv-SE', { timeZone: 'America/Lima' });
 
 // mapa de Huata (Leaflet): fuera del estado de Alpine para que no lo envuelva en proxies
 const MAPA = { m: null, capa: null, encuadrado: false };
@@ -64,6 +69,8 @@ function oficina() {
     mesVentas: '',
     buscarVendedor: '',
     buscarCliente: '',
+    buscarMuestra: '',
+    muestra: null,  // análisis a medio escribir: { entrega, tipo: CAMPO|PLANTA, grasa, proteina, …, enviando, error }
     verClientesInactivos: false,
     fVenta: null,   // la venta a medias mientras se agrega o edita un cliente
     verDesactivados: false,
@@ -90,6 +97,11 @@ function oficina() {
      * pestañas arriba (ej. Calidad → Por vehículo | Adulteraciones).
      */
     menu() {
+      // el analista registra los análisis con su propio usuario (el administrador solo los supervisa)
+      if (this.usuario?.rol === 'CALIDAD') {
+        return [{ id: 'laboratorio', nombre: 'Calidad', grupo: 'Laboratorio',
+          pestanas: [{ id: 'muestreo', nombre: 'Muestreo' }, { id: 'infractores', nombre: 'Infractores' }, { id: 'historial-calidad', nombre: 'Historial' }] }];
+      }
       const admin = this.usuario?.rol === 'ADMIN';
       // en el orden del día de la planta: comprar → guardar → producir → vender; el kardex (para revisar) al final
       const compras = [
@@ -155,8 +167,8 @@ function oficina() {
         });
         const j = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(j.message || 'No se pudo ingresar');
-        if (!['ADMIN', 'COMPRAS'].includes(j.rol)) {
-          throw new Error('La web de oficina es para Administración y Compras. Tu rol (' + (ROLES[j.rol] || j.rol) + ') usa la app del celular.');
+        if (!['ADMIN', 'COMPRAS', 'CALIDAD'].includes(j.rol)) {
+          throw new Error('La web de oficina es para Administración, Compras y Calidad. Tu rol (' + (ROLES[j.rol] || j.rol) + ') usa la app del celular.');
         }
         this.token = j.token;
         this.usuario = { nombre: j.usuario?.nombre, rol: j.rol };
@@ -208,6 +220,14 @@ function oficina() {
             break;
           case 'adulteraciones': case 'solicitudes': case 'costos': case 'sesiones':
             this.d = await this.api('/admin/' + this.seccion); break;
+          case 'muestreo': {
+            const [m, rangos] = await Promise.all([this.api('/calidad/muestreo'), this.api('/calidad/parametros')]);
+            this.d = { ...m, rangos };
+            if (this.muestra && !m.entregas.some((e) => e.id === this.muestra.entrega.id)) this.muestra = null;
+            break;
+          }
+          case 'infractores': this.d = await this.api('/calidad/infractores'); break;
+          case 'historial-calidad': this.d = await this.api('/calidad/historial'); break;
           case 'vender': this.d = await this.api('/compras/ventas-datos'); this.nuevaVenta(); break;
           case 'inventario': this.d = await this.api('/compras/inventario'); break;
           case 'ordenes': {
@@ -252,8 +272,7 @@ function oficina() {
             if (k.tipo !== 'leche') q.set('id', k.id ?? '');
             if (k.desde) q.set('desde', k.desde);
             if (k.hasta) q.set('hasta', k.hasta);
-            this.d = { inv, ...(k.tipo === 'leche' || k.id ? await this.api('/compras/kardex?' + q) : {}) };
-            break;
+            this.d = { inv, ...(k.tipo === 'leche' || k.id ? await this.api('/compras/kardex?' + q) : {}) };            break;
           }
         }
         this.dDe = this.seccion;
@@ -842,10 +861,9 @@ function oficina() {
       }).filter((l) => l.cantidad > 0);
     },
     totalVenta() { return this.lineasVenta().reduce((t, l) => t + l.importe, 0); },
-    /** Precios del cliente para lo que se está vendiendo (o de todo, si todavía no se eligió nada). */
-    preciosCliente(c) {
-      const elegidos = this.lineasVenta().map((l) => l.p);
-      return (elegidos.length ? elegidos : this.d.productos || []).map((p) => soles(p.precios?.[c.tipo])).join(' · ');
+    sumarCantidad(p, cuanto) {
+      const n = Math.max(0, (Number(this.f.cantidades[p.id]) || 0) + cuanto);
+      this.f.cantidades[p.id] = n ? String(n) : '';
     },
     elegirCliente(c) { this.f.cliente = c.id; this.f.correo = c.email || ''; },
     /** Clientes que coinciden con lo buscado (nombre, DNI/RUC o teléfono); los desactivados solo si se piden. */
@@ -934,7 +952,93 @@ function oficina() {
       }
     },
 
+    // ------------------------------------------------------ calidad: muestreo
+    /** Entregas sin analizar que coinciden con lo buscado, separadas en hoy y ayer. */
+    muestrasVisibles() {
+      const q = this.buscarMuestra.trim().toLowerCase();
+      const todas = (this.d.entregas || []).filter((e) => !q || [e.proveedor, e.comunidad, e.vehiculo].some((t) => (t || '').toLowerCase().includes(q)));
+      return [['Hoy', todas.filter((e) => e.es_hoy)], ['Ayer', todas.filter((e) => !e.es_hoy)]].filter(([, l]) => l.length);
+    },
+    /** Litros fuera de lo normal (±20 % de su promedio): ayuda a decidir a quién muestrear. */
+    desvioMuestra(e) { return e.promedio ? ((e.litros - e.promedio) / e.promedio) * 100 : 0; },
+    elegirMuestra(e) {
+      this.muestra = { entrega: e, tipo: 'CAMPO', grasa: '', proteina: '', densidad: '', temperatura: '', agua_anadida: '', ph: '',
+        significada: false, enviando: false, error: null };
+      this.$nextTick(() => document.getElementById('m-grasa')?.focus());
+    },
+    /** Cada medida con su límite, para pintar en rojo la que está fuera (mismos rangos del servidor). */
+    medidasMuestra() {
+      const r = this.d.rangos || {};
+      const m = this.muestra || {};
+      const v = (k) => (m[k] === '' || m[k] == null ? null : Number(m[k]));
+      return [
+        { k: 'grasa', nombre: 'Grasa', paso: '0.1', ayuda: `% · mín. ${r.grasa_min}`, fuera: v('grasa') !== null && v('grasa') < r.grasa_min },
+        { k: 'proteina', nombre: 'Proteína', paso: '0.1', ayuda: `% · mín. ${r.proteina_min}`, fuera: v('proteina') !== null && v('proteina') < r.proteina_min },
+        { k: 'densidad', nombre: 'Densidad', paso: '0.001', ayuda: `g/mL · ${r.densidad_min}–${r.densidad_max}`,
+          fuera: v('densidad') !== null && (v('densidad') < r.densidad_min || v('densidad') > r.densidad_max) },
+        { k: 'agua_anadida', nombre: 'Agua añadida', paso: '0.1', ayuda: `% · adulterada desde ${r.agua_adulter}`, fuera: v('agua_anadida') !== null && v('agua_anadida') >= r.agua_adulter },
+        { k: 'temperatura', nombre: 'Temperatura (opcional)', paso: '0.5', ayuda: `°C · máx. ${r.temperatura_max}`, fuera: v('temperatura') !== null && v('temperatura') > r.temperatura_max },
+        { k: 'ph', nombre: 'pH (opcional)', paso: '0.05', ayuda: `${r.ph_min}–${r.ph_max}`, fuera: v('ph') !== null && (v('ph') < r.ph_min || v('ph') > r.ph_max) },
+      ];
+    },
+    /** Veredicto en vivo, igual que CalidadService::evaluar (el que vale es el del servidor). */
+    veredictoMuestra() {
+      const m = this.muestra; const r = this.d.rangos || {};
+      if (!m) return null;
+      const causas = this.medidasMuestra().filter((x) => x.fuera).map((x) => x.nombre.replace(' (opcional)', '').toLowerCase() + ' fuera de rango');
+      if (m.significada) causas.push('leche significada (expuesta al sol)');
+      const adulterada = m.agua_anadida !== '' && Number(m.agua_anadida) >= r.agua_adulter;
+      return { resultado: adulterada ? 'ADULTERADA' : (causas.length ? 'RECHAZADO' : 'ACEPTADO'), causas };
+    },
+    async guardarAnalisis(aceptar) {
+      const m = this.muestra;
+      const faltan = ['grasa', 'proteina', 'densidad', 'agua_anadida'].filter((k) => m[k] === '' || m[k] == null);
+      if (faltan.length) { m.error = 'Escribe lo que marca el lactoscan: grasa, proteína, densidad y agua añadida.'; return; }
+      const v = this.veredictoMuestra();
+      if (!(await this.preguntar({
+        icono: aceptar ? '✅' : '⛔', tono: aceptar ? '' : 'peligro',
+        titulo: (aceptar ? '¿Aceptar' : '¿Rechazar') + ' la leche de ' + m.entrega.proveedor + '?',
+        texto: v.resultado === 'ACEPTADO' ? 'Todos los parámetros están dentro de rango.' : 'Veredicto en vivo: ' + v.resultado.toLowerCase() + ' (' + v.causas.join(', ') + '). ' +
+          'El servidor lo vuelve a calcular y aplica la sanción que corresponda.',
+        filas: [{ k: 'Entrega', v: num(m.entrega.litros) + ' L · ' + fechaCorta(m.entrega.fecha) }, { k: 'Muestra', v: m.tipo === 'PLANTA' ? 'de planta' : 'de ruta' }],
+        si: aceptar ? 'Sí, aceptar' : 'Sí, rechazar', no: 'Revisar',
+      }))) return;
+      m.enviando = true; m.error = null;
+      const n = (k) => (m[k] === '' || m[k] == null ? null : Number(m[k]));
+      try {
+        // mismo camino que la app del celular: /sync/push con una operación ANALISIS
+        const r = await this.api('/sync/push', { operaciones: [{
+          tipo: 'ANALISIS', uuid: nuevoUuid(), entrega_id: m.entrega.id, muestra: m.tipo,
+          grasa: n('grasa'), proteina: n('proteina'), densidad: n('densidad'), temperatura: n('temperatura'),
+          agua_anadida: n('agua_anadida'), ph: n('ph'), significada: m.significada,
+          fuente: 'MANUAL', tomada_en: ahoraLima(), aceptar,
+        }] });
+        const res = r.resultados?.[0] || {};
+        if (res.estado === 'ERROR') throw new Error(res.error);
+        const s = res.sancion;
+        const medida = { PRECIO_REDUCIDO: 'precio reducido', BAJA_DEFINITIVA: 'baja definitiva' }[s?.medida] || 'capacitación';
+        this.aviso = {
+          icono: res.veredicto === 'ACEPTADO' ? '✓' : '⚠', error: res.veredicto === 'ADULTERADA',
+          titulo: `${m.entrega.proveedor}: ${(res.veredicto || '').toLowerCase()}`,
+          texto: s ? `Sanción por ${s.tipo.toLowerCase()} (${s.nivel}.ª vez): ${medida}.` : 'Análisis guardado.',
+        };
+        this.muestra = null;
+        await this.cargar();
+      } catch (e) { m.error = e.message; } finally { m.enviando = false; }
+    },
+
     // ---------------------------------------------------------- nota de venta
+    // una fila por nota: una venta de varios productos viene en varias filas
+    notasVenta() {
+      const notas = [];
+      for (const m of (this.d.movimientos || []).filter((m) => m.venta_id)) {
+        let n = notas.find((x) => x.nota === m.nota);
+        if (!n) notas.push(n = { nota: m.nota, venta_id: m.venta_id, numero: m.numero, fecha: m.fecha, cliente: m.cliente, total: 0, productos: [] });
+        n.total += m.total;
+        n.productos.push({ que: m.que, cantidad: m.cantidad, unidad: m.unidad });
+      }
+      return notas;
+    },
     async verNota(id) {
       // se abre la pestaña al toque (si no, el navegador la bloquea) y luego se le pone el PDF
       const pestana = window.open('', '_blank');
@@ -1160,15 +1264,29 @@ function oficina() {
     // ---------------------------------------------------------------- kardex
     verKardex(id, tipo = 'insumo') { this.kardex.tipo = tipo; this.kardex.id = id; this.ir('kardex'); },
     tipoKardex(tipo, id = null) { this.kardex.tipo = tipo; this.kardex.id = id; this.cargar(); },
-    // pestañas: Insumos | Queso Paria | Yogurt natural | Leche
+    /** Productos que van en un mismo kardex: todos los quesos, todos los yogures (igual que Kardex::producto). */
+    gruposKardex() {
+      const nombres = { YOGURT: 'Yogurt', QUESO: 'Queso' };
+      const grupos = new Map();
+      for (const p of this.d.inv?.productos || []) {
+        const clave = nombres[p.tipo] ? p.tipo + '|' + p.unidad : 'p' + (p.base_id ?? p.id);
+        if (!grupos.has(clave)) grupos.set(clave, { id: p.id, ids: [], nombre: nombres[p.tipo] || p.nombre });
+        grupos.get(clave).ids.push(p.id);
+      }
+      return [...grupos.values()];
+    },
+    // pestañas: Insumos | Queso (todos) | Yogurt (todos, con sus sabores) | Leche
     pestanasKardex() {
       return [
         { tipo: 'insumo', id: null, nombre: 'Insumos' },
-        ...(this.d.inv?.productos || []).map((p) => ({ tipo: 'producto', id: p.id, nombre: p.nombre })),
+        ...this.gruposKardex().map((g) => ({ tipo: 'producto', id: g.id, nombre: g.nombre })),
         { tipo: 'leche', id: null, nombre: 'Leche' },
       ];
     },
-    pestanaKardexActiva(t) { return this.kardex.tipo === t.tipo && (t.tipo !== 'producto' || this.kardex.id === t.id); },
+    pestanaKardexActiva(t) {
+      return this.kardex.tipo === t.tipo
+        && (t.tipo !== 'producto' || !!this.gruposKardex().find((g) => g.id === t.id)?.ids.includes(this.kardex.id));
+    },
 
     // -------------------------------------------------------------- pérdidas
     async abrirMerma(tipo = 'PRODUCTO', productoId = null) {
@@ -1316,6 +1434,16 @@ function oficina() {
 
     // ----------------------------------------------------- lotes en producción
     cierre: {}, // lote => cantidad que salió
+    /** Lo esperado con sus decimales (redondeado engañaba: 8.55 L se veía "9 a 9"). */
+    esperadoLote(l) {
+      const u = l.unidad.split(' ')[0];
+      return Number(l.esperado_min) === Number(l.esperado_max)
+        ? `${num(l.esperado_min, 2)} ${u}` : `${num(l.esperado_min, 2)} a ${num(l.esperado_max, 2)} ${u}`;
+    },
+    /** Lo que se da por bueno al cerrar: 3 % menos o más que lo esperado (igual que el servidor). */
+    aceptadoLote(l) {
+      return `${num(l.esperado_min * 0.97, 2)} a ${num(l.esperado_max * 1.03, 2)} ${l.unidad.split(' ')[0]}`;
+    },
     async cerrarLote(l) {
       const obtenido = Number(this.cierre[l.id] ?? '');
       const u = l.unidad.split(' ')[0];
@@ -1329,10 +1457,10 @@ function oficina() {
       if (!(await this.preguntar({
         icono: fuera ? '⚠️' : '✅', tono: fuera ? 'aviso' : '', titulo: `¿Cerrar el lote ${l.codigo}?`,
         texto: `Entran ${num(obtenido, 2)} ${u} de ${l.producto} al stock y ya se pueden vender.` +
-          (fuera ? ' Salió fuera de lo esperado: revisa que la cantidad esté bien escrita.' : ''),
+          (fuera ? ` Salió fuera de lo esperado (se acepta de ${this.aceptadoLote(l)}): revisa que la cantidad esté bien escrita.` : ''),
         filas: [
-          { k: 'Leche usada', v: num(l.litros_leche, 0) + ' L' },
-          { k: 'Se esperaba', v: `${num(l.esperado_min, 0)} a ${num(l.esperado_max, 0)} ${u}` },
+          { k: 'Leche usada', v: num(l.litros_leche, 2) + ' L' },
+          { k: 'Se esperaba', v: this.esperadoLote(l) },
           { k: 'Salió', v: `${num(obtenido, 2)} ${u}`, clase: fuera ? 'mal' : 'ok' },
           { k: 'Diferencia', v: (desvio > 0 ? '+' : '') + num(desvio, 1) + ' %', clase: fuera ? 'mal' : 'ok' },
         ],

@@ -118,7 +118,8 @@ private fun ConfirmarVarios(elegidos: List<Elegido>, texto: String, onCerrar: ()
                 Spacer(Modifier.height(8.dp))
                 elegidos.forEach { e ->
                     FilaValor("Leche para ${e.p.txt("nombre")}", "${formatear(e.litros, 0)} L")
-                    Text("Deben salir entre ${formatear(e.litros * rendMin(e.p), 0)} y ${formatear(e.litros * rendMax(e.p), 0)} ${e.unidad}.",
+                    Text("Se espera que salgan " + (if (rendMin(e.p) == rendMax(e.p)) formatear(e.litros * rendMin(e.p), 2)
+                        else "entre ${formatear(e.litros * rendMin(e.p), 2)} y ${formatear(e.litros * rendMax(e.p), 2)}") + " ${e.unidad}.",
                         style = Texto.Apoyo, color = Altiplano.TextoTerciario)
                 }
                 error?.let { Text(it, color = Altiplano.Alerta) }

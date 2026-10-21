@@ -102,8 +102,8 @@ internal fun LotesReal() {
                     }
                     Spacer(Modifier.height(12.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                        MiniCifra("Esperado", "${formatear(min, 0)}–${formatear(max, 0)} $u")
-                        MiniCifra("Real", real?.let { "${formatear(it, 0)} $u" } ?: "—")
+                        MiniCifra("Esperado", esperadoLote(min, max, u))
+                        MiniCifra("Real", real?.let { "${formatear(it, 2)} $u" } ?: "—")
                         MiniCifra("Desvío", desv?.let { (if (it > 0) "+" else "") + formatear(it) + " %" } ?: "—",
                             if (desv == null) Altiplano.Texto else if (fuera) Altiplano.Alerta else Altiplano.Exito)
                     }
@@ -116,10 +116,15 @@ internal fun LotesReal() {
                             usados.forEach { i -> FilaValor(i.txt("nombre"), "${formatear(i.num("cantidad"), 3)} ${i.txt("unidad")}") }
                         }
                         PasosFormula(pasosDe(l))
-                        val valor = OperarioReal.cierre[id] ?: kotlin.math.round((min + max) / 2)
+                        // quesos y envases se cuentan enteros; litros y kilos, con decimales (8.55 L no es "9")
+                        val enteros = !l.txt("unidad").startsWith("litro") && !l.txt("unidad").startsWith("kg")
+                        val sugerido = (min + max) / 2
+                        val valor = OperarioReal.cierre[id] ?: if (enteros) kotlin.math.round(sugerido) else kotlin.math.round(sugerido * 100) / 100
                         HorizontalDivider(Modifier.padding(vertical = 12.dp), color = Altiplano.BordeSuave)
-                        Text("Cantidad obtenida al cierre", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
-                        StepperGrande(valor, { OperarioReal.cierre[id] = it ?: 0.0 }, paso = 1.0, decimales = 0, unidad = u, compacto = true)
+                        Text("Cantidad obtenida al cierre · se acepta de ${formatear(min * 0.97, 2)} a ${formatear(max * 1.03, 2)} $u",
+                            style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+                        StepperGrande(valor, { OperarioReal.cierre[id] = it ?: 0.0 }, paso = if (enteros) 1.0 else 0.5,
+                            decimales = if (enteros) 0 else 2, unidad = u, compacto = true)
                         Spacer(Modifier.height(10.dp))
                         BotonPrimario(if (cerrando == id) "Cerrando…" else "Cerrar lote", cerrando == null) { confirmar = l to valor }
                     }
@@ -155,6 +160,10 @@ internal fun LotesReal() {
 }
 
 
+/** Lo esperado con sus decimales: redondeado, 8.55 L se veía "9–9" (como en la web). */
+private fun esperadoLote(min: Double, max: Double, u: String) =
+    if (min == max) "${formatear(min, 2)} $u" else "${formatear(min, 2)}–${formatear(max, 2)} $u"
+
 /**
  * "¿Cerrar el lote?" con lo que salió frente a lo esperado. Fuera de lo
  * esperado (3 % menos o más, como el servidor) se avisa en amarillo para
@@ -178,11 +187,11 @@ private fun ConfirmarCierre(l: JsonObject, obtenido: Double, onNo: () -> Unit, o
         text = {
             Column {
                 Text("Entran ${formatear(obtenido, 2)} $u de ${l.txt("producto")} al stock y ya se pueden vender." +
-                    if (fuera) " Salió fuera de lo esperado: revisa que la cantidad esté bien." else "",
+                    if (fuera) " Salió fuera de lo esperado (se acepta de ${formatear(min * 0.97, 2)} a ${formatear(max * 1.03, 2)} $u): revisa que la cantidad esté bien." else "",
                     style = Texto.Cuerpo, color = Altiplano.TextoSecundario)
                 Spacer(Modifier.height(10.dp))
-                FilaValor("Leche usada", "${formatear(l.num("litros_leche"), 0)} L")
-                FilaValor("Se esperaba", "${formatear(min, 0)} a ${formatear(max, 0)} $u")
+                FilaValor("Leche usada", "${formatear(l.num("litros_leche"), 2)} L")
+                FilaValor("Se esperaba", esperadoLote(min, max, u))
                 FilaValor("Salió", "${formatear(obtenido, 2)} $u", if (fuera) Altiplano.Alerta else Altiplano.Exito)
                 FilaValor("Diferencia", "${if (desvio > 0) "+" else ""}${formatear(desvio)} %", if (fuera) Altiplano.Alerta else Altiplano.Exito)
             }

@@ -41,10 +41,13 @@ fun KardexCompleto() {
     CargaServidor("/api/v1/compras/inventario", clave = Perdidas.version) { inv, _ ->
         val insumos = inv.lista("insumos")
         val productos = inv.lista("productos")
-        // pestañas: Insumos | Queso Paria | Yogurt natural | Leche
-        val pestanas = listOf("insumo" to null as Long?) + productos.map { "producto" to it.num("id").toLong() } + listOf("leche" to null)
-        val nombres = listOf("Insumos") + productos.map { it.txt("nombre") } + listOf("Leche")
-        val activa = pestanas.indexOfFirst { it.first == k.tipo && (k.tipo != "producto" || it.second == k.id) }.coerceAtLeast(0)
+        // pestañas: Insumos | Queso (todos) | Yogurt (todos, con sus sabores) | Leche
+        val grupos = gruposKardex(productos)
+        val pestanas = listOf("insumo" to null as Long?) + grupos.map { "producto" to it.id } + listOf("leche" to null)
+        val nombres = listOf("Insumos") + grupos.map { it.nombre } + listOf("Leche")
+        val activa = pestanas.indexOfFirst { (tipo, id) ->
+            tipo == k.tipo && (k.tipo != "producto" || grupos.any { it.id == id && k.id in it.ids })
+        }.coerceAtLeast(0)
         if (k.tipo == "insumo" && insumos.none { it.num("id").toLong() == k.id }) k.id = insumos.firstOrNull()?.num("id")?.toLong()
         if (k.tipo == "producto" && productos.none { it.num("id").toLong() == k.id }) k.id = productos.firstOrNull()?.num("id")?.toLong()
 
@@ -62,6 +65,22 @@ fun KardexCompleto() {
             Box(Modifier.weight(1f)) { KardexDe(ruta) }
         }
     }
+}
+
+private val NOMBRE_FAMILIA = mapOf("YOGURT" to "Yogurt", "QUESO" to "Queso")
+
+/** Productos que van en un mismo kardex, igual que la web y el servidor (Kardex::producto). */
+private class GrupoKardex(val id: Long, val nombre: String, val ids: MutableList<Long> = mutableListOf())
+
+private fun gruposKardex(productos: List<JsonObject>): List<GrupoKardex> {
+    val grupos = LinkedHashMap<String, GrupoKardex>()
+    productos.forEach { p ->
+        val id = p.num("id").toLong()
+        val tipo = p.txt("tipo")
+        val clave = if (tipo in NOMBRE_FAMILIA) "$tipo|${p.txt("unidad")}" else "p${p.txt("base_id").toLongOrNull() ?: id}"
+        grupos.getOrPut(clave) { GrupoKardex(id, NOMBRE_FAMILIA[tipo] ?: p.txt("nombre")) }.ids += id
+    }
+    return grupos.values.toList()
 }
 
 @Composable
@@ -120,6 +139,8 @@ private fun FilaKardex(f: JsonObject, u: String, contable: Boolean) {
     Tarjeta(borde = if (perdida) Altiplano.AlertaBorde else Altiplano.Borde) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
+                // en Queso / Yogurt: de cuál es (Queso andino, Yogurt de fresa…)
+                f.txt("que").takeIf { it.isNotEmpty() }?.let { Text(it, style = Texto.Fila, color = Altiplano.Texto) }
                 Text(f.txt("texto").ifEmpty { f.txt("detalle") }, style = Texto.Cuerpo, color = if (perdida) Altiplano.Alerta else Altiplano.Texto)
                 Text(sub, style = Texto.Apoyo, color = Altiplano.TextoTerciario)
             }
