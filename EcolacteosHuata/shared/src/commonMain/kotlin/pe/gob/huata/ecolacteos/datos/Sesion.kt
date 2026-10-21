@@ -21,7 +21,7 @@ object ConfigServidor {
 }
 
 /** Se ve en la pantalla de ingreso. Igual que versionName en androidApp/build.gradle.kts. */
-const val VERSION_APP = "2.1"
+const val VERSION_APP = "2.2"
 
 /** Sesión del usuario contra el servidor: token, rol y datos reales. */
 object Sesion {
@@ -140,17 +140,18 @@ object Sesion {
     suspend fun consultarConCopia(ruta: String): CopiaLecturas.Copia =
         try {
             get(ruta).let { CopiaLecturas.Copia(it, "") }.also { CopiaLecturas.guardar(ruta, it.datos) }
-        } catch (e: IllegalStateException) {
-            throw e // respuesta del servidor (o pantalla cerrada): no es falta de conexión
         } catch (e: Throwable) {
+            // una respuesta del servidor (o la pantalla cerrada) se muestra tal cual
+            if (!esFaltaDeConexion(e)) throw e
             CopiaLecturas.leer(ruta) ?: throw e
         }
 
     /**
      * Envía una operación por /sync/push y devuelve su resultado completo
-     * (veredicto, sanción, etc.). Lanza error si el servidor la rechaza.
+     * (veredicto, sanción, etc.). Lanza [RechazoServidor] si el servidor la
+     * rechaza. Reenviar con el mismo [uuid] no la duplica (responde DUPLICADO).
      */
-    suspend fun enviarOperacion(tipo: TipoOperacion, cuerpo: JsonObject): JsonObject {
+    suspend fun enviarOperacion(tipo: TipoOperacion, cuerpo: JsonObject, uuid: String = nuevoUuid()): JsonObject {
         val r = http.post("${ConfigServidor.baseUrl}/api/v1/sync/push") {
             contentType(ContentType.Application.Json)
             accept(ContentType.Application.Json)
@@ -158,7 +159,7 @@ object Sesion {
             setBody(buildJsonObject {
                 putJsonArray("operaciones") {
                     addJsonObject {
-                        put("uuid", nuevoUuid())
+                        put("uuid", uuid)
                         put("tipo", tipo.name)
                         cuerpo.forEach { (k, v) -> put(k, v) }
                     }
@@ -171,7 +172,7 @@ object Sesion {
         }
         val res = r.body<JsonObject>()["resultados"]?.jsonArray?.firstOrNull()?.jsonObject
             ?: error("sin respuesta del servidor")
-        if (res.texto("estado") == "ERROR") error(res.texto("error") ?: "error en el servidor")
+        if (res.texto("estado") == "ERROR") throw RechazoServidor(res.texto("error") ?: "error en el servidor")
         return res
     }
 
@@ -215,6 +216,15 @@ object Sesion {
         return r.body()
     }
 }
+
+/** El servidor recibió la operación y la rechazó: reenviarla no sirve. */
+class RechazoServidor(mensaje: String) : IllegalStateException(mensaje)
+
+/**
+ * true si el error es falta de conexión (no llegó al servidor). Las respuestas
+ * del servidor llegan como IllegalStateException (error(...) o [RechazoServidor]).
+ */
+fun esFaltaDeConexion(t: Throwable): Boolean = t !is IllegalStateException
 
 private fun JsonObject.texto(k: String): String? = (this[k] as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content
 private fun JsonObject.long(k: String): Long = texto(k)!!.toDouble().toLong()

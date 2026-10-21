@@ -7,6 +7,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import pe.gob.huata.ecolacteos.datos.AnalisisPendientes
 import pe.gob.huata.ecolacteos.tema.*
 import pe.gob.huata.ecolacteos.ui.componentes.*
 import kotlin.math.abs
@@ -22,7 +23,9 @@ fun MuestreoReal(irA: (Int) -> Unit) {
     var buscar by remember { mutableStateOf("") }
 
     CargaServidor("/api/v1/calidad/muestreo", clave = CalidadReal.version) { d, recargar ->
-        val todas = d.lista("entregas")
+        // las analizadas sin conexión ya no se muestran (esperan en el teléfono)
+        val guardadas = remember(d, AnalisisPendientes.cantidad) { AnalisisPendientes.entregas() }
+        val todas = d.lista("entregas").filter { it.num("id").toLong() !in guardadas }
         val texto = buscar.trim()
         val lista = if (texto.isEmpty()) todas else todas.filter {
             it.txt("proveedor").contains(texto, ignoreCase = true) ||
@@ -33,6 +36,12 @@ fun MuestreoReal(irA: (Int) -> Unit) {
 
         PantallaScroll {
             CalidadReal.mensaje?.let { AvisoCampo(it, esAlerta = CalidadReal.mensajeGrave) }
+            AnalisisPendientes.cantidad.takeIf { it > 0 }?.let { n ->
+                AvisoCampo(
+                    if (AnalisisPendientes.enviando) "Enviando $n análisis guardados en el celular…"
+                    else "$n análisis guardados en el celular esperan conexión. Se envían solos."
+                )
+            }
             Text(
                 "No hace falta analizar a todos: toca a cualquier proveedor y anota lo que marca el lactoscan. " +
                     "Las entregas ya cuentan como aceptadas; si la muestra sale mal, el diagnóstico la corrige.",

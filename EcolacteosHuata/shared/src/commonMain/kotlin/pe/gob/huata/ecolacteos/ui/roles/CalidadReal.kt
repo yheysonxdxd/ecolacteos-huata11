@@ -94,6 +94,37 @@ private fun ColaReal(irA: (Int) -> Unit) {
     }
 }
 
+private fun esGrave(r: JsonObject, veredictoLocal: String): Boolean =
+    r.obj("sancion") != null || r.txt("veredicto").ifEmpty { veredictoLocal } != "ACEPTADO"
+
+/** "Juan Mamani: RECHAZADO · sanción … (2ª vez): precio reducido" */
+private fun textoResultado(proveedor: String, r: JsonObject, veredictoLocal: String): String {
+    val veredicto = r.txt("veredicto").ifEmpty { veredictoLocal }
+    return "$proveedor: $veredicto" + (r.obj("sancion")?.let {
+        " · sanción ${it.txt("tipo").lowercase()} (${it.txt("nivel")}ª vez): " + when (it.txt("medida")) {
+            "PRECIO_REDUCIDO" -> "precio reducido"
+            "BAJA_DEFINITIVA" -> "BAJA DEFINITIVA"
+            else -> "capacitación"
+        }
+    } ?: " · guardado en la base de datos")
+}
+
+/**
+ * Envía los análisis guardados sin conexión y deja el resultado a la vista
+ * (veredicto y sanción que fijó el servidor). Lo llama la navegación al
+ * haber conexión.
+ */
+suspend fun enviarAnalisisPendientes() {
+    val hechos = AnalisisPendientes.enviarTodos()
+    if (hechos.isEmpty()) return
+    CalidadReal.mensajeGrave = hechos.any { it.rechazo != null || (it.respuesta?.let { r -> esGrave(r, "ACEPTADO") } ?: false) }
+    CalidadReal.mensaje = "Se enviaron ${hechos.size} análisis guardados sin conexión:\n" + hechos.joinToString("\n") { h ->
+        h.respuesta?.let { textoResultado(h.pendiente.proveedor, it, "ACEPTADO") }
+            ?: "${h.pendiente.proveedor}: no se guardó (${h.rechazo})"
+    }
+    CalidadReal.version++
+}
+
 @OptIn(ExperimentalTime::class)
 private fun ahoraPeru(): String = (Clock.System.now() - 5.hours).toString().take(19).replace('T', ' ')
 
@@ -111,36 +142,41 @@ private fun DiagnosticoReal(irA: (Int) -> Unit) {
         val e = x ?: return
         scope.launch {
             CalidadReal.enviando = true; error = null
+            val uuid = nuevoUuid()
+            val cuerpo = buildJsonObject {
+                put("entrega_id", e.num("id").toLong())
+                put("muestra", if (CalidadReal.muestraPlanta) "PLANTA" else "CAMPO")
+                m.grasa?.let { put("grasa", it) }
+                m.proteina?.let { put("proteina", it) }
+                m.densidad?.let { put("densidad", it) }
+                m.temperatura?.let { put("temperatura", it) }
+                m.aguaAnadida?.let { put("agua_anadida", it) }
+                m.ph?.let { put("ph", it) }
+                put("significada", m.significada)
+                put("fuente", "MANUAL")
+                put("tomada_en", ahoraPeru())
+                put("aceptar", aceptar)
+            }
             try {
-                val r = Sesion.enviarOperacion(TipoOperacion.ANALISIS, buildJsonObject {
-                    put("entrega_id", e.num("id").toLong())
-                    put("muestra", if (CalidadReal.muestraPlanta) "PLANTA" else "CAMPO")
-                    m.grasa?.let { put("grasa", it) }
-                    m.proteina?.let { put("proteina", it) }
-                    m.densidad?.let { put("densidad", it) }
-                    m.temperatura?.let { put("temperatura", it) }
-                    m.aguaAnadida?.let { put("agua_anadida", it) }
-                    m.ph?.let { put("ph", it) }
-                    put("significada", m.significada)
-                    put("fuente", "MANUAL")
-                    put("tomada_en", ahoraPeru())
-                    put("aceptar", aceptar)
-                })
-                val veredicto = r.txt("veredicto").ifEmpty { v.resultado }
-                val sancion = r.obj("sancion")
-                CalidadReal.mensajeGrave = sancion != null || veredicto != "ACEPTADO"
-                CalidadReal.mensaje = "${e.txt("proveedor")}: $veredicto" + (sancion?.let {
-                    " · sanción ${it.txt("tipo").lowercase()} (${it.txt("nivel")}ª vez): " + when (it.txt("medida")) {
-                        "PRECIO_REDUCIDO" -> "precio reducido"
-                        "BAJA_DEFINITIVA" -> "BAJA DEFINITIVA"
-                        else -> "capacitación"
-                    }
-                } ?: " · guardado en la base de datos")
+                val r = Sesion.enviarOperacion(TipoOperacion.ANALISIS, cuerpo, uuid)
+                CalidadReal.mensajeGrave = esGrave(r, v.resultado)
+                CalidadReal.mensaje = textoResultado(e.txt("proveedor"), r, v.resultado)
                 CalidadReal.limpiar()
                 CalidadReal.version++
                 irA(0)
             } catch (t: Throwable) {
-                error = t.message
+                if (esFaltaDeConexion(t)) {
+                    // sin conexión: queda en el teléfono y se envía solo al volver
+                    AnalisisPendientes.agregar(
+                        AnalisisPendientes.Pendiente(uuid, e.num("id").toLong(), e.txt("proveedor"), cuerpo)
+                    )
+                    CalidadReal.mensajeGrave = false
+                    CalidadReal.mensaje = "Sin conexión: el análisis de ${e.txt("proveedor")} quedó guardado en el celular " +
+                        "(veredicto en vivo: ${v.resultado}). Se envía solo cuando vuelva la conexión."
+                    CalidadReal.limpiar()
+                    CalidadReal.version++
+                    irA(0)
+                } else error = t.message
             } finally {
                 CalidadReal.enviando = false
             }

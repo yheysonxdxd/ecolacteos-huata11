@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.ui.graphics.vector.ImageVector
+import pe.gob.huata.ecolacteos.datos.AnalisisPendientes
 import pe.gob.huata.ecolacteos.datos.Conexion
 import pe.gob.huata.ecolacteos.datos.Rol
 import pe.gob.huata.ecolacteos.datos.Sesion
@@ -133,10 +134,13 @@ fun AppEcolacteos(rolInicial: Rol = Rol.ACOPIADOR, pendientes: Int = 0, hayRed: 
         // estado real del servidor (en modo demo no hay token y queda "sin conexión")
         var conectado by remember(r) { mutableStateOf(hayRed) }
         LaunchedEffect(r) {
+            AnalisisPendientes.refrescar() // pudo quedar alguno de antes de cerrar la app
             while (Sesion.token != null) {
                 val antes = conectado
                 conectado = Sesion.servidorResponde()
                 if (conectado && !antes) Conexion.volvio() // las pantallas con datos guardados se actualizan
+                // análisis de calidad anotados sin conexión
+                if (conectado && AnalisisPendientes.cantidad > 0) enviarAnalisisPendientes()
                 if (conectado && r == Rol.ACOPIADOR) {
                     // volvió la señal: se borra el aviso viejo y se envía lo anotado sin señal
                     if (ResultadoSync.huboError && ResultadoSync.mensaje?.startsWith("No se pudo conectar") == true) ResultadoSync.mensaje = null
