@@ -1341,7 +1341,11 @@ function oficina() {
       try {
         const r = await this.api(`/planta/lotes/${l.id}/cerrar`, { obtenido });
         await this.cargar();
-        this.aviso = { texto: `✓ ${r.codigo} cerrado: entraron ${num(obtenido, 2)} ${u} al stock (desvío ${num(r.desvio_pct, 1)} % contra lo esperado)` };
+        this.aviso = {
+          icono: r.fuera_referencia ? '⚠' : '✓', titulo: `Lote ${r.codigo} cerrado`,
+          texto: `Entraron ${num(obtenido, 2)} ${u} de ${l.producto} al stock. Ya se pueden vender.`,
+          detalle: `Diferencia con lo esperado: ${r.desvio_pct > 0 ? '+' : ''}${num(r.desvio_pct, 1)} %` + (r.fuera_referencia ? ' · salió fuera de lo esperado' : ' · dentro de lo esperado'),
+        };
       } catch (e) { this.aviso = { error: true, texto: e.message }; }
     },
     abrirFormula(p) {

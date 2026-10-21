@@ -112,6 +112,22 @@ table.lista { width: 100%; border-collapse: collapse; background: var(--superfic
 .aviso { border: 1px solid #6b5427; background: var(--aviso-fondo); color: var(--aviso); border-radius: 10px; padding: 10px 14px; margin: 10px 0; }
 .aviso.bien { border-color: var(--verde-borde); background: var(--verde-suave); color: var(--exito); }
 .aviso.error { border-color: #6b3036; background: var(--alerta-fondo); color: var(--alerta); }
+/* notificación flotante (lo que pasó después de guardar, cerrar un lote, etc.) */
+.noti { position: fixed; top: 18px; right: 18px; z-index: 15; display: flex; gap: 12px; align-items: flex-start; width: min(430px, calc(100vw - 36px));
+  background: #142333; color: var(--texto); border: 1px solid var(--verde-borde); border-left: 4px solid var(--exito); border-radius: 14px;
+  padding: 14px 12px 14px 14px; box-shadow: 0 14px 34px rgba(0,0,0,.45); animation: entrar .22s ease-out; }
+.noti.error { border-color: #6b3036; border-left-color: var(--alerta); }
+.noti-icono { flex: none; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-weight: 700;
+  background: var(--verde-suave); color: var(--exito); border: 1px solid var(--verde-borde); }
+.noti.error .noti-icono { background: var(--alerta-fondo); color: var(--alerta); border-color: #6b3036; }
+.noti-cuerpo { flex: 1; display: flex; flex-direction: column; gap: 3px; font-size: 14px; line-height: 1.4; padding-top: 4px; }
+.noti-cuerpo strong { font-size: 15px; }
+.noti-detalle { color: var(--texto-3); font-size: 13px; }
+.noti-cerrar { flex: none; background: none; border: 0; color: var(--texto-3); cursor: pointer; font-size: 14px; padding: 4px 6px; border-radius: 6px; }
+.noti-cerrar:hover { color: var(--texto); background: var(--superficie); }
+@keyframes entrar { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+@media (max-width: 700px) { .noti { top: auto; bottom: 12px; left: 12px; right: 12px; width: auto; } }
+@media (prefers-reduced-motion: reduce) { .noti { animation: none; } }
 
 .barra { height: 8px; background: var(--fondo); border-radius: 99px; overflow: hidden; margin-top: 6px; }
 .barra span { display: block; height: 100%; background: var(--exito); border-radius: 99px; }
@@ -203,7 +219,7 @@ ol.historial li.futuro::before { background: var(--aviso); }
 
 @media print {
   html, body { background: #fff; color: #000; }
-  nav.menu, .no-imprimir, .aviso, .velo, .app::before { display: none !important; }
+  nav.menu, .no-imprimir, .aviso, .noti, .velo, .app::before { display: none !important; }
   .app { display: block; }
   main { padding: 0; max-width: none; }
   .solo-imprimir { display: block; }

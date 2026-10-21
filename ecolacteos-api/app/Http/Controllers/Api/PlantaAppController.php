@@ -207,12 +207,12 @@ class PlantaAppController extends Controller
         $obt = (float) $data['obtenido'];
         $medio = ($l->esperado_min + $l->esperado_max) / 2;
         $desvio = $medio > 0 ? round(($obt - $medio) / $medio * 100, 2) : 0;
+        $fuera = $obt < $l->esperado_min * 0.97 || $obt > $l->esperado_max * 1.03;
         DB::table('lotes')->where('id', $id)->update([
-            'obtenido' => $obt, 'desvio_pct' => $desvio,
-            'fuera_referencia' => $obt < $l->esperado_min * 0.97 || $obt > $l->esperado_max * 1.03,
+            'obtenido' => $obt, 'desvio_pct' => $desvio, 'fuera_referencia' => $fuera,
             'estado' => 'TERMINADO', 'cerrado_en' => now(), 'updated_at' => now(),
         ]);
 
-        return response()->json(['codigo' => $l->codigo, 'desvio_pct' => $desvio]);
+        return response()->json(['codigo' => $l->codigo, 'desvio_pct' => $desvio, 'fuera_referencia' => $fuera]);
     }
 }

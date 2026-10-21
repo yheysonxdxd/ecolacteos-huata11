@@ -64,12 +64,21 @@
                 <button :class="{ activo: seccion === p.id }" @click="ir(p.id)" x-text="p.nombre"></button>
             </template>
         </div>
-        <div class="aviso" :class="aviso?.error ? 'error' : 'bien'" x-show="aviso">
-            <span x-text="aviso?.texto"></span>
-            <template x-if="aviso?.nota">
-                <span> · <a href="#" @click.prevent="verNota(aviso.nota.id)">Ver / imprimir nota en PDF</a>
-                    · <a href="#" @click.prevent="abrirCorreo(aviso.nota.id, aviso.nota.numero)">Enviar por correo</a></span>
-            </template>
+        {{-- notificación: tarjeta flotante; la de éxito se va sola a los 7 s, la de error se queda hasta cerrarla --}}
+        <div class="noti" :class="aviso?.error ? 'error' : ''" x-show="aviso" x-cloak role="status" aria-live="polite"
+             x-init="$watch('aviso', (a) => { const n = (window.__noti = (window.__noti || 0) + 1);
+                if (a && !a.error && !a.nota) setTimeout(() => { if (window.__noti === n) aviso = null }, 7000) })">
+            <div class="noti-icono" x-text="aviso?.error ? '!' : (aviso?.icono || '✓')"></div>
+            <div class="noti-cuerpo">
+                <strong x-show="aviso?.titulo" x-text="aviso?.titulo"></strong>
+                <span x-text="(aviso?.texto || '').replace(/^✓\s*/, '')"></span>
+                <span class="noti-detalle" x-show="aviso?.detalle" x-text="aviso?.detalle"></span>
+                <template x-if="aviso?.nota">
+                    <span class="noti-detalle"><a href="#" @click.prevent="verNota(aviso.nota.id)">Ver / imprimir nota en PDF</a>
+                        · <a href="#" @click.prevent="abrirCorreo(aviso.nota.id, aviso.nota.numero)">Enviar por correo</a></span>
+                </template>
+            </div>
+            <button class="noti-cerrar" @click="aviso = null" aria-label="Cerrar aviso">✕</button>
         </div>
         <div class="aviso error" x-show="error" x-text="'No se pudo leer la base de datos: ' + error"></div>
         <div class="cargando" x-show="cargando">Cargando…</div>
