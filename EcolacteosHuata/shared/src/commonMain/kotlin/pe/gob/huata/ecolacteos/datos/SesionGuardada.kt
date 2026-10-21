@@ -116,5 +116,6 @@ object SesionGuardada {
     private fun borrar() {
         AlmacenLocal.borrar(CLAVE_SESION)
         AlmacenLocal.borrar(CLAVE_DATOS)
+        CopiaLecturas.borrarTodo()
     }
 }

@@ -21,7 +21,7 @@ object ConfigServidor {
 }
 
 /** Se ve en la pantalla de ingreso. Igual que versionName en androidApp/build.gradle.kts. */
-const val VERSION_APP = "2.0"
+const val VERSION_APP = "2.1"
 
 /** Sesión del usuario contra el servidor: token, rol y datos reales. */
 object Sesion {
@@ -130,7 +130,21 @@ object Sesion {
     }
 
     /** GET de solo lectura para las pantallas (resúmenes, semana, pagos). */
-    suspend fun consultar(ruta: String): JsonObject = get(ruta)
+    suspend fun consultar(ruta: String): JsonObject = consultarConCopia(ruta).datos
+
+    /**
+     * Como [consultar], pero sin conexión devuelve la última copia guardada en
+     * el teléfono (su [CopiaLecturas.Copia.hora] dice de cuándo es). Si el
+     * servidor sí contestó con un error, ese error se muestra tal cual.
+     */
+    suspend fun consultarConCopia(ruta: String): CopiaLecturas.Copia =
+        try {
+            get(ruta).let { CopiaLecturas.Copia(it, "") }.also { CopiaLecturas.guardar(ruta, it.datos) }
+        } catch (e: IllegalStateException) {
+            throw e // respuesta del servidor (o pantalla cerrada): no es falta de conexión
+        } catch (e: Throwable) {
+            CopiaLecturas.leer(ruta) ?: throw e
+        }
 
     /**
      * Envía una operación por /sync/push y devuelve su resultado completo
