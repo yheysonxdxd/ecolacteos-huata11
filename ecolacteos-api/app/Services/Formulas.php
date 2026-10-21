@@ -185,6 +185,13 @@ class Formulas
             ->keyBy('id')->replace(collect($filas[$p->id] ?? [])->keyBy('id'))->sortBy('nombre')->values()]);
     }
 
+    /** Cuánto se usa de un insumo para [litros] de leche. Lo que se cuenta por unidad (envases) va entero, hacia arriba. */
+    public static function cantidad(float $por100, float $litros, string $unidad): float
+    {
+        $cant = $por100 * $litros / 100;
+        return in_array(mb_strtolower(trim($unidad)), ['un', 'und', 'unidad', 'unidades'], true) ? ceil($cant - 1e-9) : round($cant, 3);
+    }
+
     /** Pasos de un producto: los de su base y, si es un sabor, el paso del sabor al final. */
     public static function pasos(object $p, ?object $base = null): array
     {

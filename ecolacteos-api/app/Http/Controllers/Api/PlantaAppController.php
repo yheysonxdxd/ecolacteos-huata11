@@ -139,7 +139,7 @@ class PlantaAppController extends Controller
             foreach ($pedidos as [$prod, $litros]) {
                 foreach ($recetas[$prod] ?? [] as $i) {
                     $necesita[$i->id] ??= ['i' => $i, 'cant' => 0.0];
-                    $necesita[$i->id]['cant'] += $i->cantidad_por_100l * $litros / 100;
+                    $necesita[$i->id]['cant'] += Formulas::cantidad($i->cantidad_por_100l, $litros, $i->unidad);
                 }
             }
             $faltan = collect($necesita)->filter(fn ($n) => $n['i']->stock < round($n['cant'], 3))
@@ -181,7 +181,7 @@ class PlantaAppController extends Controller
                 }
 
                 foreach ($recetas[$prodId] ?? [] as $i) {
-                    $cant = round($i->cantidad_por_100l * $litros / 100, 3);
+                    $cant = Formulas::cantidad($i->cantidad_por_100l, $litros, $i->unidad);
                     DB::table('insumos')->where('id', $i->id)->decrement('stock', $cant);
                     DB::table('movimientos_insumo')->insert([
                         'uuid' => (string) Str::uuid(), 'insumo_id' => $i->id, 'cantidad' => -$cant,

@@ -56,7 +56,7 @@ function oficina() {
     adulteracion: 'todos',
     buscar: '',
     kardex: { tipo: 'insumo', id: null, desde: '', hasta: '' }, // tipo: insumo | producto | leche
-    quiero: {},     // producto => cuántos quesos / litros de yogurt se quieren hacer
+    recetaAbierta: null, // receta desplegada en Producir > Recetas
     varios: {},     // producir varios a la vez: producto => cuánto (vacío o 0 = no se hace)
     mapaFecha: '',  // vacío = hoy
     mesCompras: '', // vacío = mes actual (2026-10)
@@ -98,7 +98,7 @@ function oficina() {
           pestanas: [{ id: 'inventario', nombre: 'Stock y avisos' }, { id: 'mermas', nombre: 'Pérdidas' }] },
         { id: 'formulas-grupo', nombre: 'Fórmulas y producción', grupo: 'Compras y almacén',
           // los lotes son de planta: los ve e inicia/cierra el administrador (Compras solo ve las fórmulas)
-          pestanas: [{ id: 'formulas', nombre: 'Fórmulas' }, ...(admin ? [{ id: 'lotes', nombre: 'Lotes en producción' }] : [])] },
+          pestanas: [{ id: 'formulas', nombre: 'Producir y recetas' }, ...(admin ? [{ id: 'lotes', nombre: 'Lotes en producción' }] : [])] },
         { id: 'vender', nombre: 'Vender', grupo: 'Compras y almacén',
           pestanas: [{ id: 'vender', nombre: 'Nueva venta' }, { id: 'movimientos', nombre: 'Ventas y notas' }] },
         { id: 'kardex', nombre: 'Kardex · entradas y salidas', grupo: 'Compras y almacén', pestanas: [{ id: 'kardex', nombre: 'Kardex · entradas y salidas' }] },
@@ -660,6 +660,40 @@ function oficina() {
         : `✓ ${r.nombre} creado. Revisa su fórmula en Fórmulas y producción` + (f.copiar_de ? ' (se copió la del producto que elegiste).' : '.'));
     },
 
+    // lo más común en el Perú, para elegir con un toque (las dosis no se inventan: se escriben de la etiqueta o la guía)
+    SABORES_YOGURT: ['Fresa', 'Durazno', 'Lúcuma', 'Piña', 'Mango', 'Maracuyá', 'Aguaymanto', 'Guanábana', 'Vainilla', 'Coco', 'Mora', 'Plátano'],
+    VARIEDADES_QUESO: [['Con orégano', 'Orégano seco'], ['Con ají', 'Ají molido'], ['Con hierbas', 'Hierbas finas secas'],
+      ['Con aceitunas', 'Aceituna picada'], ['Con pimienta', 'Pimienta molida']],
+    PRODUCTOS_COMUNES: [
+      { nombre: 'Queso fresco', tipo: 'QUESO', unidad: 'quesos de 1 kg' }, { nombre: 'Queso andino', tipo: 'QUESO', unidad: 'quesos de 1 kg' },
+      { nombre: 'Queso mantecoso', tipo: 'QUESO', unidad: 'quesos de 1 kg' }, { nombre: 'Queso maduro', tipo: 'QUESO', unidad: 'quesos de 1 kg' },
+      { nombre: 'Quesillo', tipo: 'QUESO', unidad: 'kg' }, { nombre: 'Yogurt griego', tipo: 'YOGURT', unidad: 'litros' },
+      { nombre: 'Manjar blanco', tipo: 'OTRO', unidad: 'kg' }, { nombre: 'Mantequilla', tipo: 'OTRO', unidad: 'kg' },
+    ],
+    opcionesSabor() { return this.f.tipo === 'YOGURT' ? this.SABORES_YOGURT : this.VARIEDADES_QUESO.map((v) => v[0]); },
+    /** ¿Ya hay un sabor así en esta base? */
+    saborYaExiste(o) {
+      return (this.d.productos || []).some((x) => x.base_id === this.f.base_id && (x.variante || '').toLowerCase() === o.toLowerCase());
+    },
+    /** Al elegir de la lista: nombre y lo que lleva se llenan solos (el insumo si ya existe; si no, se propone crearlo). */
+    elegirSabor(o) {
+      const f = this.f;
+      f.sabor = o; f.nombreTocado = false; this.nombreSabor();
+      const insumo = f.tipo === 'YOGURT' ? `Saborizante ${o.toLowerCase()}` : (this.VARIEDADES_QUESO.find((v) => v[0] === o)?.[1] || o);
+      const hay = (this.d.insumos || []).find((i) => i.nombre.toLowerCase() === insumo.toLowerCase());
+      if (hay) f.insumo_id = String(hay.id);
+      else { f.insumo_id = 'nuevo'; f.insumo_nombre = insumo; f.insumo_unidad = f.tipo === 'YOGURT' ? 'L' : 'kg'; }
+    },
+    /** Otro sabor de la misma base con un insumo de la misma unidad: para copiar su dosis si se quiere. */
+    dosisHermano() {
+      const f = this.f; const u = this.unidadSabor();
+      if (!u) return null;
+      for (const x of (this.d.productos || []).filter((x) => x.base_id === f.base_id && x.id !== f.id)) {
+        const pr = (x.propios || []).find((y) => this.unidadInsumo(y.insumo_id) === u);
+        if (pr) return { variante: x.variante || x.nombre, por_100l: pr.por_100l };
+      }
+      return null;
+    },
     /** Sabor o variedad: [base] para uno nuevo, [p] para editar uno (su base sale de p.base_id). */
     abrirSabor(base, p = null) {
       const b = base || (this.d.productos || []).find((x) => x.id === p.base_id);
@@ -1207,25 +1241,12 @@ function oficina() {
     },
 
     // -------------------------------------------------------------- fórmulas
-    // "quiero hacer 10 quesos": la leche se calcula con el rendimiento mínimo, así esa cantidad sale segura
+    // la leche se calcula con el rendimiento mínimo, así la cantidad pedida sale segura
     unidadProducto(p) { return String(p?.unidad || '').split(' ')[0]; }, // "quesos de 1 kg" → "quesos"
-    cantidadQuiero(p) { return this.quiero[p.id] ?? 10; },
-    litrosPara(p) {
-      const q = Number(this.cantidadQuiero(p)) || 0;
-      return p.rendimiento_min > 0 ? Math.ceil(q / p.rendimiento_min - 1e-9) : 0;
-    },
-    necesita(i, p) { return (i.por_100l * this.litrosPara(p)) / 100; },
-    faltantes(p) { return p.insumos.filter((i) => this.necesita(i, p) > i.stock + 1e-9); },
-    /** ¿Se puede hacer la cantidad pedida? { ok, motivo } */
-    sePuede(p) {
-      const q = Number(this.cantidadQuiero(p)) || 0; const u = this.unidadProducto(p);
-      if (q <= 0) return { ok: false, motivo: `Escribe cuántos ${u} quieres hacer.` };
-      const falta = [];
-      if (this.litrosPara(p) > this.d.tanque) falta.push(`leche (${num(this.litrosPara(p) - this.d.tanque, 1)} L)`);
-      this.faltantes(p).forEach((i) => falta.push(`${i.nombre.toLowerCase()} (${num(this.necesita(i, p) - i.stock, 3)} ${i.unidad})`));
-      return falta.length
-        ? { ok: false, motivo: `Para hacer ${num(q, 0)} ${u} falta ${falta.join(', ')}. Hay que conseguirlo antes de producir.` }
-        : { ok: true, motivo: '' };
+    /** Lo que se cuenta por unidad (envases) va entero: no existe medio envase. Igual que en el servidor. */
+    cantidadInsumo(por100, litros, unidad) {
+      const c = (por100 * litros) / 100;
+      return ['un', 'und', 'unidad', 'unidades'].includes(String(unidad).trim().toLowerCase()) ? Math.ceil(c - 1e-9) : c;
     },
     /**
      * Varios productos a la vez: la leche y los insumos que comparten (el cultivo
@@ -1240,7 +1261,7 @@ function oficina() {
       const porInsumo = {};
       elegidos.forEach((e) => e.p.insumos.forEach((i) => {
         porInsumo[i.id] ??= { nombre: i.nombre, unidad: i.unidad, stock: i.stock, necesita: 0, productos: [] };
-        porInsumo[i.id].necesita += (i.por_100l * e.litros) / 100;
+        porInsumo[i.id].necesita += this.cantidadInsumo(i.por_100l, e.litros, i.unidad);
         porInsumo[i.id].productos.push(e.p.nombre);
       }));
       const insumos = Object.values(porInsumo).sort((a, b) => b.productos.length - a.productos.length || a.nombre.localeCompare(b.nombre));
@@ -1248,8 +1269,8 @@ function oficina() {
       if (litros > this.d.tanque) falta.push(`leche (${num(litros - this.d.tanque, 1)} L)`);
       insumos.filter((i) => i.necesita > i.stock + 1e-9).forEach((i) => falta.push(`${i.nombre.toLowerCase()} (${num(i.necesita - i.stock, 3)} ${i.unidad})`));
       const ok = elegidos.length > 0 && !falta.length;
-      const motivo = !elegidos.length ? 'Escribe cuánto quieres hacer de cada producto (deja en blanco el que no).'
-        : falta.length ? `Para hacerlos juntos falta ${falta.join(', ')}. Baja alguna cantidad o consigue lo que falta.` : '';
+      const motivo = !elegidos.length ? 'Escribe cuánto quieres hacer (deja en blanco lo que no).'
+        : falta.length ? `Falta ${falta.join(', ')}. Baja alguna cantidad o consigue lo que falta.` : '';
       return { elegidos, litros, insumos, ok, motivo };
     },
     textoVarios(plan) { return plan.elegidos.map((e) => `${num(e.q, 0)} ${this.unidadProducto(e.p)} de ${e.p.nombre}`).join(' y '); },
@@ -1265,23 +1286,8 @@ function oficina() {
         this.ventana = null;
         this.varios = {};
         await this.ir('lotes');
-        this.aviso = { texto: `✓ ${r.lotes.length} lotes iniciados a la vez: ` + r.lotes.map((l) => `${l.codigo} ${l.producto} (${num(l.litros, 0)} L)`).join(', ') +
+        this.aviso = { texto: `✓ ${r.lotes.length === 1 ? 'Lote iniciado' : r.lotes.length + ' lotes iniciados a la vez'}: ` + r.lotes.map((l) => `${l.codigo} ${l.producto} (${num(l.litros, 0)} L)`).join(', ') +
           '. Se descontaron la leche y los insumos. Ciérralos aquí cuando terminen.' };
-      } catch (e) { f.error = e.message; } finally { f.enviando = false; }
-    },
-    abrirProducir(p) {
-      this.f = { producto: p, cantidad: Number(this.cantidadQuiero(p)), litros: this.litrosPara(p), error: null, enviando: false };
-      this.ventana = 'producir';
-    },
-    async confirmarProducir() {
-      const f = this.f;
-      f.enviando = true; f.error = null;
-      try {
-        const r = await this.api('/planta/lotes', { producto_id: f.producto.id, litros: f.litros });
-        this.ventana = null;
-        await this.ir('lotes'); // para verlo en producción y cerrarlo al terminar
-        this.aviso = { texto: `✓ Lote ${r.codigo} iniciado: ${num(f.cantidad, 0)} ${this.unidadProducto(f.producto)} de ${f.producto.nombre} con ` +
-          `${num(f.litros, 0)} L de leche. Se descontaron la leche y los insumos. Cuando termine, ciérralo aquí con lo que salió.` };
       } catch (e) { f.error = e.message; } finally { f.enviando = false; }
     },
 

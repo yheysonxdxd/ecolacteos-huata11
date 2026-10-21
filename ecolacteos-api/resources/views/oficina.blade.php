@@ -864,99 +864,87 @@
         </template>
 
         {{-- ---------------------------------------------------- FÓRMULAS --}}
+        {{-- arriba: una sola forma de producir (uno o varios); abajo: las recetas, compactas, se abren al tocar --}}
         <template x-if="dDe === 'formulas'">
         <section x-show="seccion === 'formulas' && !cargando && !error">
-            <h1>Fórmulas</h1>
-            <p class="sub" x-text="'Cómo se hace cada producto. Escribe cuánto quieres hacer y te dice qué necesitas. En el tanque hay ' + num(d.tanque) + ' L de leche aceptada.'"></p>
+            <h1>Producir</h1>
+            <p class="sub" x-text="'En el tanque hay ' + num(d.tanque) + ' L de leche aceptada. Escribe cuánto quieres hacer (deja en blanco lo que no): se revisa que la leche y los insumos alcancen.'"></p>
             {{-- aquí solo lo que impide producir; lo que está bajo el mínimo se ve en Almacén --}}
             <template x-for="a in (d.avisos || []).filter((a) => a.nivel === 'FALTA')" :key="a.nivel + a.insumo_id + a.producto">
-                <div class="aviso" :class="a.nivel === 'FALTA' ? 'error' : ''">
+                <div class="aviso error">
                     <span x-text="a.texto"></span>
                     <span x-text="' Comprar al menos ' + num(a.comprar, 3) + ' ' + a.unidad + '.'"></span>
                 </div>
             </template>
-            {{-- varios productos a la vez: la leche y los insumos compartidos se suman --}}
-            <div class="tarjeta destacada" style="margin-top: 16px" x-show="(d.productos || []).length > 1">
-                <h2 style="margin: 0; color: var(--texto); font-size: 18px; text-transform: none; letter-spacing: 0">Producir varios a la vez</h2>
-                <p class="sub" style="margin: 6px 0 12px">Escribe cuánto quieres de cada uno (deja en blanco el que no). Se revisa que la leche y los insumos alcancen para todo junto.</p>
+            <div class="tarjeta destacada" style="margin-top: 12px">
+                <h2 style="margin: 0 0 10px; color: var(--texto); font-size: 18px; text-transform: none; letter-spacing: 0">¿Qué vas a producir hoy?</h2>
                 <table class="lista"><tr><th>Producto</th><th>Cuánto</th><th class="num">Leche</th></tr>
                     <template x-for="p in d.productos || []" :key="p.id"><tr>
-                        <td x-text="p.nombre"></td>
+                        <td><span x-text="p.base_id ? '↳ ' + p.variante : p.nombre" :style="p.base_id ? 'padding-left: 14px' : ''"></span></td>
                         <td><div class="fila" style="gap: 8px; flex-wrap: nowrap">
-                            <input type="number" min="0" step="1" x-model="varios[p.id]" placeholder="0" style="width: 100px" :aria-label="'Cuánto ' + p.nombre">
+                            <input type="number" min="0" step="1" x-model="varios[p.id]" placeholder="—" style="width: 100px" :aria-label="'Cuánto ' + p.nombre">
                             <span x-text="unidadProducto(p)"></span></div></td>
                         <td class="num" x-text="Number(varios[p.id]) > 0 ? num(planVarios().elegidos.find((e) => e.p.id === p.id)?.litros || 0, 0) + ' L' : '—'"></td></tr></template>
                     <tr><td colspan="2"><strong>Leche total</strong> <span class="sub" style="margin: 0" x-text="'(en el tanque hay ' + num(d.tanque, 1) + ' L)'"></span></td>
                         <td class="num" :class="planVarios().litros > d.tanque ? 'mal' : ''"><strong x-text="num(planVarios().litros, 0) + ' L'"></strong></td></tr>
                 </table>
-                <table class="lista" style="margin-top: 10px" x-show="planVarios().insumos.length">
-                    <tr><th>Insumo</th><th class="num">Necesitas en total</th><th class="num">Hay en almacén</th><th></th></tr>
-                    <template x-for="i in planVarios().insumos" :key="i.nombre"><tr>
-                        <td><span x-text="i.nombre"></span><div class="sub" style="margin: 0" x-show="i.productos.length > 1" x-text="'lo usan ' + i.productos.join(' y ')"></div></td>
-                        <td class="num" :class="i.necesita > i.stock + 1e-9 ? 'mal' : ''"><strong x-text="num(i.necesita, 3) + ' ' + i.unidad"></strong></td>
-                        <td class="num" x-text="num(i.stock, 3) + ' ' + i.unidad"></td>
-                        <td><span class="chip" :class="i.necesita > i.stock + 1e-9 ? 'mal' : 'ok'"
-                                  x-text="i.necesita > i.stock + 1e-9 ? 'Falta ' + num(i.necesita - i.stock, 3) + ' ' + i.unidad : 'Alcanza'"></span></td></tr></template>
-                </table>
-                <div class="decision" :class="planVarios().ok ? 'si' : 'no'" style="margin-top: 12px">
+                <template x-if="planVarios().elegidos.length"><div>
+                    <h2>Lo que se usa</h2>
+                    <table class="lista">
+                        <tr><th>Insumo</th><th class="num">Se necesita</th><th class="num">Hay en almacén</th><th></th></tr>
+                        <template x-for="i in planVarios().insumos" :key="i.nombre"><tr>
+                            <td><span x-text="i.nombre"></span><div class="sub" style="margin: 0" x-show="i.productos.length > 1" x-text="'lo usan ' + i.productos.join(' y ')"></div></td>
+                            <td class="num" :class="i.necesita > i.stock + 1e-9 ? 'mal' : ''"><strong x-text="num(i.necesita, 3) + ' ' + i.unidad"></strong></td>
+                            <td class="num" x-text="num(i.stock, 3) + ' ' + i.unidad"></td>
+                            <td><span class="chip" :class="i.necesita > i.stock + 1e-9 ? 'mal' : 'ok'"
+                                      x-text="i.necesita > i.stock + 1e-9 ? 'Falta ' + num(i.necesita - i.stock, 3) + ' ' + i.unidad : 'Alcanza'"></span></td></tr></template>
+                    </table>
+                </div></template>
+                <div class="decision" :class="planVarios().ok ? 'si' : (planVarios().elegidos.length ? 'no' : '')" style="margin-top: 12px">
                     <div class="texto">
-                        <strong x-text="planVarios().ok ? '✓ Sí se puede hacer ' + textoVarios(planVarios()) + ' a la vez.' : (planVarios().elegidos.length ? '✗ No se puede todo junto.' : '')"></strong>
+                        <strong x-text="planVarios().ok ? '✓ Sí se puede hacer ' + textoVarios(planVarios()) + '.' : (planVarios().elegidos.length ? '✗ No alcanza.' : '')"></strong>
                         <span x-text="' ' + (planVarios().ok ? 'Hay leche e insumos para todo.' : planVarios().motivo)"></span>
                         <div class="sub" style="margin: 4px 0 0" x-show="planVarios().ok && usuario?.rol !== 'ADMIN'">Los lotes los inicia el operario (en la app) o el administrador.</div>
                     </div>
                     <button class="btn" x-show="usuario?.rol === 'ADMIN'" :disabled="!planVarios().ok" @click="abrirProducirVarios()"
-                            x-text="'Aceptar: iniciar ' + planVarios().elegidos.length + (planVarios().elegidos.length === 1 ? ' lote' : ' lotes')"></button>
+                            x-text="!planVarios().elegidos.length ? 'Aceptar' : 'Aceptar: iniciar ' + planVarios().elegidos.length + (planVarios().elegidos.length === 1 ? ' lote' : ' lotes')"></button>
                 </div>
             </div>
-            <template x-for="p in d.productos || []" :key="p.id">
-                <div class="tarjeta" style="margin-top: 16px">
-                    <div class="fila"><h2 style="margin: 0; color: var(--texto); font-size: 18px; text-transform: none; letter-spacing: 0" x-text="p.nombre"></h2>
-                        <div class="espacio"></div>
-                        <span class="chip" :class="p.alcanza_litros !== null && p.alcanza_litros < Math.max(d.tanque, 100) ? 'mal' : 'ok'"
-                              x-text="p.alcanza_litros === null ? 'Sin insumos en la fórmula' : 'Con el stock de hoy alcanza para ' + num(p.alcanza_litros, 0) + ' L'"></span>
-                        <button class="btn chico gris" x-show="usuario?.rol === 'ADMIN' && !p.base_id" @click="abrirSabor(p)"
-                                x-text="p.tipo === 'YOGURT' ? '+ Agregar sabor' : '+ Agregar variedad'"></button>
-                        <button class="btn chico" x-show="usuario?.rol === 'ADMIN' && !p.base_id" @click="abrirFormula(p)">Editar fórmula</button>
-                        <button class="btn chico" x-show="usuario?.rol === 'ADMIN' && p.base_id" @click="abrirSabor(null, p)"
-                                x-text="p.tipo === 'YOGURT' ? 'Editar sabor' : 'Editar variedad'"></button></div>
-                    <p class="sub" style="margin: 6px 0 0" x-show="p.base_id"
-                       x-text="(p.tipo === 'YOGURT' ? 'Sabor ' : 'Variedad ') + (p.variante || '').toLowerCase() + ' de ' + p.base + ': lleva todo lo del ' + p.base + ' (si cambias su fórmula, cambia aquí también) más lo marcado como propio.'"></p>
-                    <p class="sub" style="margin: 6px 0 12px"
-                       x-text="'Rinde ' + num(p.rendimiento_min * 100) + (p.rendimiento_max !== p.rendimiento_min ? '–' + num(p.rendimiento_max * 100) : '') + ' ' + p.unidad + ' por cada 100 L · vida útil ' + p.vida_util_dias + ' días'"></p>
-                    {{-- "quiero hacer 10 quesos": cuánta leche y cuánto de cada insumo, y qué falta --}}
-                    <div class="fila quiero">
-                        <strong>Quiero hacer</strong>
-                        <input type="number" min="0" step="1" :value="cantidadQuiero(p)" @input="quiero[p.id] = $event.target.value" style="width: 110px">
-                        <strong x-text="unidadProducto(p)"></strong>
-                        <span class="sub" style="margin: 0" x-text="'→ necesitas ' + num(litrosPara(p), 0) + ' L de leche (en el tanque hay ' + num(d.tanque, 1) + ' L)'"></span>
-                    </div>
-                    <table class="lista"><tr><th>Insumo</th><th class="num">Por 100 L</th>
-                        <th class="num" x-text="'Necesitas para ' + num(cantidadQuiero(p), 0) + ' ' + unidadProducto(p)"></th><th class="num">Hay en almacén</th><th></th></tr>
-                        <template x-for="i in p.insumos" :key="i.id"><tr>
-                            <td><span x-text="i.nombre"></span> <span class="chip ok" x-show="(p.propios || []).some((x) => x.insumo_id === i.id)"
-                                x-text="p.tipo === 'YOGURT' ? 'del sabor' : 'de la variedad'"></span></td>
-                            <td class="num" x-text="num(i.por_100l, 3) + ' ' + i.unidad"></td>
-                            <td class="num" :class="necesita(i, p) > i.stock ? 'mal' : ''"><strong x-text="num(necesita(i, p), 3) + ' ' + i.unidad"></strong></td>
-                            <td class="num" x-text="num(i.stock, 3) + ' ' + i.unidad"></td>
-                            <td><span class="chip" :class="necesita(i, p) > i.stock ? 'mal' : 'ok'"
-                                      x-text="necesita(i, p) > i.stock ? 'Falta ' + num(necesita(i, p) - i.stock, 3) + ' ' + i.unidad : 'Alcanza'"></span></td></tr></template>
-                        <tr x-show="!p.insumos.length"><td colspan="5">Esta fórmula no tiene insumos.</td></tr>
-                    </table>
-                    {{-- ¿se puede? sí → botón Aceptar; no → dice qué falta y el botón no se puede usar --}}
-                    <div class="decision" :class="sePuede(p).ok ? 'si' : 'no'">
-                        <div class="texto">
-                            <strong x-text="sePuede(p).ok ? '✓ Sí se puede hacer ' + num(cantidadQuiero(p), 0) + ' ' + unidadProducto(p) + '.' : '✗ No se puede.'"></strong>
-                            <span x-text="' ' + (sePuede(p).ok ? 'Hay leche e insumos suficientes.' : sePuede(p).motivo)"></span>
-                            <div class="sub" style="margin: 4px 0 0" x-show="sePuede(p).ok && usuario?.rol !== 'ADMIN'">El lote lo inicia el operario (en la app) o el administrador.</div>
-                        </div>
-                        <button class="btn" x-show="usuario?.rol === 'ADMIN'" :disabled="!sePuede(p).ok" @click="abrirProducir(p)"
-                                x-text="'Aceptar: hacer ' + num(cantidadQuiero(p), 0) + ' ' + unidadProducto(p)"></button>
-                    </div>
-                    <h2>Cómo se hace</h2>
-                    <ol class="pasos"><template x-for="paso in p.procedimiento"><li x-text="paso"></li></template></ol>
-                    <p class="sub" x-show="!p.procedimiento.length">Sin pasos registrados.</p>
-                </div>
-            </template>
+
+            <div class="fila" style="margin: 28px 0 10px"><h2 style="margin: 0">Recetas</h2><div class="espacio"></div>
+                <button class="btn chico gris" x-show="usuario?.rol === 'ADMIN'" @click="ir('config-productos')">+ Producto nuevo (otro queso…)</button></div>
+            <table class="lista">
+                <tr><th>Producto</th><th class="num">Sale de 100 L</th><th class="num">Dura</th><th>Lleva</th><th></th></tr>
+                <template x-for="p in d.productos || []" :key="p.id"><tbody>
+                    <tr class="clic" @click="recetaAbierta = recetaAbierta === p.id ? null : p.id">
+                        <td><span x-text="(recetaAbierta === p.id ? '▾ ' : '▸ ') + (p.base_id ? '↳ ' + p.variante : p.nombre)" :style="p.base_id ? 'padding-left: 14px' : 'font-weight: 600'"></span></td>
+                        <td class="num" x-text="num(p.rendimiento_min * 100) + (p.rendimiento_max !== p.rendimiento_min ? '–' + num(p.rendimiento_max * 100) : '') + ' ' + unidadProducto(p)"></td>
+                        <td class="num" x-text="p.vida_util_dias + ' días'"></td>
+                        <td class="sub" style="margin: 0" x-text="p.base_id ? 'lo del ' + p.base + ' + ' + p.insumos.filter((i) => (p.propios || []).some((x) => x.insumo_id === i.id)).map((i) => i.nombre.toLowerCase()).join(', ') : p.insumos.length + ' insumos'"></td>
+                        <td class="num" @click.stop>
+                            <button class="btn chico gris" x-show="usuario?.rol === 'ADMIN' && !p.base_id" @click="abrirSabor(p)"
+                                    x-text="p.tipo === 'YOGURT' ? '+ Sabor' : '+ Variedad'"></button></td></tr>
+                    <tr x-show="recetaAbierta === p.id"><td colspan="5" style="background: var(--superficie-2)">
+                        <div class="fila" style="margin-bottom: 8px">
+                            <span class="sub" style="margin: 0" x-text="p.base_id ? (p.tipo === 'YOGURT' ? 'Sabor ' : 'Variedad ') + (p.variante || '').toLowerCase() + ': lleva todo lo del ' + p.base + ' (si cambias esa fórmula, cambia aquí también) más lo marcado.' : 'Cantidades por cada 100 L de leche.'"></span>
+                            <div class="espacio"></div>
+                            <button class="btn chico" x-show="usuario?.rol === 'ADMIN' && !p.base_id" @click="abrirFormula(p)">Editar fórmula</button>
+                            <button class="btn chico" x-show="usuario?.rol === 'ADMIN' && p.base_id" @click="abrirSabor(null, p)"
+                                    x-text="p.tipo === 'YOGURT' ? 'Editar sabor' : 'Editar variedad'"></button></div>
+                        <table class="lista"><tr><th>Insumo</th><th class="num">Por 100 L</th><th class="num">Hay en almacén</th></tr>
+                            <template x-for="i in p.insumos" :key="i.id"><tr>
+                                <td><span x-text="i.nombre"></span> <span class="chip ok" x-show="(p.propios || []).some((x) => x.insumo_id === i.id)"
+                                    x-text="p.tipo === 'YOGURT' ? 'del sabor' : 'de la variedad'"></span></td>
+                                <td class="num" x-text="num(i.por_100l, 3) + ' ' + i.unidad"></td>
+                                <td class="num" :class="i.stock < i.minimo ? 'mal' : ''" x-text="num(i.stock, 3) + ' ' + i.unidad"></td></tr></template>
+                            <tr x-show="!p.insumos.length"><td colspan="3">Esta fórmula no tiene insumos todavía.</td></tr>
+                        </table>
+                        <h2>Cómo se hace</h2>
+                        <ol class="pasos"><template x-for="paso in p.procedimiento"><li x-text="paso"></li></template></ol>
+                        <p class="sub" x-show="!p.procedimiento.length">Sin pasos registrados.</p>
+                    </td></tr>
+                </tbody></template>
+            </table>
         </section>
         </template>
 
@@ -1435,23 +1423,6 @@
             <button class="btn" x-show="f.historial && !f.programado" @click="abrirCambio(f.id)">Cambiar comunidad</button></div>
     </div>
 
-    {{-- confirmar: iniciar el lote con la fórmula --}}
-    <div class="ventana" x-show="ventana === 'producir'">
-        <h3 x-text="'Hacer ' + num(f.cantidad, 0) + ' ' + (f.producto ? unidadProducto(f.producto) : '') + ' de ' + (f.producto?.nombre || '')"></h3>
-        <p class="sub">Al aceptar se inicia el lote y se descuenta del almacén:</p>
-        <table class="lista">
-            <tr><td>Leche del tanque</td><td class="num"><strong x-text="num(f.litros, 0) + ' L'"></strong></td></tr>
-            <template x-for="i in f.producto?.insumos || []" :key="i.id">
-                <tr><td x-text="i.nombre"></td><td class="num"><strong x-text="num(i.por_100l * f.litros / 100, 3) + ' ' + i.unidad"></strong></td></tr>
-            </template>
-        </table>
-        <p class="sub" style="margin-top: 12px" x-show="f.producto"
-           x-text="'Deben salir entre ' + num(f.litros * (f.producto?.rendimiento_min || 0), 0) + ' y ' + num(f.litros * (f.producto?.rendimiento_max || 0), 0) + ' ' + (f.producto ? unidadProducto(f.producto) : '') + '. Vence en ' + (f.producto?.vida_util_dias || '') + ' días.'"></p>
-        <div class="aviso error" x-show="f.error" x-text="f.error"></div>
-        <div class="pie"><button class="btn gris" @click="ventana = null">Cancelar</button>
-            <button class="btn" @click="confirmarProducir()" :disabled="!!f.enviando" x-text="f.enviando ? 'Iniciando…' : 'Aceptar e iniciar lote'"></button></div>
-    </div>
-
     {{-- producir varios a la vez --}}
     <div class="ventana" x-show="ventana === 'producir-varios'">
         <h3 x-text="'Hacer ' + (f.plan ? textoVarios(f.plan) : '')"></h3>
@@ -1470,7 +1441,7 @@
         <div class="aviso error" x-show="f.error" x-text="f.error" style="margin-top: 10px"></div>
         <div class="pie"><button class="btn gris" @click="ventana = null">Cancelar</button>
             <button class="btn" @click="confirmarProducirVarios()" :disabled="!!f.enviando"
-                    x-text="f.enviando ? 'Iniciando…' : 'Aceptar e iniciar ' + (f.plan?.elegidos.length || 0) + ' lotes'"></button></div>
+                    x-text="f.enviando ? 'Iniciando…' : 'Aceptar e iniciar ' + (f.plan?.elegidos.length || 0) + ((f.plan?.elegidos.length || 0) === 1 ? ' lote' : ' lotes')"></button></div>
     </div>
 
     {{-- corregir stock (ajuste de kardex) --}}
@@ -1505,8 +1476,12 @@
     <div class="ventana" x-show="ventana === 'sabor'">
         <h3 x-text="(f.id ? 'Editar ' : 'Nuevo ') + (f.tipo === 'YOGURT' ? 'sabor' : 'variedad') + ' de ' + (f.base || '')"></h3>
         <p class="sub" x-text="'Lleva todo lo del ' + (f.base || '') + ' (insumos, pasos, rendimiento y días que dura). Aquí solo escribes lo que le agrega.'"></p>
-        <label for="sab-sabor" x-text="f.tipo === 'YOGURT' ? 'Sabor' : 'Variedad'"></label>
-        <input id="sab-sabor" x-model="f.sabor" @input="nombreSabor()" maxlength="40" :placeholder="f.tipo === 'YOGURT' ? 'Ej.: Durazno, Lúcuma' : 'Ej.: Con orégano'">
+        <label x-text="f.tipo === 'YOGURT' ? 'Elige el sabor' : 'Elige la variedad'" x-show="!f.id"></label>
+        <div class="opciones" x-show="!f.id"><template x-for="o in opcionesSabor()" :key="o">
+            <button :class="{ activo: f.sabor === o }" :disabled="saborYaExiste(o)" :title="saborYaExiste(o) ? 'Ya existe' : ''"
+                    @click="elegirSabor(o)" x-text="o"></button></template></div>
+        <label for="sab-sabor" x-text="f.id ? (f.tipo === 'YOGURT' ? 'Sabor' : 'Variedad') : '…o escribe otro'"></label>
+        <input id="sab-sabor" x-model="f.sabor" @input="nombreSabor()" maxlength="40" :placeholder="f.tipo === 'YOGURT' ? 'Ej.: Camu camu' : 'Ej.: Con ajo'">
         <label for="sab-nombre">Nombre como se vende</label>
         <input id="sab-nombre" x-model="f.nombre" @input="f.nombreTocado = true" maxlength="60">
         <label for="sab-insumo" x-text="f.tipo === 'YOGURT' ? '¿Qué le da el sabor?' : '¿Qué lleva de más?'"></label>
@@ -1518,7 +1493,10 @@
             <input x-model="f.insumo_nombre" maxlength="80" placeholder="Nombre (ej.: Saborizante durazno)" aria-label="Nombre del insumo nuevo">
             <input x-model="f.insumo_unidad" maxlength="12" placeholder="L, kg" style="width: 90px" aria-label="Unidad del insumo nuevo"></div></template>
         <label for="sab-cant" x-text="'¿Cuánto por cada 100 L de leche?' + (unidadSabor() ? ' (' + unidadSabor() + ')' : '')"></label>
-        <input id="sab-cant" type="number" min="0" step="any" x-model="f.por_100l" placeholder="Ej.: 0.3">
+        <div class="fila" style="gap: 8px; flex-wrap: nowrap">
+            <input id="sab-cant" type="number" min="0" step="any" x-model="f.por_100l" placeholder="Ej.: 0.3">
+            <template x-if="dosisHermano()"><button class="btn chico gris" style="white-space: nowrap" @click="f.por_100l = dosisHermano().por_100l"
+                x-text="'Igual que ' + dosisHermano().variante.toLowerCase() + ' (' + num(dosisHermano().por_100l, 3) + ')'"></button></template></div>
         <p class="sub" style="margin: 4px 0 0">Usa la dosis de la etiqueta del saborizante o de la guía técnica.</p>
         <label for="sab-paso">Paso que se agrega (opcional)</label>
         <input id="sab-paso" x-model="f.paso" maxlength="300" :placeholder="f.tipo === 'YOGURT' ? 'Si lo dejas vacío: al batir, agregar el saborizante…' : 'Si lo dejas vacío: al salar la cuajada, mezclar…'">
@@ -1544,8 +1522,15 @@
                 <template x-for="p in d.productos || []" :key="p.id"><option :value="p.id" x-text="p.nombre"></option></template></select>
             <p class="sub" style="margin: 4px 0 0">Ej.: para un yogurt de durazno, copia el de fresa y luego cambia el saborizante.</p>
         </div></template>
+        <template x-if="!f.id"><div>
+            <label>Elige qué es (o escribe el nombre abajo)</label>
+            <div class="opciones"><template x-for="o in PRODUCTOS_COMUNES" :key="o.nombre">
+                <button :class="{ activo: f.nombre === o.nombre }" :disabled="(d.productos || []).some((x) => x.nombre.toLowerCase() === o.nombre.toLowerCase())"
+                        @click="f.nombre = o.nombre; f.tipo = o.tipo; f.unidad = o.unidad" x-text="o.nombre"></button></template></div>
+            <p class="sub" style="margin: 4px 0 0">Un sabor de yogurt o un queso con orégano no va aquí: se agrega en Producir > Recetas con <strong>+ Sabor</strong> o <strong>+ Variedad</strong>.</p>
+        </div></template>
         <label for="prod-nombre">Nombre</label>
-        <input id="prod-nombre" x-model="f.nombre" maxlength="60" placeholder="Ej.: Yogurt de durazno, Queso fresco">
+        <input id="prod-nombre" x-model="f.nombre" maxlength="60" placeholder="Ej.: Queso fresco">
         <label>Tipo</label>
         <div class="opciones"><template x-for="(t, k) in TIPOS_PRODUCTO" :key="k">
             <button :class="{ activo: f.tipo === k }" @click="f.tipo = k" x-text="t"></button></template></div>
