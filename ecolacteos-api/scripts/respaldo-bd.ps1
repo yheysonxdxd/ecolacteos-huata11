@@ -3,6 +3,7 @@
 # - Lee la conexion (DB_*) del .env de ecolacteos-api: aqui no hay claves.
 # - Genera un .sql con mysqldump, verifica que este completo y lo comprime.
 # - Borra los respaldos con mas de $Dias dias.
+# - Deja otra copia en OneDrive (Respaldos\EcolacteosHuata): si el disco falla, sigue en la nube.
 # - Deja un registro en respaldos.log (en la carpeta de destino).
 #
 # Uso manual:
@@ -19,7 +20,9 @@ param(
     [string]$Destino = "D:\Respaldos\EcolacteosHuata",
     [int]$Dias = 30,
     [string]$MysqlBin = "C:\xampp82\mysql\bin",
-    [int]$EsperarMinutos = 0
+    [int]$EsperarMinutos = 0,
+    # segunda copia fuera de la PC: OneDrive la sube a la nube ("" = no copiar)
+    [string]$CopiaNube = $(if ($env:OneDrive) { Join-Path $env:OneDrive "Respaldos\EcolacteosHuata" } else { "" })
 )
 
 $ErrorActionPreference = "Stop"
@@ -85,6 +88,17 @@ try {
     $viejos = Get-ChildItem $Destino -Filter "${bd}_*.sql.zip" |
         Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-$Dias) }
     foreach ($f in $viejos) { Remove-Item $f.FullName; Registrar "borrado por antiguedad: $($f.Name)" }
+
+    # --- copia en la nube (si falla, el respaldo local ya quedo bien) ---
+    if ($CopiaNube) {
+        try {
+            New-Item -ItemType Directory -Force -Path $CopiaNube | Out-Null
+            Copy-Item $zip $CopiaNube -Force
+            Get-ChildItem $CopiaNube -Filter "${bd}_*.sql.zip" |
+                Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-$Dias) } | Remove-Item
+            Registrar "copia en la nube: $CopiaNube"
+        } catch { Registrar "AVISO  no se pudo copiar a la nube: $($_.Exception.Message)" }
+    }
     exit 0
 }
 catch {
