@@ -68,8 +68,6 @@ fun KardexCompleto() {
 private fun KardexDe(ruta: String) {
     val k = KardexElegido
     var mostrar by remember(ruta) { mutableStateOf(40) }
-    var hojaAjuste by remember { mutableStateOf(false) }
-    var hojaPerdida by remember { mutableStateOf(false) }
 
     CargaServidor(ruta, clave = k.version + Perdidas.version * 1000) { d, _ ->
         val item = d.obj("item")
@@ -88,11 +86,10 @@ private fun KardexDe(ruta: String) {
             // "Entraron 60 kg (60 kg por compras). Salieron 31.6 kg (para hacer lotes). Ahora quedan 28.4 kg."
             Tarjeta { Text(resumen(d, u, k.periodo != 0), style = Texto.Cuerpo, color = Altiplano.Texto) }
 
+            // el kardex solo se consulta: corregir un insumo y registrar pérdidas se hace en Almacén
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(1f)) {
-                    if (item?.txt("tipo") == "insumo") BotonPrimario("Corregir stock") { hojaAjuste = true }
-                    else BotonPrimario(if (k.tipo == "leche") "+ Leche perdida" else "+ Registrar pérdida") { hojaPerdida = true }
-                }
+                Text("Para corregir o anotar una pérdida, ve a Almacén.", style = Texto.Apoyo, color = Altiplano.TextoTerciario,
+                    modifier = Modifier.weight(1f))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Con costos", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
                     Spacer(Modifier.width(6.dp))
@@ -106,8 +103,6 @@ private fun KardexDe(ruta: String) {
                 Text("Ver más (${filas.size - mostrar} anteriores)", color = Altiplano.CelesteAcento)
             }
 
-            if (hojaAjuste && item != null) HojaAjuste(item) { hojaAjuste = false }
-            if (hojaPerdida) CargaPerdida(if (k.tipo == "leche") "LECHE" else "PRODUCTO", k.id) { hojaPerdida = false }
         }
     }
 }
@@ -159,14 +154,6 @@ private fun resumen(d: JsonObject, u: String, conInicio: Boolean): String {
     }
 }
 
-/** Abre la hoja de pérdida con los datos que necesita (motivos, productos, lotes). */
-@Composable
-private fun CargaPerdida(tipo: String, productoId: Long?, onCerrar: () -> Unit) {
-    var datos by remember { mutableStateOf<JsonObject?>(null) }
-    LaunchedEffect(Unit) { datos = runCatching { Sesion.consultar("/api/v1/compras/mermas") }.getOrNull() }
-    datos?.let { HojaPerdida("compras", tipo, productoId, it, onCerrar) }
-}
-
 /** Qué pasó con el insumo, en palabras de todos los días (como en la web). tipo null: se elige o se calcula. */
 private data class Razon(val texto: String, val tipo: String?, val motivo: String)
 
@@ -184,7 +171,7 @@ private val RAZONES = listOf(
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun HojaAjuste(item: JsonObject, onCerrar: () -> Unit) {
+internal fun HojaAjuste(item: JsonObject, onCerrar: () -> Unit) {
     var razon by remember { mutableStateOf<Razon?>(null) }
     var salida by remember { mutableStateOf(true) } // solo para "Otra cosa"
     var cantidad by remember { mutableStateOf("") }
@@ -253,6 +240,7 @@ private fun HojaAjuste(item: JsonObject, onCerrar: () -> Unit) {
                     })
                     Perdidas.mensaje = "✓ Corregido · ${res.txt("insumo")} queda con ${formatear(res.num("stock"), 3)} $u"
                     KardexElegido.version++
+                    Perdidas.version++ // Almacén vuelve a leer el stock
                     onCerrar()
                 } catch (t: Throwable) { error = t.message }
                 enviando = false

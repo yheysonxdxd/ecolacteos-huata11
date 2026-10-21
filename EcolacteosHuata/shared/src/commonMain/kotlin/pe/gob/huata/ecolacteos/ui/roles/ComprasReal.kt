@@ -58,30 +58,36 @@ fun ContenidoComprasReal(ruta: String, irA: (Int) -> Unit) {
     }
 }
 
-/** Stock de insumos y productos; tocar uno abre su kardex ([alKardex]). */
+/**
+ * Almacén: lo que hay y lo que se pierde. Tocar uno abre su kardex ([alKardex]);
+ * "Corregir" anota lo que se malogró, se venció o no cuadró al contar. Comprar
+ * se hace solo en Compras.
+ */
 @Composable
 private fun InventarioReal(alKardex: () -> Unit) {
+    var corregir by remember { mutableStateOf<JsonObject?>(null) }
     CargaServidor("/api/v1/compras/inventario", clave = ComprasReal.version + Perdidas.version * 1000) { d, _ ->
         PantallaScroll {
+            Perdidas.mensaje?.let { AvisoCampo(it) }
             // "falta azúcar para el yogurt", "cuajo bajo el mínimo"…
-            d.lista("avisos").forEach { a ->
-                AvisoCampo(a.txt("texto") + " Comprar al menos ${formatear(a.num("comprar"), 2)} ${a.txt("unidad")}.", esAlerta = a.txt("nivel") == "FALTA")
-            }
+            d.lista("avisos").forEach { a -> AvisoCampo(a.txt("texto"), esAlerta = a.txt("nivel") == "FALTA") }
+            if (d.lista("avisos").isNotEmpty()) Text("Lo que falta se compra en Compras.", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
             Seccion("Insumos · toca uno para ver su kardex")
             d.lista("insumos").forEach { i ->
                 val bajo = i.num("stock") < i.num("minimo")
                 Tarjeta(borde = if (bajo) Altiplano.AlertaBorde else Altiplano.Borde, onClick = {
                     KardexElegido.tipo = "insumo"; KardexElegido.id = i.num("id").toLong(); alKardex()
                 }) {
-                    Row {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(i.txt("nombre"), style = Texto.Fila, color = Altiplano.Texto, modifier = Modifier.weight(1f))
                         Text("${formatear(i.num("stock"), 2)} ${i.txt("unidad")}", style = Texto.Fila, color = if (bajo) Altiplano.Alerta else Altiplano.Texto)
+                        TextButton(onClick = { Perdidas.mensaje = null; corregir = i }) { Text("Corregir", color = Altiplano.CelesteAcento) }
                     }
                     Spacer(Modifier.height(9.dp))
                     BarraNivel((i.num("stock") / (i.num("minimo") * 2).coerceAtLeast(0.001)).toFloat(), if (bajo) Altiplano.Alerta else Altiplano.Exito)
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "mínimo ${formatear(i.num("minimo"), 2)} ${i.txt("unidad")} · ${soles(i.num("costo"))} c/u" + if (bajo) " · reponer" else "",
+                        "mínimo ${formatear(i.num("minimo"), 2)} ${i.txt("unidad")} · ${soles(i.num("costo"))} c/u" + if (bajo) " · bajo el mínimo" else "",
                         style = Texto.Apoyo, color = if (bajo) Altiplano.Alerta else Altiplano.TextoTerciario,
                     )
                 }
@@ -94,6 +100,8 @@ private fun InventarioReal(alKardex: () -> Unit) {
                     Text(formatear(p.num("stock"), 0), style = Texto.Fila, color = Altiplano.Texto)
                 }
             }
+            Text("El queso, yogurt o leche que se pierde se anota en la pestaña Pérdidas.", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+            corregir?.let { HojaAjuste(it) { corregir = null } }
         }
     }
 }

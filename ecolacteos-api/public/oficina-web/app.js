@@ -1106,15 +1106,16 @@ function oficina() {
       { id: 'devolvieron', texto: 'Nos devolvieron', tipo: 'ENTRADA', motivo: 'Devolución' },
       { id: 'otro', texto: 'Otra cosa', tipo: null, motivo: '' },
     ],
-    abrirAjuste() {
-      this.f = { razon: null, tipo: 'SALIDA', cantidad: '', hay: '', detalle: '', error: null, enviando: false };
+    /** Corregir el stock de un insumo (desde su fila en Almacén): { id, nombre, stock, unidad }. */
+    abrirAjuste(item) {
+      this.f = { item, razon: null, tipo: 'SALIDA', cantidad: '', hay: '', detalle: '', error: null, enviando: false };
       this.ventana = 'ajuste';
     },
     razonAjuste() { return this.RAZONES_AJUSTE.find((r) => r.id === this.f.razon); },
     /** Al contar: cuánto cambia el stock (positivo sobra, negativo falta). */
-    diferenciaConteo() { return this.f.hay === '' ? null : Number(this.f.hay) - Number(this.d.item?.stock || 0); },
+    diferenciaConteo() { return this.f.hay === '' ? null : Number(this.f.hay) - Number(this.f.item?.stock || 0); },
     async guardarAjuste() {
-      const f = this.f; const i = this.d.item; const r = this.razonAjuste();
+      const f = this.f; const i = f.item; const r = this.razonAjuste();
       if (!r) return (f.error = 'Elige qué pasó');
       let tipo = r.tipo ?? f.tipo; let cantidad = Number(f.cantidad);
       if (r.id === 'contamos') {

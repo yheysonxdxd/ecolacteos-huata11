@@ -493,7 +493,7 @@
 
             {{-- almacén: insumos, unidad y stock mínimo --}}
             <template x-if="seccion === 'config-almacen' && d.insumos"><div>
-                <p class="sub" style="margin-top: -8px">El stock no se cambia aquí: sube con las compras y baja con la producción o con <strong>Corregir stock</strong> en el kardex.
+                <p class="sub" style="margin-top: -8px">El stock no se cambia aquí: sube con las compras y baja con la producción o con <strong>Corregir</strong> en Almacén.
                     El mínimo es desde cuánto se avisa que hay que comprar.</p>
                 <table class="lista"><tr><th>Insumo</th><th style="width: 110px">Unidad</th><th class="num">Hay</th><th class="num" style="width: 130px">Stock mínimo</th><th></th></tr>
                     <template x-for="i in d.insumos" :key="i.id"><tr>
@@ -671,14 +671,13 @@
         <template x-if="dDe === 'inventario'">
         <section x-show="seccion === 'inventario' && !cargando && !error">
             <div class="fila"><h1>Almacén</h1><div class="espacio"></div>
-                <button class="btn gris" @click="ir('ordenes')">Órdenes de compra</button>
                 <button class="btn rojo" @click="abrirMerma('PRODUCTO')">+ Registrar pérdida</button></div>
-            <p class="sub">Lo que hay hoy y lo que falta comprar.</p>
+            <p class="sub">Lo que hay hoy y lo que se pierde. Si un insumo se malogró, se venció o al contar no cuadra, toca <strong>Corregir</strong> en su fila.
+                Lo que falta se compra en <strong>Compras de insumos</strong>.</p>
             <div class="aviso bien" x-show="!(d.avisos || []).length">✓ No falta ningún insumo.</div>
             <template x-for="a in d.avisos || []" :key="a.nivel + a.insumo_id + a.producto">
                 <div class="aviso" :class="a.nivel === 'FALTA' ? 'error' : ''">
                     <span x-text="a.texto"></span>
-                    <span x-text="' Comprar al menos ' + num(a.comprar, 3) + ' ' + a.unidad + '.'"></span>
                 </div>
             </template>
             <h2>Productos terminados</h2>
@@ -692,7 +691,8 @@
                 <template x-for="i in d.insumos || []" :key="i.id"><tr><td x-text="i.nombre"></td>
                     <td class="num" :class="i.stock < i.minimo ? 'mal' : ''" x-text="num(i.stock, 3) + ' ' + i.unidad"></td>
                     <td class="num" x-text="num(i.minimo, 3)"></td><td class="num" x-text="soles(i.costo)"></td>
-                    <td class="num"><span class="chip mal" x-show="i.stock < i.minimo">Reponer</span>
+                    <td class="num"><span class="chip mal" x-show="i.stock < i.minimo">Bajo el mínimo</span>
+                        <button class="btn chico" @click="abrirAjuste(i)">Corregir</button>
                         <button class="btn chico gris" @click="verKardex(i.id)">Kardex</button></td></tr></template>
             </table>
         </section>
@@ -702,17 +702,14 @@
         <template x-if="dDe === 'kardex'">
         <section x-show="seccion === 'kardex' && !cargando && !error">
             <div class="fila no-imprimir"><h1>Kardex · entradas y salidas</h1><div class="espacio"></div>
-                <button class="btn gris" @click="window.print()">Imprimir</button>
-                <button class="btn" @click="abrirAjuste()" x-show="d.item?.tipo === 'insumo'">+ Corregir stock</button>
-                <button class="btn rojo" @click="abrirMerma(kardex.tipo === 'leche' ? 'LECHE' : 'PRODUCTO', kardex.id)"
-                        x-show="d.item && d.item.tipo !== 'insumo'" x-text="kardex.tipo === 'leche' ? '+ Leche perdida' : '+ Registrar pérdida'"></button></div>
+                <button class="btn gris" @click="window.print()">Imprimir</button></div>
             <h1 class="solo-imprimir" x-text="'Kardex · ' + (d.item?.nombre || '')"></h1>
             <div class="pestanas no-imprimir" style="margin-top: 10px">
                 <template x-for="t in pestanasKardex()" :key="t.tipo + t.id">
                     <button :class="{ activo: pestanaKardexActiva(t) }" @click="tipoKardex(t.tipo, t.id)" x-text="t.nombre"></button>
                 </template>
             </div>
-            <p class="sub" x-show="kardex.tipo === 'insumo'">Entra cuando llega una compra. Sale cuando se usa para hacer un lote. Si algo se malogró, se venció o al contar no cuadra, usa <strong>Corregir stock</strong>.</p>
+            <p class="sub" x-show="kardex.tipo === 'insumo'">Entra cuando llega una compra. Sale cuando se usa para hacer un lote. Si algo se malogró, se venció o al contar no cuadra, se corrige en <strong>Almacén</strong>.</p>
             <p class="sub" x-show="kardex.tipo === 'producto'">Entra cuando se termina un lote. Sale cuando se vende o se pierde (se venció, se malogró).</p>
             <p class="sub" x-show="kardex.tipo === 'leche'">Entra la leche que Calidad acepta cada día. Sale la que se usa para hacer cada lote o se pierde (se cortó, se derramó).</p>
             <div class="fila no-imprimir" style="align-items: flex-end">
@@ -785,7 +782,8 @@
             <div class="fila"><h1>Pérdidas</h1><div class="espacio"></div>
                 <button class="btn rojo" @click="abrirMerma('LECHE')">+ Leche perdida</button>
                 <button class="btn rojo" @click="abrirMerma('PRODUCTO')">+ Queso o yogurt perdido</button></div>
-            <p class="sub">La leche que se corta o se derrama, el queso que se pasa, el yogurt que se malogra. Se descuenta del stock y sale en el kardex.</p>
+            <p class="sub">La leche que se corta o se derrama, el queso que se pasa, el yogurt que se malogra. Se descuenta del stock y sale en el kardex.
+                Un insumo malogrado o vencido se corrige en <strong>Stock y avisos</strong> con <strong>Corregir</strong>.</p>
             <div class="tarjetas">
                 <div class="tarjeta"><div class="eti">Leche sin procesar</div><div class="valor" x-text="num(d.leche?.sin_usar) + ' L'"></div>
                     <div class="apoyo" x-text="num(d.leche?.tanque) + ' L de los últimos 3 días (se puede producir)'"></div></div>
@@ -1449,23 +1447,23 @@
 
     {{-- corregir stock (ajuste de kardex) --}}
     <div class="ventana" x-show="ventana === 'ajuste'">
-        <h3 x-text="'Corregir el stock de ' + (d.item?.nombre || '')"></h3>
-        <p class="sub" x-text="'El sistema dice que hay ' + num(d.item?.stock, 3) + ' ' + (d.item?.unidad || '') + '. Las compras y lo que se usa en los lotes se anotan solos; esto es para todo lo demás.'"></p>
+        <h3 x-text="'Corregir el stock de ' + (f.item?.nombre || '')"></h3>
+        <p class="sub" x-text="'El sistema dice que hay ' + num(f.item?.stock, 3) + ' ' + (f.item?.unidad || '') + '. Las compras y lo que se usa en los lotes se anotan solos; esto es para todo lo demás.'"></p>
         <label>¿Qué pasó?</label>
         <div class="opciones" style="flex-wrap: wrap">
             <template x-for="r in RAZONES_AJUSTE" :key="r.id">
                 <button :class="{ activo: f.razon === r.id }" @click="f.razon = r.id; f.error = null" x-text="r.texto"></button></template></div>
         <template x-if="f.razon === 'contamos'"><div>
-            <label x-text="'¿Cuánto hay de verdad? (' + (d.item?.unidad || '') + ')'"></label>
+            <label x-text="'¿Cuánto hay de verdad? (' + (f.item?.unidad || '') + ')'"></label>
             <input type="number" min="0" step="0.001" x-model="f.hay">
             <p class="sub" x-show="diferenciaConteo() !== null"
-               x-text="Math.abs(diferenciaConteo()) < 0.0005 ? 'Cuadra: no hay nada que corregir.' : (diferenciaConteo() > 0 ? 'Sobran ' : 'Faltan ') + num(Math.abs(diferenciaConteo()), 3) + ' ' + (d.item?.unidad || '') + '. Se corrige al guardar.'"></p>
+               x-text="Math.abs(diferenciaConteo()) < 0.0005 ? 'Cuadra: no hay nada que corregir.' : (diferenciaConteo() > 0 ? 'Sobran ' : 'Faltan ') + num(Math.abs(diferenciaConteo()), 3) + ' ' + (f.item?.unidad || '') + '. Se corrige al guardar.'"></p>
         </div></template>
         <template x-if="f.razon && f.razon !== 'contamos'"><div>
             <div class="opciones" x-show="f.razon === 'otro'" style="margin-top: 10px">
                 <button :class="{ activo: f.tipo === 'SALIDA' }" @click="f.tipo = 'SALIDA'">Hay menos</button>
                 <button :class="{ activo: f.tipo === 'ENTRADA' }" @click="f.tipo = 'ENTRADA'">Hay más</button></div>
-            <label x-text="(razonAjuste()?.tipo ?? f.tipo) === 'ENTRADA' ? '¿Cuánto entró? (' + (d.item?.unidad || '') + ')' : '¿Cuánto se perdió? (' + (d.item?.unidad || '') + ')'"></label>
+            <label x-text="(razonAjuste()?.tipo ?? f.tipo) === 'ENTRADA' ? '¿Cuánto entró? (' + (f.item?.unidad || '') + ')' : '¿Cuánto se perdió? (' + (f.item?.unidad || '') + ')'"></label>
             <input type="number" min="0" step="0.001" x-model="f.cantidad">
             <label x-text="f.razon === 'otro' ? '¿Qué pasó?' : 'Detalle (opcional)'"></label>
             <input x-model="f.detalle" maxlength="100" placeholder="Ej.: se mojó una bolsa en el almacén">
