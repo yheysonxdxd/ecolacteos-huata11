@@ -848,8 +848,64 @@ function oficina() {
     // ---------------------------------------------------------------- ventas
     // una venta puede llevar varios productos (queso y yogurt): cantidades = producto => cuánto (vacío = no lleva)
     nuevaVenta() {
-      this.f = { cantidades: {}, cliente: null, correo: '', error: null, enviando: false };
+      this.f = { cantidades: {}, cliente: null, correo: '', error: null, enviando: false, paso: 1,
+        familia: null, producto: null, cuantos: '1' };
     },
+    /** Paso a paso: 1 cliente, 2 productos, 3 confirmar. No deja avanzar sin lo necesario. */
+    pasoVenta(n) {
+      const f = this.f; f.error = null;
+      if (n >= 2 && !this.clienteVenta()) { f.paso = 1; return (f.error = 'Elige a quién le vendes'); }
+      if (n >= 3) {
+        if (!this.lineasVenta().length) { f.paso = 2; return (f.error = 'Elige al menos un producto'); }
+        const sinStock = this.lineasVenta().find((l) => l.cantidad > l.p.stock);
+        if (sinStock) { f.paso = 2; return (f.error = `Solo hay ${num(sinStock.p.stock, 2)} de ${sinStock.p.nombre}`); }
+      }
+      f.paso = n;
+    },
+    /** Los 6 clientes a los que se vendió hace menos (botones rápidos del paso 1). */
+    clientesFrecuentes() {
+      return (this.d.clientes || []).filter((c) => c.ultima_venta)
+        .sort((a, b) => String(b.ultima_venta).localeCompare(String(a.ultima_venta))).slice(0, 6);
+    },
+    productosConStock() { return (this.d.productos || []).filter((p) => p.stock > 0); },
+    /**
+     * Paso 2: productos agrupados como en Fórmulas — cada base (Queso fresco, Yogurt natural…) con sus sabores debajo.
+     * [{ tipo, nombre, familias: [{ base, sabores: [productos con stock, la base primero] }] }]
+     */
+    gruposVenta() {
+      const todos = this.d.productos || [];
+      const familias = todos.filter((p) => !p.base_id || !todos.some((b) => b.id === p.base_id)).map((base) => ({
+        base, sabores: [base, ...todos.filter((p) => p.base_id === base.id)].filter((p) => p.stock > 0),
+      })).filter((fa) => fa.sabores.length);
+      const NOMBRES = { QUESO: '🧀 Quesos', YOGURT: '🥛 Yogurt', OTRO: 'Otros' };
+      return ['QUESO', 'YOGURT', 'OTRO'].map((tipo) => ({
+        tipo, nombre: NOMBRES[tipo], familias: familias.filter((fa) => (fa.base.tipo || 'OTRO') === tipo),
+      })).filter((g) => g.familias.length);
+    },
+    familiaVenta() { return this.gruposVenta().flatMap((g) => g.familias).find((fa) => fa.base.id === this.f.familia); },
+    /** Sin sabores se elige directo; con sabores se muestran para escoger. */
+    elegirFamilia(fa) {
+      this.f.familia = fa.base.id; this.f.error = null;
+      if (fa.sabores.length === 1) this.elegirProducto(fa.sabores[0]); else this.f.producto = null;
+    },
+    nombreSabor(p) { return p.base_id ? p.variante || p.nombre : 'Natural / sin sabor'; },
+    elegirProducto(p) {
+      this.f.producto = p.id; this.f.cuantos = '1'; this.f.error = null;
+      this.$nextTick(() => document.getElementById('venta-cuantos')?.select());
+    },
+    /** Suma lo elegido a lo que ya lleva (si agrega fresa dos veces, se junta). */
+    agregarProducto() {
+      const f = this.f;
+      const p = (this.d.productos || []).find((x) => x.id === f.producto);
+      if (!p) return (f.error = f.familia ? 'Elige el sabor' : 'Elige un producto');
+      const n = Number(f.cuantos);
+      if (!(n > 0)) return (f.error = '¿Cuántos lleva?');
+      const total = (Number(f.cantidades[p.id]) || 0) + n;
+      if (total > p.stock) return (f.error = `Solo hay ${num(p.stock, 2)} ${p.unidad} de ${p.nombre}`);
+      f.cantidades[p.id] = String(total);
+      f.producto = null; f.familia = null; f.cuantos = '1'; f.error = null;
+    },
+    quitarProducto(p) { this.f.cantidades[p.id] = ''; },
     clienteVenta() { return (this.d.clientes || []).find((c) => c.id === this.f.cliente); },
     /** Lo que lleva el cliente: [{ p, cantidad, precio, importe }] (precio según su tipo, 0 si aún no se eligió). */
     lineasVenta() {
@@ -865,7 +921,10 @@ function oficina() {
       const n = Math.max(0, (Number(this.f.cantidades[p.id]) || 0) + cuanto);
       this.f.cantidades[p.id] = n ? String(n) : '';
     },
-    elegirCliente(c) { this.f.cliente = c.id; this.f.correo = c.email || ''; },
+    elegirCliente(c, avanzar = false) {
+      this.f.cliente = c.id; this.f.correo = c.email || '';
+      if (avanzar) { this.buscarCliente = ''; this.pasoVenta(2); }
+    },
     /** Clientes que coinciden con lo buscado (nombre, DNI/RUC o teléfono); los desactivados solo si se piden. */
     clientesVisibles() {
       const q = this.buscarCliente.trim().toLowerCase();

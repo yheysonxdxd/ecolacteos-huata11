@@ -26,6 +26,11 @@ object ComprasReal {
     var mensaje by mutableStateOf<String?>(null)
     var version by mutableStateOf(0)
     var pestanaVentas by mutableStateOf(0)  // Nueva venta · Ventas y notas
+    // nueva venta paso a paso, como en la web: 1 cliente · 2 productos · 3 confirmar
+    var pasoVenta by mutableStateOf(1)
+    var familia by mutableStateOf<Long?>(null)  // base elegida (Yogurt natural…); sus sabores se eligen debajo
+    var producto by mutableStateOf<Long?>(null) // el que se va a agregar
+    var cuantos by mutableStateOf(1.0)
     var pestanaAlmacen by mutableStateOf(0) // Stock y avisos · Pérdidas
 }
 
@@ -127,79 +132,39 @@ private fun VentaReal(irA: (Int) -> Unit) {
         val total = lineas.sumOf { (_, cant, precio) -> cant * precio }
         val sinStock = lineas.filter { (p, cant, _) -> cant > p.num("stock") }
         val sinPrecio = if (c == null) emptyList() else lineas.filter { it.third <= 0 }
-        // buscar por nombre, DNI/RUC o teléfono; los desactivados solo si se piden
-        val q = v.buscarCliente.trim().lowercase()
-        val visibles = (clientes + if (v.verInactivos) inactivos else emptyList()).filter {
-            q.isEmpty() || it.txt("nombre").lowercase().contains(q) || it.txt("ruc").contains(q) || it.txt("telefono").contains(q)
+        // sin cliente no se pasa a productos; sin productos no se pasa a confirmar
+        val paso = when {
+            c == null -> 1
+            v.pasoVenta == 3 && lineas.isEmpty() -> 2
+            else -> v.pasoVenta
         }
 
         PantallaScroll {
             v.mensaje?.takeIf { it.startsWith("✓ Cliente") }?.let { AvisoCampo(it) }
-            Seccion("Productos · cuánto lleva de cada uno")
-            Text("Deja en 0 el que no lleva. Varios productos van en la misma nota de venta.", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
-            prods.forEach { p ->
-                val id = p.num("id").toLong()
-                val cant = v.cantidades[id] ?: 0.0
-                Tarjeta(borde = if (cant > 0) Altiplano.VerdeBorde else Altiplano.Borde) {
-                    Row {
-                        Text(p.txt("nombre"), style = Texto.Fila, color = Altiplano.Texto, modifier = Modifier.weight(1f))
-                        Text("hay ${formatear(p.num("stock"), 0)}", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+            Segmentos(listOf("1 Cliente", "2 Productos", "3 Confirmar"), paso - 1) { i ->
+                if (i == 0 || c != null && (i == 1 || lineas.isNotEmpty())) v.pasoVenta = i + 1
+            }
+            when (paso) {
+                1 -> PasoCliente(clientes, inactivos, c)
+                2 -> PasoProductos(prods, c!!, lineas, total)
+                else -> {
+                    Seccion("Revisa la nota")
+                    TarjetaDato("TOTAL", soles(total), apoyo = c!!.txt("nombre"), destacada = true) {
+                        lineas.forEach { (p, cant, precio) ->
+                            Spacer(Modifier.height(6.dp))
+                            FilaValor("${formatear(cant, 0)} × ${p.txt("nombre")} a ${soles(precio)}", soles(cant * precio))
+                        }
                     }
-                    Spacer(Modifier.height(6.dp))
-                    StepperGrande(cant, { v.cantidades[id] = (it ?: 0.0).coerceAtLeast(0.0) }, paso = 1.0, minimo = 0.0, decimales = 0,
-                        unidad = p.txt("unidad"), fueraDeRango = cant > p.num("stock"), compacto = true)
+                    sinStock.forEach { (p, _, _) -> AvisoCampo("Solo hay ${formatear(p.num("stock"), 0)} de ${p.txt("nombre")} en stock.", esAlerta = true) }
+                    sinPrecio.forEach { (p, _, _) -> AvisoCampo("${p.txt("nombre")} no tiene precio para este tipo de cliente: ponlo en Ajustes → Precios.", esAlerta = true) }
+                    CampoCorreoVenta(c)
+                    error?.let { AvisoCampo("No se pudo registrar: $it", esAlerta = true) }
                 }
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(1f)) { Seccion("Cliente") }
-                TextButton(onClick = { v.editandoCliente = JsonObject(emptyMap()) }) { Text("+ Nuevo cliente", color = Altiplano.Exito) }
-            }
-            if (clientes.size + inactivos.size > 5) {
-                Campo(v.buscarCliente, { v.buscarCliente = it.take(40) }, "Buscar por nombre, DNI/RUC o teléfono")
-            }
-            if (visibles.isEmpty()) {
-                AvisoCampo(if (q.isEmpty()) "Todavía no hay clientes: agrega el primero." else "Nadie coincide con «${v.buscarCliente.trim()}».")
-            }
-            visibles.forEach { x ->
-                val activo = x.txt("activo") != "false" && x.txt("activo") != "0"
-                val id = x.num("id").toLong()
-                Opcion(
-                    x.txt("nombre") + if (activo) "" else " (desactivado)",
-                    listOfNotNull(NOMBRE_CANAL[x.txt("tipo")], x.txt("ruc").ifEmpty { null }, x.txt("telefono").ifEmpty { null }).joinToString(" · "),
-                    v.clienteId == id,
-                    // sus precios de lo que se está vendiendo (o de todo, si aún no se eligió nada)
-                    derecha = if (activo) (lineas.map { it.first }.ifEmpty { prods }).joinToString(" · ") { soles(it.obj("precios")?.num(x.txt("tipo")) ?: 0.0) } else null,
-                ) { if (activo) v.clienteId = id else v.editandoCliente = x } // un desactivado se abre para reactivarlo
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                // el de "Proveedor de leche" es del sistema y no se edita
-                if (c != null && c.txt("tipo") != "PLANTA") TextButton(onClick = { v.editandoCliente = c }) {
-                    Text("Editar a ${c.txt("nombre")}", color = Altiplano.CelesteAcento)
-                }
-                Spacer(Modifier.weight(1f))
-                if (inactivos.isNotEmpty()) TextButton(onClick = { v.verInactivos = !v.verInactivos }) {
-                    Text(if (v.verInactivos) "Ocultar desactivados" else "Ver desactivados (${inactivos.size})", color = Altiplano.TextoSecundario)
-                }
-            }
-            TarjetaDato(
-                "TOTAL", soles(total),
-                apoyo = when { lineas.isEmpty() -> "Pon cuánto lleva de cada producto"; c == null -> "Elige el cliente para ver el precio"; else -> null },
-                destacada = true,
-            ) {
-                lineas.forEach { (p, cant, precio) ->
-                    Spacer(Modifier.height(6.dp))
-                    FilaValor("${formatear(cant, 0)} × ${p.txt("nombre")}" + if (c != null) " a ${soles(precio)}" else "",
-                        if (c != null) soles(cant * precio) else "")
-                }
-            }
-            sinStock.forEach { (p, _, _) -> AvisoCampo("Solo hay ${formatear(p.num("stock"), 0)} de ${p.txt("nombre")} en stock.", esAlerta = true) }
-            sinPrecio.forEach { (p, _, _) -> AvisoCampo("${p.txt("nombre")} no tiene precio para este tipo de cliente: ponlo en Ajustes → Precios.", esAlerta = true) }
-            CampoCorreoVenta(c)
-            error?.let { AvisoCampo("No se pudo registrar: $it", esAlerta = true) }
-            BotonPrimario(
+            if (paso == 3) BotonPrimario(
                 when {
-                    enviando -> "Registrando…"; lineas.isEmpty() -> "Pon cuánto lleva"; c == null -> "Elige el cliente"
-                    lineas.size > 1 -> "Registrar venta (${lineas.size} productos, una nota)"; else -> "Registrar venta"
+                    enviando -> "Registrando…"
+                    lineas.size > 1 -> "✓ Registrar venta (${lineas.size} productos, una nota)"; else -> "✓ Registrar venta"
                 },
                 c != null && lineas.isNotEmpty() && sinStock.isEmpty() && sinPrecio.isEmpty() && !enviando,
             ) {
@@ -215,6 +180,7 @@ private fun VentaReal(irA: (Int) -> Unit) {
                             correoParaVenta()?.let { put("correo", it) } // opcional: mandar la nota
                         })
                         v.cantidades.clear()
+                        v.pasoVenta = 1; v.familia = null; v.producto = null
                         v.mensaje = "✓ Venta registrada: ${soles(r.num("total"))} a ${cli.txt("nombre")}" + textoCorreo(r)
                         NotaVenta.ultima = UltimaNota(r.num("id").toLong(), r.txt("numero"), r.num("total"), cli.txt("nombre"), r.txt("correo"))
                         v.mesVentas = null // la venta recién hecha está en este mes
@@ -224,9 +190,133 @@ private fun VentaReal(irA: (Int) -> Unit) {
                     enviando = false
                 }
             }
+            if (paso == 3) TextButton(onClick = { v.pasoVenta = 2 }) { Text("← Productos", color = Altiplano.CelesteAcento) }
         }
         v.editandoCliente?.let { HojaCliente(it) }
     }
+}
+
+/** Paso 1: buscador + los últimos clientes a los que se vendió. Al tocar uno pasa solo a productos. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PasoCliente(clientes: List<JsonObject>, inactivos: List<JsonObject>, c: JsonObject?) {
+    val v = ComprasReal
+    val q = v.buscarCliente.trim().lowercase()
+    val elegir = { x: JsonObject -> v.clienteId = x.num("id").toLong(); v.buscarCliente = ""; v.pasoVenta = 2 }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.weight(1f)) { Seccion("¿A quién le vendes?") }
+        TextButton(onClick = { v.editandoCliente = JsonObject(emptyMap()) }) { Text("+ Nuevo cliente", color = Altiplano.Exito) }
+    }
+    Campo(v.buscarCliente, { v.buscarCliente = it.take(40) }, "Buscar por nombre, DNI/RUC o teléfono")
+    if (q.isEmpty()) {
+        val ultimos = clientes.filter { it.txt("ultima_venta").isNotEmpty() }.sortedByDescending { it.txt("ultima_venta") }.take(6)
+        if (ultimos.isNotEmpty()) {
+            Text("Últimos clientes", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ultimos.forEach { x -> Chip(x.txt("nombre"), c?.num("id") == x.num("id")) { elegir(x) } }
+            }
+        } else if (clientes.isEmpty()) AvisoCampo("Todavía no hay clientes: agrega el primero.")
+    } else {
+        // al buscar también salen los desactivados: tocarlo lo abre para reactivarlo
+        val visibles = (clientes + inactivos).filter {
+            it.txt("nombre").lowercase().contains(q) || it.txt("ruc").contains(q) || it.txt("telefono").contains(q)
+        }.take(8)
+        if (visibles.isEmpty()) AvisoCampo("Nadie coincide con «${v.buscarCliente.trim()}». Agrégalo con + Nuevo cliente.")
+        visibles.forEach { x ->
+            val activo = x.txt("activo") != "false" && x.txt("activo") != "0"
+            Opcion(
+                x.txt("nombre") + if (activo) "" else " (desactivado)",
+                listOfNotNull(NOMBRE_CANAL[x.txt("tipo")], x.txt("ruc").ifEmpty { null }, x.txt("telefono").ifEmpty { null }).joinToString(" · "),
+                c?.num("id") == x.num("id"),
+            ) { if (activo) elegir(x) else v.editandoCliente = x }
+        }
+    }
+    if (c != null) {
+        // el de "Proveedor de leche" es del sistema y no se edita
+        if (c.txt("tipo") != "PLANTA") TextButton(onClick = { v.editandoCliente = c }) { Text("Editar a ${c.txt("nombre")}", color = Altiplano.CelesteAcento) }
+        BotonPrimario("Seguir con ${c.txt("nombre")} →") { v.pasoVenta = 2 }
+    }
+}
+
+/**
+ * Paso 2, como en la web: los productos separados en Quesos / Yogurt; si uno tiene sabores
+ * (Yogurt natural → fresa, maracuyá…) se eligen debajo. Luego cuántos y "Agregar".
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PasoProductos(prods: List<JsonObject>, c: JsonObject, lineas: List<Triple<JsonObject, Double, Double>>, total: Double) {
+    val v = ComprasReal
+    val id = { p: JsonObject -> p.num("id").toLong() }
+    val precio = { p: JsonObject -> p.obj("precios")?.num(c.txt("tipo")) ?: 0.0 }
+    val bases = prods.filter { p -> p.txt("base_id").isEmpty() || prods.none { it.txt("id") == p.txt("base_id") } }
+    // base → sus sabores con stock (la base primero)
+    val familias = bases.map { b -> b to (listOf(b) + prods.filter { it.txt("base_id") == b.txt("id") }).filter { it.num("stock") > 0 } }
+        .filter { it.second.isNotEmpty() }
+    val elegir = { p: JsonObject -> v.producto = id(p); v.cuantos = 1.0 }
+
+    Seccion("¿Qué lleva ${c.txt("nombre")}?")
+    if (familias.isEmpty()) AvisoCampo("No hay productos en stock. Primero cierra un lote en Producir.")
+    listOf("QUESO" to "🧀 Quesos", "YOGURT" to "🥛 Yogurt", "OTRO" to "Otros").forEach { (tipo, nombre) ->
+        val delTipo = familias.filter { (b, _) -> b.txt("tipo").ifEmpty { "OTRO" } == tipo }
+        if (delTipo.isNotEmpty()) {
+            Text(nombre, style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                delTipo.forEach { (b, sabores) ->
+                    val etiqueta = if (sabores.size > 1) b.txt("nombre").replace(Regex("\\s+natural$", RegexOption.IGNORE_CASE), "") + " · ${sabores.size} sabores"
+                        else b.txt("nombre")
+                    Chip(etiqueta, v.familia == id(b)) {
+                        v.familia = id(b)
+                        if (sabores.size == 1) elegir(sabores[0]) else v.producto = null
+                    }
+                }
+            }
+        }
+    }
+    familias.find { id(it.first) == v.familia }?.takeIf { it.second.size > 1 }?.let { (b, sabores) ->
+        Tarjeta {
+            Text("¿De qué sabor? · ${b.txt("nombre")}", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+            Spacer(Modifier.height(8.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                sabores.forEach { p ->
+                    val nombre = if (p.txt("base_id").isEmpty()) "Natural / sin sabor" else p.txt("variante").ifEmpty { p.txt("nombre") }
+                    Chip("$nombre (${formatear(p.num("stock"), 0)})", v.producto == id(p)) { elegir(p) }
+                }
+            }
+        }
+    }
+    prods.find { id(it) == v.producto }?.let { p ->
+        val ya = v.cantidades[id(p)] ?: 0.0
+        val pasa = ya + v.cuantos > p.num("stock")
+        Tarjeta(borde = Altiplano.VerdeBorde) {
+            Text(p.txt("nombre"), style = Texto.Fila, color = Altiplano.Texto)
+            Text("${soles(precio(p))} c/u · hay ${formatear(p.num("stock"), 0)} ${p.txt("unidad")}" + if (ya > 0) " · ya lleva ${formatear(ya, 0)}" else "",
+                style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+            Spacer(Modifier.height(8.dp))
+            StepperGrande(v.cuantos, { v.cuantos = (it ?: 1.0).coerceAtLeast(1.0) }, paso = 1.0, minimo = 1.0, decimales = 0,
+                unidad = p.txt("unidad"), fueraDeRango = pasa, compacto = true)
+            if (pasa) AvisoCampo("Solo hay ${formatear(p.num("stock"), 0)} de ${p.txt("nombre")}.", esAlerta = true)
+            Spacer(Modifier.height(8.dp))
+            // si agrega fresa dos veces, se junta
+            BotonPrimario("Agregar ${formatear(v.cuantos, 0)} × ${p.txt("nombre")}", !pasa) {
+                v.cantidades[id(p)] = ya + v.cuantos; v.producto = null; v.familia = null; v.cuantos = 1.0
+            }
+        }
+    }
+
+    Seccion("Lleva")
+    if (lineas.isEmpty()) Text("Todavía no lleva nada.", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+    lineas.forEach { (p, cant, pr) ->
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("${formatear(cant, 0)} × ${p.txt("nombre")}", style = Texto.Cuerpo, color = Altiplano.Texto, modifier = Modifier.weight(1f))
+            Text(soles(cant * pr), style = Texto.Fila, color = Altiplano.Texto)
+            TextButton(onClick = { v.cantidades.remove(id(p)) }) { Text("✕", color = Altiplano.Alerta) }
+        }
+    }
+    if (lineas.isNotEmpty()) {
+        FilaValor("Total", soles(total))
+        BotonPrimario("Revisar →") { v.pasoVenta = 3 }
+    }
+    TextButton(onClick = { v.pasoVenta = 1 }) { Text("← Cliente", color = Altiplano.CelesteAcento) }
 }
 
 /** Agregar o editar a quién le vendemos; el DNI o RUC es opcional. Al agregar uno, queda elegido para la venta. */

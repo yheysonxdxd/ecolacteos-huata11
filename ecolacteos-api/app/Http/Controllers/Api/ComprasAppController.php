@@ -25,7 +25,7 @@ class ComprasAppController extends Controller
         $precios = DB::table('precios_venta')->whereNull('vigente_hasta')->get()->groupBy('producto_id');
         return DB::table('productos')->orderBy('id')->get()->map(function ($p) use ($precios) {
             return [
-                'id' => $p->id, 'nombre' => $p->nombre, 'tipo' => $p->tipo, 'base_id' => $p->base_id, 'unidad' => $p->unidad, 'activo' => (bool) $p->activo,
+                'id' => $p->id, 'nombre' => $p->nombre, 'tipo' => $p->tipo, 'base_id' => $p->base_id, 'variante' => $p->variante, 'unidad' => $p->unidad, 'activo' => (bool) $p->activo,
                 'stock' => Mermas::stockProducto($p->id),
                 'precios' => ($precios[$p->id] ?? collect())->mapWithKeys(fn ($x) => [$x->tipo_cliente => (float) $x->precio]),
             ];
@@ -52,8 +52,11 @@ class ComprasAppController extends Controller
     /** GET /api/v1/compras/ventas-datos — productos con stock y precios, y clientes. */
     public function datosVenta()
     {
-        $clientes = DB::table('clientes')->orderBy('tipo')->orderBy('nombre')
-            ->get(['id', 'nombre', 'tipo', 'ruc', 'telefono', 'email', 'activo']);
+        // ultima_venta: para que la web muestre arriba a los clientes de siempre
+        $ultimas = DB::table('ventas')->select('cliente_id', DB::raw('MAX(created_at) as ultima_venta'))->groupBy('cliente_id');
+        $clientes = DB::table('clientes')->leftJoinSub($ultimas, 'u', 'u.cliente_id', '=', 'clientes.id')
+            ->orderBy('tipo')->orderBy('nombre')
+            ->get(['id', 'nombre', 'tipo', 'ruc', 'telefono', 'email', 'activo', 'u.ultima_venta']);
 
         return response()->json([
             'productos' => $this->productos(),
