@@ -200,37 +200,84 @@
         {{-- ---------------------------------------------------- MAPA DE HUATA --}}
         {{-- x-show sin "cargando": el mapa no se borra ni se vuelve a medir al recargar --}}
         <section x-show="seccion === 'mapa' && !error">
-            <div class="fila"><h1>Mapa de Huata</h1><div class="espacio"></div>
+            <div class="cabecera">
+                <div><h1>Mapa de Huata</h1>
+                    <p class="sub" style="margin: 0" x-text="mapaEditar ? 'Arrastra cada comunidad a su lugar real. Se guarda al soltarla.' : 'Toca una comunidad para ver quiénes están ahí. Cada color es un carro.'"></p></div>
+                <div class="espacio"></div>
                 <input type="date" x-model="mapaFecha" @change="cargar()" style="width:auto" title="Día">
-                <button class="btn" :class="mapaEditar ? '' : 'gris'" @click="alternarEdicionMapa()"
-                        x-text="mapaEditar ? '✓ Listo' : 'Corregir ubicaciones'"></button></div>
-            <p class="sub" x-show="!mapaEditar">Avance del acopio por comunidad y la ruta de cada vehículo. Toca un pin para ver el detalle.</p>
-            <div class="aviso" x-show="mapaEditar">Arrastra cada comunidad a su lugar real sobre el satélite. Se guarda al soltarla. Cuando termines, toca <strong>Listo</strong>.</div>
-            <div class="aviso" x-show="!mapaEditar && resumenMapa().aproximadas"
-                 x-text="resumenMapa().aproximadas + ' comunidades tienen ubicación aproximada (borde punteado). Usa «Corregir ubicaciones» para ponerlas en su lugar real.'"></div>
-            <div class="tarjetas">
-                <div class="tarjeta destacada"><div class="eti" x-text="mapaFecha ? 'Litros del ' + fechaCorta(mapaFecha) : 'Litros de hoy'"></div>
-                    <div class="valor" x-text="num(resumenMapa().litros, 0) + ' L'"></div></div>
-                <div class="tarjeta"><div class="eti">Proveedores registrados</div>
-                    <div class="valor" x-text="resumenMapa().registrados + ' / ' + resumenMapa().proveedores"></div></div>
+                <button class="btn chico" :class="mapaEditar ? '' : 'gris'" @click="alternarEdicionMapa()"
+                        x-text="mapaEditar ? '✓ Listo' : '📍 Corregir ubicaciones'"></button>
             </div>
-            <div class="mapa-caja">
-                <div id="mapa-huata"></div>
-                <div class="mapa-leyenda">
-                    <span><i class="pto ok"></i>Todos registrados</span>
-                    <span><i class="pto parcial"></i>Faltan algunos</span>
-                    <span><i class="pto nada"></i>Ninguno aún</span>
-                    <template x-for="v in dDe === 'mapa' ? (d.vehiculos || []) : []" :key="v.id">
-                        <span><i class="linea" :style="'background:' + colorRuta(v.codigo)"></i><span x-text="v.codigo"></span></span>
-                    </template>
+
+            {{-- un botón por carro: ver solo su ruta --}}
+            <div class="carros-mapa" x-show="dDe === 'mapa'">
+                <button :class="{ activo: !mapaVehiculo }" @click="mapaVehiculo && filtrarMapa(mapaVehiculo)">Todos</button>
+                <template x-for="v in dDe === 'mapa' ? (d.vehiculos || []) : []" :key="v.id">
+                    <button :class="{ activo: mapaVehiculo === v.codigo }" :style="'--c:' + colorRuta(v.codigo)" @click="filtrarMapa(v.codigo)" :title="rutaTexto(v)">
+                        <i></i><b x-text="v.codigo"></b><small x-text="v.acopiador || 'sin acopiador'"></small></button>
+                </template>
+            </div>
+
+            <div class="mapa-zona">
+                <div class="mapa-caja">
+                    <div id="mapa-huata" :class="{ moviendo: !!mapaMover }"></div>
+                    <div class="mapa-pie">
+                        <span><b x-text="num(resumenMapa().litros, 0) + ' L'"></b> <span x-text="mapaFecha ? 'el ' + fechaCorta(mapaFecha) : 'hoy'"></span></span>
+                        <span><b x-text="resumenMapa().registrados + ' de ' + resumenMapa().proveedores"></b> entregaron</span>
+                        <span class="gris">El anillo de cada comunidad se llena con los que ya entregaron.</span>
+                        <span class="ojo" x-show="resumenMapa().aproximadas" x-text="'Borde punteado = ubicación aproximada (' + resumenMapa().aproximadas + ')'"></span>
+                    </div>
                 </div>
+
+                {{-- panel: la gente de la comunidad tocada --}}
+                <aside class="panel-mapa">
+                    <template x-if="mapaMover">
+                        <div class="mover-aviso">
+                            <div class="mover-ico">🔄</div>
+                            <strong x-text="'¿A dónde se cambia ' + mapaMover.nombre + '?'"></strong>
+                            <p>Toca en el mapa la comunidad nueva (las que laten). Luego confirmas cómo avisó y desde cuándo.</p>
+                            <button class="btn gris" @click="cancelarMover()">Cancelar</button>
+                        </div>
+                    </template>
+                    <template x-if="!mapaMover && !comunidadMapa()">
+                        <div class="panel-vacio">
+                            <div class="mover-ico">👆</div>
+                            <strong>Toca una comunidad</strong>
+                            <p>Verás quiénes viven ahí, si ya entregaron su leche y podrás cambiarlos a otra comunidad.</p>
+                        </div>
+                    </template>
+                    <template x-if="!mapaMover && comunidadMapa()">
+                        <div>
+                            <div class="panel-cabeza" :style="'--c:' + colorRuta(vehiculoDeComunidad(comunidadMapa().id)?.codigo)">
+                                <div class="fila"><h2 x-text="comunidadMapa().nombre"></h2><div class="espacio"></div>
+                                    <button class="cerrar-x" @click="mapaComunidad = null; dibujarMapa()" aria-label="Cerrar">✕</button></div>
+                                <p x-text="vehiculoDeComunidad(comunidadMapa().id) ? '🚚 Lo recoge ' + vehiculoDeComunidad(comunidadMapa().id).codigo + ' · ' + (vehiculoDeComunidad(comunidadMapa().id).acopiador || 'sin acopiador') : 'Ningún carro pasa por aquí'"></p>
+                                <div class="panel-cifras">
+                                    <div><b x-text="(comunidadMapa().gente || []).length"></b><span>personas</span></div>
+                                    <div><b x-text="entregaronMapa(comunidadMapa())"></b><span>entregaron</span></div>
+                                    <div><b x-text="num(comunidadMapa().litros, 0) + ' L'"></b><span x-text="mapaFecha ? 'ese día' : 'hoy'"></span></div>
+                                </div>
+                            </div>
+                            <div class="gente-mapa">
+                                <template x-for="p in comunidadMapa().gente || []" :key="p.id">
+                                    <div class="persona-mapa" :class="{ falta: !p.entrega }">
+                                        <span class="estado-persona" x-text="!p.entrega ? '○' : (p.entrega.ausente ? '–' : '✓')"></span>
+                                        <div class="que"><strong x-text="p.nombre"></strong>
+                                            <small x-text="'DNI ' + p.dni + ' · ' + (!p.entrega ? 'todavía no entrega' : (p.entrega.ausente ? 'no entregó' : num(p.entrega.litros) + ' L' + (p.entrega.calidad === 'RECHAZADO' ? ' · rechazada' : '')))"></small>
+                                            {{-- su carro no es el que pasa por su comunidad: conviene revisarlo --}}
+                                            <small class="ojo" x-show="p.vehiculo && p.vehiculo !== vehiculoDeComunidad(comunidadMapa().id)?.codigo" x-text="'⚠ va en ' + p.vehiculo + ', no en el carro de esta comunidad'"></small></div>
+                                        <div class="acciones-persona">
+                                            <button class="btn chico gris" @click="abrirFicha(p.id)" title="Su leche, sus pagos y su historial">Ficha</button>
+                                            <button class="btn chico" @click="empezarMover(p)" title="Cambiarlo a otra comunidad">🔄 Mover</button>
+                                        </div>
+                                    </div>
+                                </template>
+                                <div class="vacio-lista" x-show="!(comunidadMapa().gente || []).length"><span aria-hidden="true">·</span><p>Nadie vive aquí todavía.</p></div>
+                            </div>
+                        </div>
+                    </template>
+                </aside>
             </div>
-            <h2>Rutas</h2>
-            <table class="lista"><tr><th>Vehículo</th><th>Acopiador</th><th>Recorrido</th></tr>
-                <template x-for="v in dDe === 'mapa' ? (d.vehiculos || []) : []" :key="v.id"><tr>
-                    <td><i class="linea" :style="'background:' + colorRuta(v.codigo)"></i> <span x-text="v.codigo"></span></td>
-                    <td x-text="v.acopiador || 'sin acopiador'"></td><td x-text="rutaTexto(v)"></td></tr></template>
-            </table>
         </section>
 
         {{-- ---------------------------------------------------- DINERO --}}

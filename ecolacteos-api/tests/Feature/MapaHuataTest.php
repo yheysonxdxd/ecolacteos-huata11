@@ -42,6 +42,10 @@ class MapaHuataTest extends TestCase
         $this->assertSame(1, $huatta['registrados']);
         $this->assertEquals(18.5, $huatta['litros']);
         $this->assertTrue($huatta['aproximada']);
+        // al tocar el pin: quién está ahí y cuánto entregó ese día
+        $this->assertCount(1, $huatta['gente']);
+        $this->assertSame('Rosa Quispe Mamani', $huatta['gente'][0]['nombre']);
+        $this->assertEquals(18.5, $huatta['gente'][0]['entrega']['litros']);
 
         $c01 = collect($r->json('vehiculos'))->firstWhere('codigo', 'C-01');
         $this->assertSame([$this->comunidad['Huatta'], $this->comunidad['Carata']], $c01['ruta']);

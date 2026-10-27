@@ -46,7 +46,17 @@ class MapaController extends Controller
             ->selectRaw('p.comunidad_id, COUNT(DISTINCT e.proveedor_id) as registrados, SUM(CASE WHEN e.ausente THEN 0 ELSE e.litros END) as litros')
             ->groupBy('p.comunidad_id')->get()->keyBy('comunidad_id');
 
-        $comunidades = DB::table('comunidades')->orderBy('nombre')->get()->map(function ($c) use ($proveedores, $entregas) {
+        // la gente de cada comunidad con su entrega de ese día (para el panel que se abre al tocar el pin)
+        $delDia = DB::table('entregas')->where('fecha', $fecha)->get(['proveedor_id', 'litros', 'ausente', 'estado_calidad'])->keyBy('proveedor_id');
+        $gente = DB::table('proveedores as p')->leftJoin('vehiculos as v', 'v.id', '=', 'p.vehiculo_id')
+            ->where('p.estado', 'ACTIVO')->orderBy('p.nombre')
+            ->get(['p.id', 'p.nombre', 'p.dni', 'p.comunidad_id', 'v.codigo as vehiculo'])
+            ->map(fn ($p) => [
+                'id' => $p->id, 'nombre' => $p->nombre, 'dni' => $p->dni, 'comunidad_id' => $p->comunidad_id, 'vehiculo' => $p->vehiculo,
+                'entrega' => ($e = $delDia->get($p->id)) ? ['litros' => (float) $e->litros, 'ausente' => (bool) $e->ausente, 'calidad' => $e->estado_calidad] : null,
+            ])->groupBy('comunidad_id');
+
+        $comunidades = DB::table('comunidades')->orderBy('nombre')->get()->map(function ($c) use ($proveedores, $entregas, $gente) {
             $gps = $c->latitud !== null && $c->longitud !== null;
             [$lat, $lng] = $gps ? [(float) $c->latitud, (float) $c->longitud] : self::aproximar($c->croquis_x, $c->croquis_y);
 
@@ -56,6 +66,7 @@ class MapaController extends Controller
                 'proveedores' => (int) ($proveedores[$c->id] ?? 0),
                 'registrados' => (int) ($entregas[$c->id]->registrados ?? 0),
                 'litros' => round((float) ($entregas[$c->id]->litros ?? 0), 2),
+                'gente' => ($gente[$c->id] ?? collect())->values(),
             ];
         });
 

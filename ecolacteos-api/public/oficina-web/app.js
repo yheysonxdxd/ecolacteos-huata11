@@ -97,6 +97,9 @@ function oficina() {
     concFecha: '',  // vacío = último día con acopio
     concLitros: {}, // vehiculo_id => litros que llegaron a planta (lo que se está escribiendo)
     mapaEditar: false, // arrastrar comunidades a su lugar real
+    mapaComunidad: null, // comunidad tocada en el mapa (su gente sale en el panel)
+    mapaVehiculo: null,  // ver solo la ruta de un carro (código) o todas (null)
+    mapaMover: null,     // persona que se está cambiando de comunidad: se toca el lugar nuevo en el mapa
     cfg: {},        // configuración: clave => valor que se está escribiendo
     cfgLeche: { precio: '', desde: '' },
     cfgVenta: {},   // 'producto_id.TIPO' => precio que se está escribiendo
@@ -458,11 +461,16 @@ function oficina() {
       return v.ruta.map((id) => porId[id] || '?').join(' → ') + (v.circular ? ' → (vuelve)' : '');
     },
     colorRuta,
+    /** El vehículo que recoge en esa comunidad (el primero cuya ruta pasa por ahí). */
+    vehiculoDeComunidad(id) { return (this.d.vehiculos || []).find((v) => v.ruta.includes(id)) || null; },
+    comunidadMapa() { return (this.d.comunidades || []).find((c) => c.id === this.mapaComunidad) || null; },
+    /** Quiénes entregaron ese día en la comunidad (o dijeron que no tenían). */
+    entregaronMapa(c) { return (c?.gente || []).filter((p) => p.entrega).length; },
     dibujarMapa() {
       const el = document.getElementById('mapa-huata');
       if (!el || !window.L || !this.d.comunidades) return;
       if (!MAPA.m) {
-        MAPA.m = L.map(el);
+        MAPA.m = L.map(el, { zoomControl: true });
         const satelite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
           { maxZoom: 18, attribution: 'Imágenes © Esri' });
         const calles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' });
@@ -473,38 +481,83 @@ function oficina() {
       }
       MAPA.capa.clearLayers();
       const porId = Object.fromEntries(this.d.comunidades.map((c) => [c.id, c]));
+      const filtro = this.mapaVehiculo; // código del carro elegido arriba (null = todos)
+      const moviendo = this.mapaMover;
 
-      // rutas de los vehículos (con un borde oscuro para que se vean sobre el satélite)
+      // rutas: la del carro elegido resalta, las demás quedan tenues
       this.d.vehiculos.forEach((v) => {
         const pts = v.ruta.map((id) => porId[id]).filter(Boolean).map((c) => [c.latitud, c.longitud]);
         if (v.circular && pts.length > 2) pts.push(pts[0]);
         if (pts.length < 2) return;
-        L.polyline(pts, { color: '#0b141c', weight: 8, opacity: 0.55, interactive: false }).addTo(MAPA.capa);
-        L.polyline(pts, { color: colorRuta(v.codigo), weight: 4, opacity: 0.95, dashArray: v.circular ? '10 7' : null })
+        const tenue = filtro && filtro !== v.codigo;
+        L.polyline(pts, { color: '#0b141c', weight: 9, opacity: tenue ? 0.15 : 0.55, interactive: false }).addTo(MAPA.capa);
+        L.polyline(pts, { color: colorRuta(v.codigo), weight: tenue ? 3 : 5, opacity: tenue ? 0.25 : 0.95, dashArray: v.circular ? '10 7' : null })
           .bindTooltip(v.codigo + (v.acopiador ? ' · ' + v.acopiador : ''), { sticky: true }).addTo(MAPA.capa);
       });
 
-      // comunidades
+      // comunidades: del color de su carro, más grandes si hay más gente; el anillo se llena con los que ya entregaron
       this.d.comunidades.forEach((c) => {
-        const clases = ['pin', this.estadoComunidad(c), c.aproximada ? 'aprox' : '', this.mapaEditar ? 'editando' : ''].join(' ');
+        const v = this.vehiculoDeComunidad(c.id);
+        const color = v ? colorRuta(v.codigo) : '#8394a4';
+        const n = (c.gente || []).length;
+        const hechos = this.entregaronMapa(c);
+        const lado = n ? Math.min(60, 38 + n * 4) : 22;
+        const tenue = filtro && (!v || v.codigo !== filtro);
+        const origen = moviendo && moviendo.comunidad_id === c.id;
+        const clases = ['pin2', n ? '' : 'vacia', c.aproximada ? 'aprox' : '', tenue ? 'tenue' : '',
+          this.mapaComunidad === c.id && !moviendo ? 'elegida' : '', moviendo && !origen && v ? 'destino' : '', origen ? 'origen' : '',
+          this.mapaEditar ? 'editando' : ''].join(' ');
+        const pct = n ? Math.round(hechos / n * 100) : 0;
         const icon = L.divIcon({
-          className: 'pin-huata', iconSize: [40, 40], iconAnchor: [20, 20],
-          html: '<div class="' + clases + '">' + (c.proveedores ? c.registrados + '/' + c.proveedores : '') + '</div>',
+          className: 'pin-huata', iconSize: [lado, lado], iconAnchor: [lado / 2, lado / 2],
+          html: `<div class="${clases}" style="--c:${color};--p:${pct}%;width:${lado}px;height:${lado}px">` +
+            (n ? `<span>${n}<small>👤</small></span>` : '') + '</div>',
         });
-        const m = L.marker([c.latitud, c.longitud], { icon, draggable: this.mapaEditar, autoPan: true }).addTo(MAPA.capa);
-        m.bindTooltip(c.nombre, { permanent: true, direction: 'bottom', offset: [0, 18], className: 'nombre-huata' });
-        m.bindPopup('<b>' + c.nombre + '</b><br>' +
-          (c.proveedores ? c.registrados + ' de ' + c.proveedores + ' proveedores registrados<br>' + num(c.litros) + ' L acopiados' : 'Sin proveedores') +
-          (c.vias ? '<br><span class="gris">Vías: ' + c.vias + '</span>' : '') +
-          (c.aproximada ? '<br><span class="ojo">Ubicación aproximada: corrígela con «Corregir ubicaciones».</span>' : ''));
+        const m = L.marker([c.latitud, c.longitud], { icon, draggable: this.mapaEditar, autoPan: true, riseOnHover: true }).addTo(MAPA.capa);
+        m.bindTooltip(c.nombre, { permanent: true, direction: 'bottom', offset: [0, lado / 2 - 2], className: 'nombre-huata' + (tenue ? ' tenue' : '') });
+        m.on('click', () => {
+          if (this.mapaEditar) return;
+          if (this.mapaMover) return this.moverA(c);
+          this.mapaComunidad = c.id;
+          this.dibujarMapa();
+          MAPA.m.panTo([c.latitud, c.longitud], { animate: true });
+          // en pantallas chicas el panel queda debajo del mapa: se baja hasta él
+          if (window.innerWidth < 1100) this.$nextTick(() => document.querySelector('.panel-mapa')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+        });
         m.on('dragend', () => this.ubicarComunidad(c, m.getLatLng()));
       });
 
       if (!MAPA.encuadrado) {
-        MAPA.m.fitBounds(this.d.comunidades.map((c) => [c.latitud, c.longitud]), { padding: [50, 50] });
+        MAPA.m.fitBounds(this.d.comunidades.map((c) => [c.latitud, c.longitud]), { padding: [40, 40] });
         MAPA.encuadrado = true;
       }
       setTimeout(() => MAPA.m.invalidateSize(), 60);
+    },
+    /** Ver solo la ruta de un carro (o todas): las demás quedan tenues y el mapa se acerca a esa ruta. */
+    filtrarMapa(codigo) {
+      this.mapaVehiculo = this.mapaVehiculo === codigo ? null : codigo;
+      this.dibujarMapa();
+      const v = this.mapaVehiculo && this.d.vehiculos.find((x) => x.codigo === this.mapaVehiculo);
+      const pts = (v ? this.d.comunidades.filter((c) => v.ruta.includes(c.id)) : this.d.comunidades).map((c) => [c.latitud, c.longitud]);
+      if (pts.length) MAPA.m.flyToBounds(pts, { padding: [60, 60], duration: 0.6 });
+    },
+    /** "Cambiar de lugar": se elige la comunidad nueva tocándola en el mapa. */
+    empezarMover(p) {
+      this.mapaMover = { ...p, comunidad_id: this.mapaComunidad };
+      this.dibujarMapa();
+      // en pantallas chicas: se sube al mapa para tocar el lugar nuevo
+      if (window.innerWidth < 1100) document.getElementById('mapa-huata')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    },
+    cancelarMover() { this.mapaMover = null; this.dibujarMapa(); },
+    async moverA(c) {
+      const p = this.mapaMover;
+      if (c.id === p.comunidad_id) return (this.aviso = { error: true, texto: `${p.nombre} ya está en ${c.nombre}: toca otra comunidad.` });
+      if (!this.vehiculoDeComunidad(c.id)) return (this.aviso = { error: true, texto: `Ningún vehículo pasa por ${c.nombre}: agrégala a una ruta en Configuración.` });
+      this.mapaMover = null;
+      this.dibujarMapa();
+      // la misma ventana de "Cambio de comunidad" del padrón, ya con la persona y el lugar elegidos
+      await this.abrirCambio(p.id);
+      this.f.comunidad_id = c.id;
     },
     alternarEdicionMapa() { this.mapaEditar = !this.mapaEditar; this.dibujarMapa(); },
     async ubicarComunidad(c, ll) {
