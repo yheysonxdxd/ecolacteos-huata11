@@ -21,6 +21,8 @@ const fechaCorta = (iso) => {
 const hora = (iso) => String(iso || '').slice(11, 16);
 const TIPO_CLIENTE = { MAYORISTA: 'Mayorista', DIRECTO: 'Cliente directo', PLANTA: 'Proveedor de leche' };
 const ROLES = { ACOPIADOR: 'Acopiador', CALIDAD: 'Calidad', OPERARIO: 'Operario', COMPRAS: 'Compras', ADMIN: 'Administrador', PRODUCTOR: 'Productor' };
+/** Litros que va mostrando el tanque de Producir mientras cuenta (ver animarUso). */
+const ANIM_USO = { valor: 0, cuadro: 0 };
 const esCorreo = (s) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(s || '').trim());
 // los compañeros entran por http://IP:8000, donde crypto.randomUUID no existe (solo en https o localhost)
 const nuevoUuid = () => crypto.randomUUID?.() ?? '10000000-1000-4000-8000-100000000000'.replace(/[018]/g,
@@ -66,6 +68,7 @@ function oficina() {
     recetaFiltro: 'TODOS', // TODOS · QUESO · YOGURT · OTRO
     recetaLitros: 100, // la ficha recalcula los insumos para estos litros
     varios: {},     // producir varios a la vez: producto => cuánto (vacío o 0 = no se hace)
+    usoAnimado: 0,  // litros que muestra el tanque: van contando hasta lo que se usa de verdad
     mapaFecha: '',  // vacío = hoy
     mesCompras: '', // vacío = mes actual (2026-10)
     mesVentas: '',
@@ -1665,7 +1668,22 @@ function oficina() {
         tramos: plan.elegidos.map((e) => ({ id: e.p.id, nombre: e.p.nombre, litros: e.litros, ancho: (e.litros / total) * 100, color: this.colorReceta(e.p) })),
         libre: Math.max(0, (this.d.tanque || 0) - plan.litros), pasa: plan.litros > (this.d.tanque || 0) + 1e-9,
         marca: (tanque / total) * 100, // dónde termina el tanque cuando se pide más de lo que hay
+        usado: Math.min(100, (plan.litros / total) * 100), // dónde está la superficie (la ola)
       };
+    },
+    /** Los litros del tanque cuentan subiendo o bajando (½ s) hasta [hasta]; sin animación si el sistema la pide quieta. */
+    animarUso(hasta) {
+      // el valor en curso vive fuera de Alpine (ANIM_USO): leerlo de this haría que cada cuadro vuelva a disparar el x-effect
+      cancelAnimationFrame(ANIM_USO.cuadro);
+      const desde = ANIM_USO.valor, t0 = performance.now();
+      const fijar = (v) => { ANIM_USO.valor = v; this.usoAnimado = v; };
+      if (matchMedia('(prefers-reduced-motion: reduce)').matches || desde === hasta) { fijar(hasta); return; }
+      const paso = (t) => {
+        const k = Math.min(1, Math.max(0, (t - t0) / 500)); // el cuadro puede traer una hora un poco anterior a t0
+        fijar(k < 1 ? desde + (hasta - desde) * (1 - Math.pow(1 - k, 3)) : hasta);
+        if (k < 1) ANIM_USO.cuadro = requestAnimationFrame(paso);
+      };
+      ANIM_USO.cuadro = requestAnimationFrame(paso);
     },
     textoVarios(plan) { return plan.elegidos.map((e) => `${num(e.q, 0)} ${this.unidadProducto(e.p)} de ${e.p.nombre}`).join(' y '); },
     abrirProducirVarios() {

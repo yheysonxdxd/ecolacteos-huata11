@@ -973,7 +973,7 @@
                                                 <i x-show="fa.items.length > 1"></i>
                                                 <div>
                                                     <strong x-text="x.base_id ? x.variante : (fa.items.length > 1 && !/natural/i.test(x.nombre) ? x.nombre + ' (natural)' : x.nombre)"></strong>
-                                                    <small x-text="Number(varios[x.id]) > 0 ? 'usa ' + num(litrosDe(x), 0) + ' L de leche' : 'rinde ' + num(x.rendimiento_min * 100, 1) + ' ' + unidadProducto(x) + ' por 100 L'"></small>
+                                                    <template x-for="k in [litrosDe(x)]" :key="k"><small class="brinca" x-text="Number(varios[x.id]) > 0 ? 'usa ' + num(k, 0) + ' L de leche' : 'rinde ' + num(x.rendimiento_min * 100, 1) + ' ' + unidadProducto(x) + ' por 100 L'"></small></template>
                                                 </div>
                                             </div>
                                             <div class="control">
@@ -995,15 +995,17 @@
                 <aside class="producir-resumen">
                     <div class="tanque">
                         <div class="cabeza"><span>🥛 Tanque de leche</span><strong x-text="num(d.tanque, 0) + ' L'"></strong></div>
-                        <div class="barra-tanque" :class="{ pasa: tanqueProducir().pasa }">
+                        <div class="barra-tanque" :class="{ pasa: tanqueProducir().pasa }" x-effect="animarUso(planVarios().litros)">
                             <template x-for="t in tanqueProducir().tramos" :key="t.id">
-                                <i :style="'width: ' + t.ancho + '%; background: ' + t.color" :title="t.nombre + ': ' + num(t.litros, 0) + ' L'"></i></template>
+                                <i :style="'width: ' + t.ancho + '%; background-color: ' + t.color" :title="t.nombre + ': ' + num(t.litros, 0) + ' L'"></i></template>
+                            {{-- la superficie de la leche: una ola que se mueve donde termina lo que se usa --}}
+                            <b class="ola" x-show="tanqueProducir().tramos.length" :style="'left: ' + tanqueProducir().usado + '%'"></b>
                             <b class="exceso" x-show="tanqueProducir().pasa" :style="'left: ' + tanqueProducir().marca + '%'"></b>
                             <b class="marca" x-show="tanqueProducir().pasa" :style="'left: ' + tanqueProducir().marca + '%'"></b>
                         </div>
                         <div class="pie-tanque">
-                            <span x-text="'Usas ' + num(planVarios().litros, 0) + ' L'"></span>
-                            <span :class="tanqueProducir().pasa ? 'mal' : ''" x-text="tanqueProducir().pasa ? 'Faltan ' + num(planVarios().litros - d.tanque, 0) + ' L' : 'Quedan ' + num(tanqueProducir().libre, 0) + ' L'"></span>
+                            <span x-text="'Usas ' + num(usoAnimado, 0) + ' L'"></span>
+                            <span :class="usoAnimado > d.tanque ? 'mal' : ''" x-text="usoAnimado > d.tanque ? 'Faltan ' + num(usoAnimado - d.tanque, 0) + ' L' : 'Quedan ' + num(d.tanque - usoAnimado, 0) + ' L'"></span>
                         </div>
                         <div class="leyenda-tanque" x-show="tanqueProducir().tramos.length">
                             <template x-for="t in tanqueProducir().tramos" :key="t.id"><span><i :style="'background: ' + t.color"></i><span x-text="t.nombre + ' · ' + num(t.litros, 0) + ' L'"></span></span></template>
@@ -1013,7 +1015,8 @@
                     <div class="usa" x-show="planVarios().elegidos.length">
                         <div class="eti">Lo que se usa</div>
                         <ul class="ingredientes">
-                            <template x-for="i in planVarios().insumos" :key="i.nombre"><li :class="{ falta: i.necesita > i.stock + 1e-9 }">
+                            {{-- la clave cambia cuando pasa a faltar: el renglón entra de nuevo y se sacude --}}
+                            <template x-for="i in planVarios().insumos" :key="i.nombre + (i.necesita > i.stock + 1e-9 ? '-falta' : '')"><li :class="{ falta: i.necesita > i.stock + 1e-9 }">
                                 <div class="fila-ing"><span class="nombre" x-text="i.nombre"></span><strong x-text="cantidadBonita(i.necesita, i.unidad)"></strong></div>
                                 <div class="barra"><i :style="'width: ' + Math.min(100, i.necesita > 0 ? i.stock / i.necesita * 100 : 100) + '%'"></i></div>
                                 <small x-text="i.necesita > i.stock + 1e-9 ? 'Falta ' + cantidadBonita(i.necesita - i.stock, i.unidad) + ' (hay ' + cantidadBonita(i.stock, i.unidad) + ')' : 'Hay ' + cantidadBonita(i.stock, i.unidad) + (i.productos.length > 1 ? ' · lo usan ' + i.productos.length + ' productos' : '')"></small>
@@ -1024,10 +1027,12 @@
                         <span>👈</span> Elige qué hacer y aquí ves si alcanza.
                     </div>
 
-                    <div class="veredicto" :class="planVarios().ok ? 'si' : (planVarios().elegidos.length ? 'no' : '')" x-show="planVarios().elegidos.length">
-                        <strong x-text="planVarios().ok ? '✓ Sí se puede' : '✗ No alcanza'"></strong>
-                        <span x-text="planVarios().ok ? 'Vas a hacer ' + textoVarios(planVarios()) + '.' : planVarios().motivo"></span>
-                    </div>
+                    {{-- clave sí/no: al cambiar, el veredicto vuelve a entrar con rebote --}}
+                    <template x-for="v in planVarios().elegidos.length ? [planVarios().ok ? 'si' : 'no'] : []" :key="v">
+                        <div class="veredicto" :class="v">
+                            <strong x-text="v === 'si' ? '✓ Sí se puede' : '✗ No alcanza'"></strong>
+                            <span x-text="v === 'si' ? 'Vas a hacer ' + textoVarios(planVarios()) + '.' : planVarios().motivo"></span>
+                        </div></template>
                     <button class="btn grande-producir" x-show="usuario?.rol === 'ADMIN'" :disabled="!planVarios().ok" @click="abrirProducirVarios()"
                             x-text="!planVarios().elegidos.length ? 'Iniciar lotes' : 'Iniciar ' + planVarios().elegidos.length + (planVarios().elegidos.length === 1 ? ' lote' : ' lotes')"></button>
                     <button class="btn gris chico" style="width: 100%; margin-top: 8px" x-show="planVarios().elegidos.length" @click="varios = {}">Limpiar</button>
@@ -1037,7 +1042,7 @@
                 {{-- en el celular el resumen queda abajo: esta barra fija dice si alcanza sin tener que bajar --}}
                 <div class="barra-movil" x-show="planVarios().elegidos.length" :class="planVarios().ok ? 'si' : 'no'">
                     <div><strong x-text="planVarios().ok ? '✓ Sí alcanza' : '✗ No alcanza'"></strong>
-                        <small x-text="'Usas ' + num(planVarios().litros, 0) + ' de ' + num(d.tanque, 0) + ' L de leche'"></small></div>
+                        <small x-text="'Usas ' + num(usoAnimado, 0) + ' de ' + num(d.tanque, 0) + ' L de leche'"></small></div>
                     <button class="btn chico" x-show="usuario?.rol === 'ADMIN'" :disabled="!planVarios().ok" @click="abrirProducirVarios()"
                             x-text="'Iniciar ' + planVarios().elegidos.length + (planVarios().elegidos.length === 1 ? ' lote' : ' lotes')"></button>
                 </div>
