@@ -1034,6 +1034,18 @@
                         <small class="apoyo" style="display: block" x-text="textoLotes(l.p, l.cantidad)"></small></span>
                     <span x-text="soles(l.importe)"></span></div></template>
                 <div class="total"><span>Total</span><strong x-text="soles(totalVenta())"></strong></div>
+                {{-- cómo paga: efectivo, Yape o tarjeta (con Yape o tarjeta se puede anotar el N.° de operación) --}}
+                <label>¿Cómo paga?</label>
+                <div class="metodos-pago" role="radiogroup" aria-label="Cómo paga">
+                    <template x-for="[clave, m] in Object.entries(METODO_PAGO)" :key="clave">
+                        <button type="button" role="radio" :aria-checked="f.metodo === clave" :class="{ activo: f.metodo === clave }" @click="f.metodo = clave">
+                            <span aria-hidden="true" x-text="m.icono"></span><span x-text="m.nombre"></span></button>
+                    </template>
+                </div>
+                <div x-show="f.metodo !== 'EFECTIVO'">
+                    <label x-text="'N.° de operación ' + (f.metodo === 'YAPE' ? 'del Yape' : 'del voucher') + ' (opcional)'"></label>
+                    <input x-model="f.operacion" maxlength="30" inputmode="numeric" placeholder="Ej. 123456">
+                </div>
                 <label>Enviar la nota al correo (opcional)</label>
                 <input type="email" x-model="f.correo" placeholder="cliente@gmail.com">
                 <div class="fila" style="margin-top: 18px">
@@ -1696,6 +1708,12 @@
                 <div class="kpi"><span class="kpi-ico" aria-hidden="true">🧾</span><div>
                     <b x-text="notasVenta().length ? soles((d.periodo?.vendido || 0) / notasVenta().length) : '—'"></b><span>Promedio por nota</span><small>lo que lleva un cliente cada vez</small></div></div>
             </div>
+            {{-- para cuadrar la caja: cuánto entró por cada forma de pago --}}
+            <div class="cobrado-por" x-show="d.periodo?.por_metodo">
+                <template x-for="[clave, m] in Object.entries(METODO_PAGO)" :key="clave">
+                    <div class="pago-chip grande" :class="clave.toLowerCase()"><span x-text="m.icono + ' ' + m.nombre"></span><b x-text="soles(d.periodo?.por_metodo?.[clave] || 0)"></b></div>
+                </template>
+            </div>
             <div class="notas">
                 <template x-for="n in notasVenta()" :key="n.nota">
                     <article class="nota">
@@ -1705,7 +1723,9 @@
                                 <template x-for="(p, k) in n.productos" :key="k"><span class="chip" :style="'--tono: ' + colorReceta(productoVisual(p.que))">
                                     <i class="punto-chip"></i><span x-text="num(p.cantidad) + ' ' + p.unidad + ' · ' + p.que"></span></span></template>
                             </div></div>
-                        <b class="monto" x-text="soles(n.total)"></b>
+                        <div class="monto-nota"><b class="monto" x-text="soles(n.total)"></b>
+                            <span class="pago-chip" :class="n.metodo.toLowerCase()" :title="n.operacion ? 'N.° de operación ' + n.operacion : ''"
+                                  x-text="METODO_PAGO[n.metodo]?.icono + ' ' + (METODO_PAGO[n.metodo]?.nombre || n.metodo)"></span></div>
                         <div class="acciones-fila">
                             <button class="btn chico gris" @click="verNota(n.venta_id)" title="Ver o imprimir la nota">📄 Ver nota</button>
                             <button class="btn chico gris" @click="abrirCorreo(n.venta_id, n.numero)" title="Mandar la nota por correo">✉ Correo</button></div>

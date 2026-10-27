@@ -86,4 +86,32 @@ class VentaVariosTest extends TestCase
             ->assertCreated()->assertJson(['total' => 42, 'precio_unitario' => 21]);
         $this->assertNull(DB::table('ventas')->value('nota_id'));
     }
+
+    public function test_se_guarda_como_pago_yape_o_tarjeta_en_todas_las_filas_de_la_nota(): void
+    {
+        $r = $this->postJson('/api/v1/compras/ventas', ['cliente_id' => $this->cliente, 'metodo_pago' => 'YAPE', 'pago_operacion' => ' 123456 ',
+            'items' => [['producto_id' => $this->queso, 'cantidad' => 2], ['producto_id' => $this->yogurt, 'cantidad' => 3]]])->assertCreated();
+        $r->assertJsonPath('metodo_pago', 'YAPE');
+        $this->assertSame(['YAPE'], DB::table('ventas')->distinct()->pluck('metodo_pago')->all());
+        $this->assertSame(['123456'], DB::table('ventas')->distinct()->pluck('pago_operacion')->all());
+        $this->assertSame('Yape', app(NotaVentaPdf::class)->datos($r->json('id'))['pago']);
+
+        // la lista del mes suma lo cobrado por cada forma de pago
+        $this->postJson('/api/v1/compras/ventas', ['cliente_id' => $this->cliente, 'metodo_pago' => 'TARJETA',
+            'items' => [['producto_id' => $this->queso, 'cantidad' => 1]]])->assertCreated();
+        $m = $this->getJson('/api/v1/compras/movimientos?mes=actual')->assertOk();
+        $this->assertEquals(['EFECTIVO' => 0, 'YAPE' => 66, 'TARJETA' => 21], $m->json('periodo.por_metodo'));
+    }
+
+    public function test_sin_metodo_queda_en_efectivo_y_no_acepta_otros(): void
+    {
+        $this->postJson('/api/v1/compras/ventas', ['cliente_id' => $this->cliente, 'pago_operacion' => '999',
+            'items' => [['producto_id' => $this->queso, 'cantidad' => 1]]])->assertCreated();
+        $v = DB::table('ventas')->first();
+        $this->assertSame('EFECTIVO', $v->metodo_pago);
+        $this->assertNull($v->pago_operacion); // en efectivo no hay número de operación
+
+        $this->postJson('/api/v1/compras/ventas', ['cliente_id' => $this->cliente, 'metodo_pago' => 'FIADO',
+            'items' => [['producto_id' => $this->queso, 'cantidad' => 1]]])->assertStatus(422);
+    }
 }

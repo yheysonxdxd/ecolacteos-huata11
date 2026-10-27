@@ -12,6 +12,12 @@ const API = '/api/v1';
 // ------------------------------------------------------------------ formato
 const soles = (v) => 'S/ ' + Number(v || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const num = (v, d = 1) => Number(v || 0).toLocaleString('es-PE', { maximumFractionDigits: d });
+/** Cómo pagó el cliente una venta (ventas.metodo_pago). */
+const METODO_PAGO = {
+  EFECTIVO: { nombre: 'Efectivo', icono: '💵' },
+  YAPE: { nombre: 'Yape', icono: '📱' },
+  TARJETA: { nombre: 'Tarjeta', icono: '💳' },
+};
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'set', 'oct', 'nov', 'dic'];
 const fechaCorta = (iso) => {
   if (!iso) return '';
@@ -94,7 +100,7 @@ function oficina() {
     cfgInsumos: {}, nuevoInsumo: { nombre: '', unidad: 'kg', minimo: '' },
     cfgVeh: {}, cfgCom: {}, nuevaCom: {}, nuevoVeh: { codigo: '', tipo: 'CARRO', acopiador_id: null },
 
-    soles, num, fechaCorta, hora, TIPO_CLIENTE, ROLES, esCorreo,
+    soles, num, fechaCorta, hora, TIPO_CLIENTE, ROLES, METODO_PAGO, esCorreo,
 
     iniciar() {
       // si la ventana del cliente se cierra con Esc o clic afuera, se vuelve a la venta a medias
@@ -1021,7 +1027,7 @@ function oficina() {
     // una venta puede llevar varios productos (queso y yogurt): cantidades = producto => cuánto (vacío = no lleva)
     nuevaVenta() {
       this.f = { cantidades: {}, cliente: null, correo: '', error: null, enviando: false, paso: 1,
-        familia: null, producto: null, cuantos: '1' };
+        familia: null, producto: null, cuantos: '1', metodo: 'EFECTIVO', operacion: '' };
     },
     /** Paso a paso: 1 cliente, 2 productos, 3 confirmar. No deja avanzar sin lo necesario. */
     pasoVenta(n) {
@@ -1167,10 +1173,10 @@ function oficina() {
       try {
         const r = await this.api('/compras/ventas', {
           cliente_id: c.id, items: lineas.map((l) => ({ producto_id: l.p.id, cantidad: l.cantidad })), correo: f.correo ? f.correo.trim() : null,
-          sin_stock: faltan.length > 0,
+          sin_stock: faltan.length > 0, metodo_pago: f.metodo, pago_operacion: f.metodo !== 'EFECTIVO' && f.operacion.trim() ? f.operacion.trim() : null,
         });
         this.aviso = {
-          texto: `✓ Venta registrada: ${soles(r.total)} a ${c.nombre} · ${r.numero}` +
+          texto: `✓ Venta registrada: ${soles(r.total)} a ${c.nombre} · ${METODO_PAGO[f.metodo].nombre} · ${r.numero}` +
             (r.correo_enviado ? ` · nota enviada a ${r.correo}` : '') + (r.correo_error ? ` · ${r.correo_error}` : ''),
           nota: { id: r.id, numero: r.numero },
         };
@@ -1288,7 +1294,8 @@ function oficina() {
       const notas = [];
       for (const m of (this.d.movimientos || []).filter((m) => m.venta_id)) {
         let n = notas.find((x) => x.nota === m.nota);
-        if (!n) notas.push(n = { nota: m.nota, venta_id: m.venta_id, numero: m.numero, fecha: m.fecha, cliente: m.cliente, total: 0, productos: [] });
+        if (!n) notas.push(n = { nota: m.nota, venta_id: m.venta_id, numero: m.numero, fecha: m.fecha, cliente: m.cliente, total: 0, productos: [],
+          metodo: m.metodo_pago || 'EFECTIVO', operacion: m.pago_operacion });
         n.total += m.total;
         n.productos.push({ que: m.que, cantidad: m.cantidad, unidad: m.unidad });
       }

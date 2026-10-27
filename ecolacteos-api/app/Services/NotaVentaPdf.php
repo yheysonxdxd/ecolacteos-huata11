@@ -78,6 +78,8 @@ class NotaVentaPdf
             'lote'     => $v->lote,
             'vence'    => $v->vence_el ? Carbon::parse($v->vence_el)->format('d/m/Y') : null,
             'vendedor' => $v->vendedor,
+            'pago'     => ['EFECTIVO' => 'Efectivo', 'YAPE' => 'Yape', 'TARJETA' => 'Tarjeta'][$v->metodo_pago ?? 'EFECTIVO'] ?? $v->metodo_pago,
+            'operacion' => $v->pago_operacion ?? null,
         ];
     }
 

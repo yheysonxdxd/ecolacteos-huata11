@@ -147,7 +147,11 @@ class ComprasAppController extends Controller
             'items.*.cantidad' => ['required', 'numeric', 'min:0.01'],
             'correo' => ['nullable', 'email', 'max:120'], // opcional: mandar la nota de venta
             'sin_stock' => ['boolean'],
+            // las apps de antes no lo mandan: queda en efectivo
+            'metodo_pago' => ['nullable', 'in:EFECTIVO,YAPE,TARJETA'],
+            'pago_operacion' => ['nullable', 'string', 'max:30'],
         ], [
+            'metodo_pago.in' => 'Elige efectivo, Yape o tarjeta.',
             'correo.email' => 'Ese correo no es válido.',
             'items.required' => 'Elige al menos un producto y cuánto vender.',
             'items.*.producto_id.distinct' => 'Un producto está repetido: pon toda su cantidad en una sola fila.',
@@ -168,7 +172,9 @@ class ComprasAppController extends Controller
             return ['producto_id' => $p['id'], 'cantidad' => (float) $it['cantidad'], 'precio' => (float) $precio];
         });
 
-        $ids = DB::transaction(function () use ($lineas, $cliente, $r, $sinStock) {
+        $pago = ['metodo_pago' => $data['metodo_pago'] ?? 'EFECTIVO',
+            'pago_operacion' => ($data['metodo_pago'] ?? 'EFECTIVO') !== 'EFECTIVO' ? (trim($data['pago_operacion'] ?? '') ?: null) : null];
+        $ids = DB::transaction(function () use ($lineas, $cliente, $r, $sinStock, $pago) {
             $ids = [];
             foreach ($lineas as $l) {
                 // sale primero lo que vence primero; si un lote no alcanza, sigue con el siguiente (una fila por lote)
@@ -177,10 +183,10 @@ class ComprasAppController extends Controller
                     if ($falta <= 0.005) break;
                     $cant = round(min($falta, $lote->queda), 2);
                     $falta = round($falta - $cant, 2);
-                    $ids[] = $this->filaVendida($ids, $cliente->id, $l, $lote->id, $cant, $r->user()->id);
+                    $ids[] = $this->filaVendida($ids, $cliente->id, $l, $lote->id, $cant, $r->user()->id, $pago);
                 }
                 abort_if($falta > 0.005 && ! $sinStock, 422, 'Alguien vendió al mismo tiempo y ya no alcanza el stock. Vuelve a intentar.');
-                if ($falta > 0.005) $ids[] = $this->filaVendida($ids, $cliente->id, $l, null, $falta, $r->user()->id); // sin stock: sin lote
+                if ($falta > 0.005) $ids[] = $this->filaVendida($ids, $cliente->id, $l, null, $falta, $r->user()->id, $pago); // sin stock: sin lote
             }
             // con varios productos, la primera fila también lleva la nota (así se encuentran todas)
             if (count($ids) > 1) DB::table('ventas')->where('id', $ids[0])->update(['nota_id' => $ids[0]]);
@@ -196,16 +202,16 @@ class ComprasAppController extends Controller
             : null;
 
         // id y número de la nota de venta, para imprimirla (NotaVentaController)
-        return response()->json(['total' => $total, 'precio_unitario' => (float) $precio,
+        return response()->json(['total' => $total, 'precio_unitario' => (float) $precio, 'metodo_pago' => $pago['metodo_pago'],
             'id' => $id, 'numero' => NotaVentaController::numero($id),
             'correo' => $data['correo'] ?? null,
             'correo_enviado' => ! empty($data['correo']) && ! $errorCorreo,
             'correo_error' => $errorCorreo], 201);
     }
 
-    private function filaVendida(array $ids, int $clienteId, array $l, ?int $loteId, float $cant, int $usuarioId): int
+    private function filaVendida(array $ids, int $clienteId, array $l, ?int $loteId, float $cant, int $usuarioId, array $pago): int
     {
-        return DB::table('ventas')->insertGetId([
+        return DB::table('ventas')->insertGetId($pago + [
             'uuid' => (string) Str::uuid(), 'nota_id' => $ids[0] ?? null, 'cliente_id' => $clienteId,
             'producto_id' => $l['producto_id'], 'lote_id' => $loteId, 'cantidad' => $cant,
             'precio_unitario' => $l['precio'], 'total' => round($l['precio'] * $cant, 2),
@@ -224,7 +230,10 @@ class ComprasAppController extends Controller
 
             return response()->json([
                 'movimientos' => $ventas->map(fn ($v) => $this->filaVenta($v))->values(),
-                'periodo' => $mes + ['vendido' => round((float) $ventas->sum('total'), 2), 'ventas' => $ventas->count()],
+                'periodo' => $mes + ['vendido' => round((float) $ventas->sum('total'), 2), 'ventas' => $ventas->count(),
+                    // para cuadrar la caja: cuánto entró en efectivo, por Yape y con tarjeta
+                    'por_metodo' => collect(['EFECTIVO', 'YAPE', 'TARJETA'])
+                        ->mapWithKeys(fn ($m) => [$m => round((float) $ventas->where('metodo_pago', $m)->sum('total'), 2)])],
             ]);
         }
 
@@ -246,7 +255,7 @@ class ComprasAppController extends Controller
     {
         return DB::table('ventas as v')->join('productos as p', 'p.id', '=', 'v.producto_id')
             ->join('clientes as c', 'c.id', '=', 'v.cliente_id')->orderByDesc('v.vendida_en')
-            ->select(['v.id', DB::raw('COALESCE(v.nota_id, v.id) as nota'), 'p.nombre as que', 'p.unidad', 'c.nombre as cliente', 'v.total', 'v.cantidad', 'v.vendida_en as fecha']);
+            ->select(['v.id', DB::raw('COALESCE(v.nota_id, v.id) as nota'), 'p.nombre as que', 'p.unidad', 'c.nombre as cliente', 'v.total', 'v.cantidad', 'v.vendida_en as fecha', 'v.metodo_pago', 'v.pago_operacion']);
     }
 
     private function filaVenta(object $v): array
@@ -259,6 +268,7 @@ class ComprasAppController extends Controller
             // la web arma una fila por nota con estos datos sueltos (la app usa ref y delta)
             'nota' => (int) $v->nota, 'cliente' => $v->cliente, 'total' => round((float) $v->total, 2),
             'cantidad' => (float) $v->cantidad, 'unidad' => $v->unidad,
+            'metodo_pago' => $v->metodo_pago, 'pago_operacion' => $v->pago_operacion,
         ];
     }
 }

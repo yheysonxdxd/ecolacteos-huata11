@@ -75,6 +75,7 @@
 </table>
 
 <div class="letras">SON: {{ $letras }}</div>
+@isset($pago)<div class="letras">Pagó con: <strong>{{ $pago }}</strong>@if(!empty($operacion)) · N.° de operación {{ $operacion }}@endif</div>@endisset
 
 <div class="traza">
     @foreach($lineas as $l)

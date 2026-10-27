@@ -117,17 +117,18 @@ class ExcelController extends Controller
             ->when($desde, fn ($q) => $q->whereBetween('s.vendida_en', [$desde . ' 00:00:00', $hasta . ' 23:59:59']))
             ->orderBy('s.vendida_en')->orderBy('s.id')
             ->get(['s.id', 's.nota_id', 's.vendida_en', 'c.nombre as cliente', 'c.ruc', 'p.nombre as producto',
-                's.cantidad', 'p.unidad', 's.precio_unitario', 's.total', 'u.name as vendedor']);
+                's.cantidad', 'p.unidad', 's.precio_unitario', 's.total', 's.metodo_pago', 's.pago_operacion', 'u.name as vendedor']);
 
         return Excel::descargar(
             'ventas_' . $mes['mes'] . '.xlsx',
             'Ventas · ' . self::nombreMes($mes['mes']),
             ['Fecha' => 'fecha', 'Hora' => 'texto', 'Nota de venta' => 'texto', 'Cliente' => 'texto', 'RUC' => 'texto',
                 'Producto' => 'texto', 'Cantidad' => 'numero', 'Unidad' => 'texto', 'Precio unitario' => 'soles',
-                'Total' => 'soles', 'Registrada por' => 'texto'],
+                'Total' => 'soles', 'Pagó con' => 'texto', 'N.° operación' => 'texto', 'Registrada por' => 'texto'],
             $filas->map(fn ($s) => [$s->vendida_en, Carbon::parse($s->vendida_en)->format('H:i'),
                 'NV-' . str_pad((string) ($s->nota_id ?? $s->id), 6, '0', STR_PAD_LEFT), $s->cliente, $s->ruc,
-                $s->producto, $s->cantidad, $s->unidad, $s->precio_unitario, $s->total, $s->vendedor]),
+                $s->producto, $s->cantidad, $s->unidad, $s->precio_unitario, $s->total,
+                ['EFECTIVO' => 'Efectivo', 'YAPE' => 'Yape', 'TARJETA' => 'Tarjeta'][$s->metodo_pago] ?? $s->metodo_pago, $s->pago_operacion, $s->vendedor]),
             ['Total' => (float) $filas->sum('total')],
         );
     }
