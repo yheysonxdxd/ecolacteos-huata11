@@ -50,11 +50,18 @@ class ComprasAppController extends Controller
     {
         $costos = $this->costos();
         $vendedores = Compras::ultimosVendedores();
+        // en qué productos se usa cada insumo (QUESO, YOGURT…), para agruparlos en Almacén
+        $tipos = DB::table('productos')->where('activo', true)->pluck('tipo', 'id');
+        $usadoEn = [];
+        foreach (Formulas::recetas($tipos->keys()->all()) as $productoId => $filas) {
+            foreach ($filas as $f) $usadoEn[$f->id][$tipos[$productoId] ?? 'OTRO'] = true;
+        }
         $insumos = DB::table('insumos')->orderBy('nombre')->get()->map(fn ($i) => [
             'id' => $i->id, 'nombre' => $i->nombre, 'unidad' => $i->unidad,
             'stock' => (float) $i->stock, 'minimo' => (float) $i->stock_minimo,
             'costo' => (float) ($costos[$i->id] ?? 0),               // lo que se pagó por unidad la última vez
             'ultimo_vendedor_id' => $vendedores[$i->id] ?? null,      // a quién se le compró la última vez
+            'usado_en' => array_keys($usadoEn[$i->id] ?? []),         // tipos de producto que lo llevan
         ]);
         $avisos = Formulas::avisos();
 

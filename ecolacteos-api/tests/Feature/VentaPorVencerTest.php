@@ -152,4 +152,25 @@ class VentaPorVencerTest extends TestCase
         $this->getJson("/api/v1/compras/kardex?tipo=producto&id={$this->queso}&desde=2026-10-20&hasta=2026-10-10")
             ->assertStatus(422)->assertJsonFragment(['message' => 'La fecha "hasta" no puede ser antes de la fecha "desde".']);
     }
+
+    public function test_inventario_dice_en_que_productos_se_usa_cada_insumo(): void
+    {
+        DB::table('productos')->where('id', $this->queso)->update(['tipo' => 'QUESO', 'activo' => true]);
+        $yogurt = DB::table('productos')->insertGetId([
+            'nombre' => 'Yogurt natural', 'tipo' => 'YOGURT', 'unidad' => 'litros', 'rendimiento_min' => 0.95, 'rendimiento_max' => 0.95, 'vida_util_dias' => 21,
+        ]);
+        $cuajo = DB::table('insumos')->insertGetId(['nombre' => 'Cuajo de prueba', 'unidad' => 'L', 'stock' => 1, 'stock_minimo' => 0.5]);
+        $cultivo = DB::table('insumos')->insertGetId(['nombre' => 'Cultivo de prueba', 'unidad' => 'kg', 'stock' => 1, 'stock_minimo' => 0.5]);
+        $suelto = DB::table('insumos')->insertGetId(['nombre' => 'Insumo sin fórmula', 'unidad' => 'kg', 'stock' => 1, 'stock_minimo' => 0]);
+        DB::table('recetas_insumo')->insert([
+            ['producto_id' => $this->queso, 'insumo_id' => $cuajo, 'cantidad_por_100l' => 0.02],
+            ['producto_id' => $this->queso, 'insumo_id' => $cultivo, 'cantidad_por_100l' => 0.005],
+            ['producto_id' => $yogurt, 'insumo_id' => $cultivo, 'cantidad_por_100l' => 0.01],
+        ]);
+
+        $insumos = collect($this->getJson('/api/v1/compras/inventario')->assertOk()->json('insumos'))->keyBy('id');
+        $this->assertSame(['QUESO'], $insumos[$cuajo]['usado_en']);
+        $this->assertEqualsCanonicalizing(['QUESO', 'YOGURT'], $insumos[$cultivo]['usado_en']);
+        $this->assertSame([], $insumos[$suelto]['usado_en']);
+    }
 }

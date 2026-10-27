@@ -69,6 +69,7 @@ function oficina() {
     recetaLitros: 100, // la ficha recalcula los insumos para estos litros
     varios: {},     // producir varios a la vez: producto => cuánto (vacío o 0 = no se hace)
     familiaAbierta: {}, // Producir: base => true si su lista de sabores está desplegada
+    almacenAbierto: {}, // Almacén: grupo de insumos => abierto (si no se tocó, se abre solo el que tiene algo por comprar)
     usoAnimado: 0,  // litros que muestra el tanque: van contando hasta lo que se usa de verdad
     mapaFecha: '',  // vacío = hoy
     mesCompras: '', // vacío = mes actual (2026-10)
@@ -116,6 +117,27 @@ function oficina() {
       precios.forEach((p) => { (filas[p.producto] ??= { producto: p.producto })[p.tipo_cliente] = p.precio; });
       return Object.values(filas);
     },
+    /**
+     * Insumos agrupados por para qué sirven, según las fórmulas (usado_en): queso, yogurt, los dos,
+     * saborizantes y envases. Lo que falta va primero dentro de cada grupo.
+     */
+    gruposInsumos() {
+      const GRUPOS = [['QUESO', '🧀', 'Para el queso'], ['YOGURT', '🥛', 'Para el yogurt'], ['AMBOS', '🤝', 'Para el queso y el yogurt'],
+        ['SABOR', '🍓', 'Saborizantes'], ['EMPAQUE', '📦', 'Envases y empaque'], ['OTRO', '🗂️', 'Todavía en ninguna fórmula']];
+      const grupoDe = (i) => {
+        const u = i.usado_en || [];
+        if (/sabor/i.test(i.nombre)) return 'SABOR';
+        if (i.unidad === 'un' || /envase|film|bolsa|etiqueta|botella|tapa/i.test(i.nombre)) return 'EMPAQUE';
+        if (u.includes('QUESO') && u.includes('YOGURT')) return 'AMBOS';
+        return u.includes('QUESO') ? 'QUESO' : u.includes('YOGURT') ? 'YOGURT' : 'OTRO';
+      };
+      return GRUPOS.map(([id, icono, nombre]) => {
+        const items = (this.d.insumos || []).filter((i) => grupoDe(i) === id)
+          .sort((a, b) => (a.stock >= a.minimo) - (b.stock >= b.minimo) || a.nombre.localeCompare(b.nombre));
+        return { id, icono, nombre, items, faltan: items.filter((i) => i.stock < i.minimo).length };
+      }).filter((g) => g.items.length);
+    },
+    grupoInsumoAbierto(g) { return this.almacenAbierto[g.id] ?? g.faltan > 0; },
     /** Ícono de cada insumo según su nombre (sal, cuajo, cultivo, azúcar, saborizante, envase…). */
     iconoInsumo(i) {
       const n = String(i?.nombre || '').toLowerCase();

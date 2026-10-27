@@ -1015,9 +1015,23 @@
             </div>
 
             <h2>Insumos</h2>
+            {{-- insumos agrupados por para qué sirven (sale de las fórmulas); cada grupo se abre como un combo
+                 y los que tienen algo por comprar empiezan abiertos --}}
+            <div class="grupos-insumos">
+                <template x-for="g in gruposInsumos()" :key="g.id">
+                    <section class="grupo-insumos" :class="{ abierto: grupoInsumoAbierto(g), falta: g.faltan }">
+                        <button class="cabeza-grupo" @click="almacenAbierto[g.id] = !grupoInsumoAbierto(g)" :aria-expanded="grupoInsumoAbierto(g)">
+                            <span class="ico-grupo" aria-hidden="true" x-text="g.icono"></span>
+                            <span class="texto"><strong x-text="g.nombre"></strong>
+                                <small x-text="g.items.length + (g.items.length === 1 ? ' insumo' : ' insumos')"></small></span>
+                            <span class="iconitos" aria-hidden="true" x-text="g.items.slice(0, 6).map((i) => iconoInsumo(i)).join(' ')"></span>
+                            <span class="chip" :class="g.faltan ? 'mal' : 'ok'" x-text="g.faltan ? '⚠ ' + g.faltan + ' por comprar' : '✓ todo bien'"></span>
+                            <span class="flecha" aria-hidden="true">▾</span>
+                        </button>
+                        <div class="desplegable" :class="{ abierto: grupoInsumoAbierto(g) }"><div class="dentro">
             {{-- una tarjeta por insumo: su ícono, cuánto queda y un anillo que se llena (lleno = el doble del mínimo) --}}
             <div class="insumos-tarjetas">
-                <template x-for="i in [...(d.insumos || [])].sort((a, b) => (a.stock >= a.minimo) - (b.stock >= b.minimo) || a.nombre.localeCompare(b.nombre))" :key="i.id">
+                <template x-for="i in g.items" :key="i.id">
                     <article class="insumo-tarjeta" :class="{ bajo: i.stock < i.minimo }" :style="'--tono: ' + colorInsumo(i)">
                         {{-- el anillo lleno es el doble del mínimo; la rayita de abajo marca el mínimo --}}
                         <div class="anillo" :title="'Mínimo ' + num(i.minimo, 3) + ' ' + i.unidad">
@@ -1033,6 +1047,10 @@
                             <button class="btn chico gris" @click="verKardex(i.id)">Kardex</button>
                         </div>
                     </article>
+                </template>
+            </div>
+                        </div></div>
+                    </section>
                 </template>
             </div>
         </section>
