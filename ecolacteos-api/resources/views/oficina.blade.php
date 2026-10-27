@@ -218,40 +218,75 @@
                 </div>
                 <template x-if="d.ventas">
                     <div>
-                        <div class="tarjetas">
-                            <div class="tarjeta destacada"><div class="eti">Ventas</div><div class="valor" x-text="soles(d.ventas.total)"></div>
-                                <div class="apoyo" x-text="d.ventas.cantidad + ' ventas'"></div>
-                                <div class="barras" x-show="d.ventas.barras.length">
-                                    <template x-for="b in d.ventas.barras"><div><i :style="'height:' + (b.total / maximo(d.ventas.barras, 'total') * 90) + 'px'"></i><span x-text="b.etiqueta"></span></div></template>
-                                </div></div>
-                            <div class="tarjeta"><div class="eti">Mayoristas</div><div class="valor" x-text="soles(d.ventas.por_tipo.MAYORISTA)"></div></div>
-                            <div class="tarjeta"><div class="eti">Vecinos de Huata</div><div class="valor" x-text="soles(d.ventas.por_tipo.DIRECTO)"></div></div>
-                            <div class="tarjeta"><div class="eti">Proveedores</div><div class="valor" x-text="soles(d.ventas.por_tipo.PLANTA)"></div></div>
+                        <div class="resumen-acopio">
+                            <div class="tarjeta destacada">
+                                <div class="eti">Ventas</div>
+                                <div class="valor enorme" x-text="soles(d.ventas.total)"></div>
+                                <div class="apoyo" x-text="d.ventas.cantidad + (d.ventas.cantidad === 1 ? ' venta' : ' ventas')"></div>
+                                <div class="grafico-dias" x-show="d.ventas.barras.length > 1"
+                                     x-html="svgBarrasDia(d.ventas.barras.map((b) => ({ etiqueta: b.etiqueta, valor: b.total })), 'soles')"></div>
+                            </div>
+                            <div class="tarjeta">
+                                <div class="eti">¿Quién compra?</div>
+                                <div class="dona-fila">
+                                    <div class="dona" x-html="svgDona([
+                                        { valor: d.ventas.por_tipo.MAYORISTA || 0, color: 'var(--exito)', nombre: 'Mayoristas' },
+                                        { valor: d.ventas.por_tipo.DIRECTO || 0, color: '#8fd3ff', nombre: 'Vecinos de Huata' },
+                                        { valor: d.ventas.por_tipo.PLANTA || 0, color: 'var(--aviso)', nombre: 'Proveedores' }],
+                                        d.ventas.cantidad, d.ventas.cantidad === 1 ? 'venta' : 'ventas')"></div>
+                                    <ul class="leyenda-dona">
+                                        <li><i style="background: var(--exito)"></i>Mayoristas<b x-text="soles(d.ventas.por_tipo.MAYORISTA)"></b></li>
+                                        <li><i style="background: #8fd3ff"></i>Vecinos<b x-text="soles(d.ventas.por_tipo.DIRECTO)"></b></li>
+                                        <li><i style="background: var(--aviso)"></i>Proveedores<b x-text="soles(d.ventas.por_tipo.PLANTA)"></b></li>
+                                    </ul>
+                                </div>
+                            </div>
                         </div>
-                        <h2>Por producto</h2>
-                        <table class="lista"><tr><th>Producto</th><th class="num">Cantidad</th><th class="num">Total</th></tr>
-                            <template x-for="p in d.ventas.por_producto"><tr><td x-text="p.nombre"></td><td class="num" x-text="num(p.cantidad, 0) + ' ' + p.unidad"></td><td class="num" x-text="soles(p.total)"></td></tr></template>
-                            <tr x-show="!d.ventas.por_producto.length"><td colspan="3">No hubo ventas en este periodo.</td></tr>
-                        </table>
-                        <h2>Últimas ventas</h2>
-                        <table class="lista"><tr><th>Fecha</th><th>Cliente</th><th>Producto</th><th>Atendió</th><th class="num">Total</th><th></th></tr>
-                            <template x-for="u in d.ventas.ultimas" :key="u.id"><tr>
-                                <td x-text="fechaCorta(u.vendida_en) + ' ' + hora(u.vendida_en)"></td><td x-text="u.cliente"></td>
-                                <td x-text="num(u.cantidad, 0) + ' · ' + u.producto"></td><td x-text="u.vendedor || ''"></td>
-                                <td class="num" x-text="soles(u.total)"></td>
-                                <td class="num"><button class="btn chico gris" @click="verNota(u.id)">Nota PDF</button></td></tr></template>
-                        </table>
+
+                        <div class="dos-columnas">
+                            <div>
+                                <h2>Por producto</h2>
+                                <div class="ranking">
+                                    <template x-for="p in d.ventas.por_producto"><div class="puesto" :style="'--tono: ' + colorReceta({ nombre: p.nombre, tipo: /queso/i.test(p.nombre) ? 'QUESO' : /yogurt/i.test(p.nombre) ? 'YOGURT' : '' })">
+                                        <i class="punto"></i>
+                                        <div class="nombre-puesto"><strong x-text="p.nombre"></strong><small x-text="num(p.cantidad, 0) + ' ' + p.unidad"></small></div>
+                                        <b x-text="soles(p.total)"></b>
+                                        <div class="barra"><span :style="'width:' + (p.total / maximo(d.ventas.por_producto, 'total') * 100) + '%'"></span></div>
+                                    </div></template>
+                                    <div class="vacio-lista" x-show="!d.ventas.por_producto.length"><span aria-hidden="true">·</span><p>No hubo ventas en este periodo.</p></div>
+                                </div>
+                            </div>
+                            <div>
+                                <h2>Últimas ventas</h2>
+                                <div class="movimientos">
+                                    <template x-for="u in d.ventas.ultimas" :key="u.id"><div class="movimiento">
+                                        <div class="cuando"><b x-text="fechaCorta(u.vendida_en)"></b><span x-text="hora(u.vendida_en)"></span></div>
+                                        <div class="que"><strong x-text="u.cliente"></strong><small x-text="num(u.cantidad, 0) + ' · ' + u.producto + (u.vendedor ? ' · ' + u.vendedor : '')"></small></div>
+                                        <b class="monto" x-text="soles(u.total)"></b>
+                                        <button class="btn chico gris" @click="verNota(u.id)" :aria-label="'Nota de venta de ' + u.cliente">Nota</button>
+                                    </div></template>
+                                    <div class="vacio-lista" x-show="!d.ventas.ultimas.length"><span aria-hidden="true">·</span><p>Todavía no hay ventas.</p></div>
+                                </div>
+                            </div>
+                        </div>
+
                         <h2>Producción</h2>
-                        <div class="tarjetas">
-                            <div class="tarjeta"><div class="eti">Lotes</div><div class="valor" x-text="d.produccion.lotes"></div><div class="apoyo" x-show="d.produccion.en_curso" x-text="d.produccion.en_curso + ' en proceso'"></div></div>
-                            <div class="tarjeta"><div class="eti">Leche usada</div><div class="valor" x-text="num(d.produccion.litros, 0) + ' L'"></div></div>
-                            <div class="tarjeta"><div class="eti">Fuera de rango</div><div class="valor" :class="d.produccion.fuera_referencia ? 'ojo' : ''" x-text="d.produccion.fuera_referencia"></div></div>
+                        <div class="kpis-fila">
+                            <div class="kpi ok"><span class="kpi-ico" aria-hidden="true">🧀</span><div><b x-text="d.produccion.lotes"></b><span>Lotes</span>
+                                <small x-text="d.produccion.en_curso ? d.produccion.en_curso + ' en proceso' : 'todos cerrados'"></small></div></div>
+                            <div class="kpi"><span class="kpi-ico" aria-hidden="true">🥛</span><div><b x-text="num(d.produccion.litros, 0) + ' L'"></b><span>Leche usada</span><small>en lotes de este periodo</small></div></div>
+                            <div class="kpi" :class="d.produccion.fuera_referencia ? 'ojo' : 'ok'"><span class="kpi-ico" aria-hidden="true" x-text="d.produccion.fuera_referencia ? '⚠' : '✓'"></span>
+                                <div><b x-text="d.produccion.fuera_referencia"></b><span>Fuera de rango</span><small>lotes que rindieron distinto a lo esperado</small></div></div>
                         </div>
                         <h2>Inventario de hoy</h2>
-                        <table class="lista"><tr><th>Producto</th><th class="num">Stock</th><th></th></tr>
-                            <template x-for="p in d.inventario.productos"><tr><td x-text="p.nombre"></td><td class="num" x-text="num(p.stock, 0) + ' ' + p.unidad"></td>
-                                <td><span class="chip ojo" x-show="p.lotes_por_vencer" x-text="p.lotes_por_vencer + ' lote(s) vencen esta semana'"></span></td></tr></template>
-                        </table>
+                        <div class="stock-grilla">
+                            <template x-for="p in d.inventario.productos"><div class="stock-item" :class="{ cero: !(p.stock > 0) }"
+                                 :style="'--tono: ' + colorReceta({ nombre: p.nombre, tipo: /queso/i.test(p.nombre) ? 'QUESO' : /yogurt/i.test(p.nombre) ? 'YOGURT' : '' })">
+                                <i class="punto"></i>
+                                <div><strong x-text="p.nombre"></strong><b x-text="num(p.stock, 0) + ' ' + p.unidad"></b>
+                                    <span class="chip ojo" x-show="p.lotes_por_vencer" x-text="'⏳ ' + p.lotes_por_vencer + ' lote(s) vencen esta semana'"></span></div>
+                            </div></template>
+                        </div>
                         <template x-for="i in d.inventario.insumos_bajo_minimo"><div class="aviso error" x-text="i.nombre + ' bajo el mínimo: quedan ' + num(i.stock, 2) + ' ' + i.unidad + ' (mínimo ' + num(i.stock_minimo, 2) + ')'"></div></template>
                         <div class="aviso" x-show="d.inventario.ordenes_por_recibir" x-text="d.inventario.ordenes_por_recibir + ' órdenes de compra por recibir · ' + soles(d.inventario.ordenes_monto)"></div>
                     </div>
@@ -281,26 +316,37 @@
                                     @click="cambiar('semana', d.otras_con_pendientes[0].inicio)"
                                     x-text="'Ir a la más antigua (' + fechaCorta((d.otras_con_pendientes || [])[0]?.inicio) + ')'"></button>
                         </div>
-                        <div class="tarjetas">
-                            <div class="tarjeta destacada"><div class="eti">Por pagar</div><div class="valor" x-text="soles(d.pendiente)"></div>
-                                <div class="apoyo" x-text="'Semana ' + fechaCorta(d.inicio) + ' – ' + fechaCorta(d.fin)"></div></div>
-                            <div class="tarjeta"><div class="eti">Total de la semana</div><div class="valor" x-text="soles(d.total)"></div></div>
-                            <div class="tarjeta"><div class="eti">Ya pagado</div><div class="valor ok" x-text="soles(d.pagado)"></div></div>
+                        {{-- cuánto de la semana ya se pagó --}}
+                        <div class="tarjeta destacada avance-pagos">
+                            <div class="fila" style="align-items: flex-end">
+                                <div><div class="eti">Por pagar esta semana</div>
+                                    <div class="valor enorme" :class="d.pendiente ? '' : 'ok'" x-text="d.pendiente ? soles(d.pendiente) : '✓ Todo pagado'"></div>
+                                    <div class="apoyo" x-text="'Semana ' + fechaCorta(d.inicio) + ' – ' + fechaCorta(d.fin) + ' · ' + d.boletas.length + ' proveedores'"></div></div>
+                                <div class="espacio"></div>
+                                <button class="btn grande" x-show="d.pendientes" @click="pagar(d.boletas.filter(b => b.estado === 'PENDIENTE').map(b => b.id), 'Pagar a los ' + d.pendientes + ' pendientes (' + soles(d.pendiente) + ')')"
+                                        x-text="'Pagar a los ' + d.pendientes + ' pendientes'"></button>
+                            </div>
+                            <div class="progreso" :aria-label="'Pagado ' + num(d.total ? d.pagado / d.total * 100 : 0, 0) + ' %'">
+                                <span :style="'width:' + (d.total ? d.pagado / d.total * 100 : 0) + '%'"></span></div>
+                            <div class="fila pie-progreso">
+                                <span><i class="punto-leyenda" style="background: var(--exito)"></i>Ya pagado <b x-text="soles(d.pagado)"></b></span>
+                                <span><i class="punto-leyenda" style="background: var(--borde)"></i>Total de la semana <b x-text="soles(d.total)"></b></span>
+                            </div>
                         </div>
-                        <div class="fila" style="margin: 16px 0">
-                            <button class="btn" x-show="d.pendientes" @click="pagar(d.boletas.filter(b => b.estado === 'PENDIENTE').map(b => b.id), 'Pagar a los ' + d.pendientes + ' pendientes (' + soles(d.pendiente) + ')')"
-                                    x-text="'Pagar a los ' + d.pendientes + ' pendientes (' + soles(d.pendiente) + ')'"></button>
-                            <span class="chip ok" x-show="!d.pendientes && d.boletas.length">Semana pagada completa</span>
+                        <h2>Cada proveedor</h2>
+                        <div class="pagos">
+                            <template x-for="b in d.boletas" :key="b.id">
+                                <div class="pago" :class="b.estado === 'PAGADO' ? 'pagado' : ''" role="button" tabindex="0" @click="abrirBoleta(b)" @keydown.enter="abrirBoleta(b)">
+                                    <span class="inicial" x-text="b.proveedor.trim().charAt(0)"></span>
+                                    <div class="que"><strong x-text="b.proveedor"></strong><small x-text="b.comunidad + ' · ' + b.vehiculo + ' · ' + num(b.litros) + ' L'"></small></div>
+                                    <b class="monto" x-text="soles(b.monto)"></b>
+                                    <span class="chip" :class="b.estado === 'PAGADO' ? 'ok' : 'ojo'"
+                                          x-text="b.estado === 'PAGADO' ? '✓ ' + fechaCorta(b.pagado_el) + ' · ' + (b.metodo === 'YAPE' ? 'Yape' : 'Efectivo') : 'Pendiente'"></span>
+                                    <button class="btn chico" x-show="b.estado === 'PENDIENTE'" @click.stop="pagar([b.id], 'Pagar a ' + b.proveedor + ' (' + soles(b.monto) + ')')">Pagar</button>
+                                </div>
+                            </template>
+                            <div class="vacio-lista" x-show="!d.boletas.length"><span aria-hidden="true">✓</span><p>No hay nada que pagar en esta semana.</p></div>
                         </div>
-                        <table class="lista"><tr><th>Proveedor</th><th>Comunidad</th><th class="num">Litros</th><th class="num">Monto</th><th>Estado</th><th></th></tr>
-                            <template x-for="b in d.boletas" :key="b.id"><tr class="clic" @click="abrirBoleta(b)">
-                                <td x-text="b.proveedor"></td><td x-text="b.comunidad + ' · ' + b.vehiculo"></td>
-                                <td class="num" x-text="num(b.litros) + ' L'"></td><td class="num" x-text="soles(b.monto)"></td>
-                                <td><span class="chip" :class="b.estado === 'PAGADO' ? 'ok' : 'ojo'"
-                                          x-text="b.estado === 'PAGADO' ? 'Pagado ' + fechaCorta(b.pagado_el) + ' · ' + (b.metodo === 'YAPE' ? 'Yape' : 'Efectivo') : 'Pendiente'"></span></td>
-                                <td class="num"><button class="btn chico" x-show="b.estado === 'PENDIENTE'" @click.stop="pagar([b.id], 'Pagar a ' + b.proveedor + ' (' + soles(b.monto) + ')')">Pagar</button></td></tr></template>
-                            <tr x-show="!d.boletas.length"><td colspan="6">No hay nada que pagar en esta semana.</td></tr>
-                        </table>
                     </div>
                 </template>
             </div>

@@ -107,9 +107,11 @@ function oficina() {
       const DIAS = ['do', 'lu', 'ma', 'mi', 'ju', 'vi', 'sá'];
       return `<svg viewBox="0 0 640 112" role="img" aria-label="Litros por día">${serie.map((x, k) => {
         const h = Math.max(2, (x.valor / max) * 70), cx = 10 + ancho * k + ancho / 2;
-        const [a, m, d] = String(x.fecha).slice(0, 10).split('-').map(Number);
-        const dia = serie.length <= 8 ? DIAS[new Date(a, m - 1, d).getDay()] + ' ' + d : String(d);
-        return `<g><title>${fechaCorta(x.fecha)}: ${num(x.valor, 0)} ${unidad}</title>
+        // la etiqueta de abajo: la que traiga (ventas) o el día de la fecha
+        const [a, m, d] = String(x.fecha || '').slice(0, 10).split('-').map(Number);
+        const dia = x.etiqueta ?? (serie.length <= 8 ? DIAS[new Date(a, m - 1, d).getDay()] + ' ' + d : String(d));
+        const cuanto = unidad === 'soles' ? soles(x.valor) : num(x.valor, 0) + ' ' + unidad;
+        return `<g><title>${x.etiqueta ?? fechaCorta(x.fecha)}: ${cuanto}</title>
           <rect x="${cx - barra / 2}" y="${88 - h}" width="${barra}" height="${h}" rx="4" class="${x.clase || ''}"/>
           ${serie.length <= 8 ? `<text x="${cx}" y="${82 - h}" class="g-valor">${num(x.valor, 0)}</text>` : ''}
           <text x="${cx}" y="106" class="g-eje">${dia}</text></g>`;
