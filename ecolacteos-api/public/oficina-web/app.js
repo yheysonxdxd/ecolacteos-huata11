@@ -348,12 +348,8 @@ function oficina() {
             // insumos o productos: si lo elegido ya no está en la lista, el primero
             const lista = k.tipo === 'producto' ? inv.productos : inv.insumos;
             if (k.tipo !== 'leche' && !lista.some((i) => i.id === k.id)) k.id = lista[0]?.id ?? null;
-            const q = new URLSearchParams({ tipo: k.tipo });
-            if (k.tipo !== 'leche') q.set('id', k.id ?? '');
-            if (k.tipo === 'producto' && k.solo) q.set('solo', '1');
-            if (k.desde) q.set('desde', k.desde);
-            if (k.hasta) q.set('hasta', k.hasta);
-            this.d = { inv, ...(k.tipo === 'leche' || k.id ? await this.api('/compras/kardex?' + q) : {}) };            break;
+            this.d = { inv, ...(await this.datosKardex()) };
+            break;
           }
         }
         this.dDe = this.seccion;
@@ -1428,6 +1424,32 @@ function oficina() {
     // ---------------------------------------------------------------- kardex
     // desde Almacén: el kardex de ese producto solo
     verKardex(id, tipo = 'insumo') { this.kardex.tipo = tipo; this.kardex.id = id; this.kardex.solo = tipo === 'producto'; this.ir('kardex'); },
+    /** Pide el kardex de lo elegido (insumo, producto o leche) con sus fechas. */
+    async datosKardex() {
+      const k = this.kardex;
+      if (k.tipo !== 'leche' && !k.id) return {};
+      const q = new URLSearchParams({ tipo: k.tipo });
+      if (k.tipo !== 'leche') q.set('id', k.id);
+      if (k.tipo === 'producto' && k.solo) q.set('solo', '1');
+      if (k.desde) q.set('desde', k.desde);
+      if (k.hasta) q.set('hasta', k.hasta);
+      return this.api('/compras/kardex?' + q);
+    },
+    /**
+     * Desde / Hasta del kardex. El calendario avisa con cada número que se escribe ("0002", "0020"…):
+     * solo se busca cuando la fecha está completa, medio segundo después y sin recargar toda la
+     * pantalla (así no se pierde lo que se está escribiendo). Si quedan al revés, se ordenan solas.
+     */
+    fechaKardex(campo, valor) {
+      clearTimeout(this._fechaKardex);
+      if (valor && !(/^\d{4}-\d{2}-\d{2}$/.test(valor) && Number(valor.slice(0, 4)) >= 2000)) return;
+      this.kardex[campo] = valor || '';
+      this._fechaKardex = setTimeout(async () => {
+        const k = this.kardex;
+        if (k.desde && k.hasta && k.desde > k.hasta) [k.desde, k.hasta] = [k.hasta, k.desde];
+        try { this.d = { ...this.d, ...(await this.datosKardex()) }; } catch (e) { this.aviso = { error: true, texto: e.message }; }
+      }, 500);
+    },
     tipoKardex(tipo, id = null) { this.kardex.tipo = tipo; this.kardex.id = id; this.kardex.solo = false; this.cargar(); },
     /** Los productos de la pestaña elegida (todos los quesos, o el yogurt y sus sabores). */
     productosDelKardex() {

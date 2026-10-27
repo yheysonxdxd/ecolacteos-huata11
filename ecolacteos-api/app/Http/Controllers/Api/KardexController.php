@@ -24,6 +24,10 @@ class KardexController extends Controller
             'desde' => ['nullable', 'date_format:Y-m-d'],
             'hasta' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:desde'],
             'solo' => ['nullable', 'boolean'], // producto: solo ese y no toda su familia
+        ], [
+            'hasta.after_or_equal' => 'La fecha "hasta" no puede ser antes de la fecha "desde".',
+            'desde.date_format' => 'La fecha "desde" no es válida.',
+            'hasta.date_format' => 'La fecha "hasta" no es válida.',
         ]);
         $tipo = $data['tipo'] ?? 'insumo';
         $id = $data['id'] ?? $data['insumo_id'] ?? null;

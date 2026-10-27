@@ -1062,9 +1062,11 @@
                         <option value="todos" :selected="!kardex.solo" x-text="'Todos · ' + (gruposKardex().find((g) => g.ids.includes(kardex.id))?.nombre || '').toLowerCase()"></option>
                         <template x-for="p in productosDelKardex()" :key="p.id"><option :value="p.id" :selected="kardex.solo && p.id === kardex.id" x-text="p.nombre"></option></template>
                     </select></div>
-                <div style="flex: 1; min-width: 140px"><label>Desde</label><input type="date" x-model="kardex.desde" @change="cargar()"></div>
-                <div style="flex: 1; min-width: 140px"><label>Hasta</label><input type="date" x-model="kardex.hasta" @change="cargar()"></div>
-                <button class="btn gris" x-show="kardex.desde || kardex.hasta" @click="kardex.desde = ''; kardex.hasta = ''; cargar()">Todo</button>
+                <div style="flex: 1; min-width: 140px"><label for="kardex-desde">Desde</label>
+                    <input id="kardex-desde" type="date" min="2020-01-01" :max="hoy()" :value="kardex.desde" @change="fechaKardex('desde', $event.target.value)"></div>
+                <div style="flex: 1; min-width: 140px"><label for="kardex-hasta">Hasta</label>
+                    <input id="kardex-hasta" type="date" min="2020-01-01" :max="hoy()" :value="kardex.hasta" @change="fechaKardex('hasta', $event.target.value)"></div>
+                <button class="btn gris" x-show="kardex.desde || kardex.hasta" @click="kardex.desde = ''; kardex.hasta = ''; fechaKardex('desde', '')">Ver todo</button>
             </div>
             {{-- tres cifras quietas: lo que entró, lo que salió y lo que queda --}}
             <div class="cifras-kardex" x-show="d.item">

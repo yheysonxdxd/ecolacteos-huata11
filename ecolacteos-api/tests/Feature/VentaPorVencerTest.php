@@ -145,4 +145,11 @@ class VentaPorVencerTest extends TestCase
         $this->assertEquals(10, $solo['totales']['saldo']['cantidad']);
         $this->assertCount(1, $solo['filas']);
     }
+
+    public function test_kardex_con_fechas_al_reves_avisa_en_castellano(): void
+    {
+        $this->lote('L-1', 10, 20, 5);
+        $this->getJson("/api/v1/compras/kardex?tipo=producto&id={$this->queso}&desde=2026-10-20&hasta=2026-10-10")
+            ->assertStatus(422)->assertJsonFragment(['message' => 'La fecha "hasta" no puede ser antes de la fecha "desde".']);
+    }
 }
