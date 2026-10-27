@@ -1,6 +1,7 @@
 package pe.gob.huata.ecolacteos
 
 import androidx.compose.animation.*
+import kotlinx.coroutines.launch
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -135,6 +136,16 @@ fun AppEcolacteos(rolInicial: Rol = Rol.ACOPIADOR, pendientes: Int = 0, hayRed: 
         }
         val destinos = destinosDe(r)
         var activo by remember(r) { mutableStateOf(0) }
+        // botón atrás del celular: cierra lo abierto, luego vuelve a Inicio y en Inicio avisa antes de salir
+        var avisoSalir by remember(r) { mutableStateOf(false) }
+        val rutaActual = destinos[activo].ruta
+        BotonAtras(habilitado = Atras.hayAbierto(rutaActual) || activo != 0 || !avisoSalir) {
+            when {
+                Atras.cerrar(rutaActual) -> {}
+                activo != 0 -> activo = 0
+                else -> { avisoSalir = true; scope.launch { kotlinx.coroutines.delay(2500); avisoSalir = false } }
+            }
+        }
         val pend = if (r == Rol.ACOPIADOR) acopio.pendientes else pendientes
         // estado real del servidor (en modo demo no hay token y queda "sin conexión")
         var conectado by remember(r) { mutableStateOf(hayRed) }
@@ -184,6 +195,12 @@ fun AppEcolacteos(rolInicial: Rol = Rol.ACOPIADOR, pendientes: Int = 0, hayRed: 
         ) { padding ->
             Column(Modifier.padding(padding)) {
                 BarraSinConexion(conectado)
+                AnimatedVisibility(avisoSalir) {
+                    Surface(color = Altiplano.SuperficieAlta, modifier = Modifier.fillMaxWidth()) {
+                        Text("Toca atrás otra vez para salir de la app", style = Texto.Cuerpo, color = Altiplano.Texto,
+                            modifier = Modifier.padding(horizontal = Medidas.Pantalla, vertical = 10.dp))
+                    }
+                }
                 CabeceraPantalla(
                     rolTexto = nombreRol(r).uppercase(),
                     titulo = destinos[activo].etiqueta,
