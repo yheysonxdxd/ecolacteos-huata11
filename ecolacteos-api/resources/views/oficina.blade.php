@@ -533,24 +533,35 @@
         {{-- ---------------------------------------------------- CAMBIOS DE ZONA --}}
         <template x-if="dDe === 'solicitudes'">
         <section x-show="seccion === 'solicitudes' && !cargando && !error">
-            <div class="fila"><h1>Cambios de comunidad</h1><div class="espacio"></div>
-                <button class="btn" @click="abrirCambio()">+ Registrar cambio (llamó o vino a Huata)</button></div>
-            <p class="sub">Los productores casi no tienen internet: cuando llamen o vengan a Huata, registra aquí su cambio y queda hecho al momento.
-                El vehículo se asigna solo según la ruta que pasa por la comunidad. Si alguno lo pidió por la app, apruébalo o recházalo abajo.</p>
-            <table class="lista"><tr><th>Proveedor</th><th>Cambio</th><th>Cómo avisó</th><th>Motivo</th><th>Desde</th><th>Estado</th><th></th></tr>
-                <template x-for="s in d.solicitudes || []" :key="s.id"><tr>
-                    <td><span x-text="s.proveedor"></span><div class="sub" style="margin: 0; font-size: 12px" x-text="'DNI ' + s.dni"></div></td>
-                    <td x-text="s.origen + ' → ' + s.destino"></td>
-                    <td><span x-text="CANAL[s.canal] || s.canal"></span><div class="sub" style="margin: 0; font-size: 12px" x-show="s.registrada_por" x-text="'Registró: ' + s.registrada_por"></div></td>
-                    <td x-text="s.motivo || '—'"></td>
-                    <td x-text="fechaCorta(s.solicitada_para)"></td>
-                    <td><span class="chip" :class="s.estado === 'APROBADA' ? 'ok' : (s.estado === 'PENDIENTE' ? 'ojo' : 'mal')"
-                              x-text="s.estado === 'APROBADA' ? 'Aprobada · desde ' + fechaCorta(s.vigente_desde) : (s.estado === 'PENDIENTE' ? 'Pendiente' : 'Rechazada')"></span></td>
-                    <td class="num"><span x-show="s.estado === 'PENDIENTE'">
-                        <button class="btn chico" @click="resolverSolicitud(s, true)">Aprobar</button>
-                        <button class="btn chico rojo" @click="resolverSolicitud(s, false)">Rechazar</button></span></td></tr></template>
-                <tr x-show="!(d.solicitudes || []).length"><td colspan="7">Todavía no hay cambios de comunidad.</td></tr>
-            </table>
+            <div class="cabecera">
+                <div><h1>Cambios de comunidad</h1>
+                    <p class="sub" style="margin: 0">Los productores casi no tienen internet: cuando llamen o vengan a Huata, registra aquí su cambio y queda hecho al momento.
+                        El vehículo se asigna solo según la ruta que pasa por la comunidad. Si alguno lo pidió por la app, apruébalo o recházalo abajo.</p></div>
+                <div class="espacio"></div>
+                <button class="btn" @click="abrirCambio()">+ Registrar cambio</button>
+            </div>
+            <div class="rechazos">
+                <template x-for="s in d.solicitudes || []" :key="s.id">
+                    <article class="rechazo cambio-fila" :class="{ hecho: s.estado !== 'PENDIENTE' }">
+                        <span class="inicial" x-text="s.proveedor.trim().charAt(0)"></span>
+                        <div class="cuerpo-rechazo">
+                            <strong x-text="s.proveedor"></strong>
+                            <small x-text="'DNI ' + s.dni + ' · ' + (CANAL[s.canal] || s.canal) + (s.registrada_por ? ' · registró ' + s.registrada_por : '')"></small>
+                            <div class="ruta-cambio"><span x-text="s.origen"></span><i aria-hidden="true">→</i><b x-text="s.destino"></b></div>
+                            <small x-show="s.motivo" x-text="'“' + s.motivo + '”'"></small>
+                        </div>
+                        <div class="litros-rechazo"><small style="display: block; font-size: 11px">desde</small><b style="font-size: 16px" x-text="fechaCorta(s.solicitada_para)"></b></div>
+                        <div class="capacitacion">
+                            <span class="chip" :class="s.estado === 'APROBADA' ? 'ok' : (s.estado === 'PENDIENTE' ? 'ojo' : 'mal')"
+                                  x-text="s.estado === 'APROBADA' ? 'Aprobada · desde ' + fechaCorta(s.vigente_desde) : (s.estado === 'PENDIENTE' ? 'Pendiente' : 'Rechazada')"></span>
+                            <div class="fila" style="justify-content: flex-end; margin-top: 6px" x-show="s.estado === 'PENDIENTE'">
+                                <button class="btn chico" @click="resolverSolicitud(s, true)">Aprobar</button>
+                                <button class="btn chico rojo" @click="resolverSolicitud(s, false)">Rechazar</button></div>
+                        </div>
+                    </article>
+                </template>
+                <div class="vacio-lista" x-show="!(d.solicitudes || []).length"><span aria-hidden="true">·</span><p>Todavía no hay cambios de comunidad.</p></div>
+            </div>
         </section>
         </template>
 
@@ -819,15 +830,22 @@
         {{-- ---------------------------------------------------- SESIONES --}}
         <template x-if="dDe === 'sesiones'">
         <section x-show="seccion === 'sesiones' && !cargando && !error">
-            <h1>Sesiones abiertas</h1>
-            <p class="sub">Quién tiene la app o esta web abierta. Cierra las sesiones de quien perdió el celular o dejó de trabajar.</p>
-            <table class="lista"><tr><th>Nombre</th><th>Rol</th><th class="num">Sesiones</th><th>Último uso</th><th></th></tr>
-                <template x-for="u in d.usuarios || []" :key="u.id"><tr>
-                    <td x-text="u.nombre"></td><td x-text="ROLES[u.rol] || u.rol"></td><td class="num" x-text="u.sesiones"></td>
-                    <td x-text="fechaCorta(u.ultimo_uso) + ' ' + hora(u.ultimo_uso)"></td>
-                    <td class="num"><button class="btn chico rojo" @click="cerrarSesiones(u)">Cerrar sesiones</button></td></tr></template>
-                <tr x-show="!(d.usuarios || []).length"><td colspan="5">Nadie tiene sesiones abiertas.</td></tr>
-            </table>
+            <div class="cabecera"><div><h1>Sesiones abiertas</h1>
+                <p class="sub" style="margin: 0">Quién tiene la app o esta web abierta. Cierra las sesiones de quien perdió el celular o dejó de trabajar.</p></div></div>
+            <div class="trabajadores">
+                <template x-for="u in d.usuarios || []" :key="u.id">
+                    <div class="trabajador">
+                        <span class="inicial grande" x-text="u.nombre.trim().charAt(0)"></span>
+                        <div class="que"><strong x-text="u.nombre"></strong><small x-text="'Último uso ' + fechaCorta(u.ultimo_uso) + ' ' + hora(u.ultimo_uso)"></small>
+                            <span class="rol-chip" x-text="ROLES[u.rol] || u.rol"></span></div>
+                        <div class="pie-trabajador">
+                            <span><b class="cuenta-sesiones" x-text="u.sesiones"></b> <span class="apoyo-fila" style="display: inline" x-text="u.sesiones === 1 ? 'sesión abierta' : 'sesiones abiertas'"></span></span>
+                            <button class="btn chico rojo" @click="cerrarSesiones(u)">Cerrar sesiones</button>
+                        </div>
+                    </div>
+                </template>
+                <div class="vacio-lista" x-show="!(d.usuarios || []).length"><span aria-hidden="true">✓</span><p>Nadie tiene sesiones abiertas.</p></div>
+            </div>
         </section>
         </template>
 
@@ -1654,39 +1672,47 @@
         {{-- ---------------------------------------------------- CALIDAD: INFRACTORES --}}
         <template x-if="dDe === 'infractores'">
         <section x-show="seccion === 'infractores' && !cargando && !error">
-            <h1>Infractores</h1>
-            <p class="sub">Sanciones registradas: adulteración 1.ª vez = precio reducido, 2.ª vez = baja definitiva; acidez o leche significada = capacitación.</p>
-            <table class="lista"><tr><th>Fecha</th><th>Proveedor</th><th>Falta</th><th class="num">Vez</th><th>Medida</th></tr>
-                <template x-for="s in d.data || []" :key="s.id"><tr>
-                    <td x-text="fechaCorta(s.created_at)"></td>
-                    <td><strong x-text="s.proveedor?.nombre || '—'"></strong><small class="apoyo-fila" x-text="s.proveedor?.comunidad?.nombre || ''"></small></td>
-                    <td><span class="chip" :class="s.tipo === 'ADULTERACION' ? 'mal' : 'ojo'"
-                              x-text="{ ADULTERACION: 'Adulteración', SIGNIFICADA: 'Leche significada' }[s.tipo] || 'Acidez'"></span></td>
-                    <td class="num" x-text="s.nivel + '.ª'"></td>
-                    <td :class="s.medida === 'BAJA_DEFINITIVA' ? 'mal' : ''"
-                        x-text="s.medida === 'PRECIO_REDUCIDO' ? 'Precio reducido' + (s.precio_aplicado ? ' (' + soles(s.precio_aplicado) + '/L)' : '') : (s.medida === 'BAJA_DEFINITIVA' ? 'Baja definitiva' : 'Capacitación')"></td></tr></template>
-                <tr x-show="!(d.data || []).length"><td colspan="5">No hay infractores registrados.</td></tr>
-            </table>
+            <div class="cabecera"><div><h1>Infractores</h1>
+                <p class="sub" style="margin: 0">Sanciones registradas: adulteración 1.ª vez = precio reducido, 2.ª vez = baja definitiva; acidez o leche significada = capacitación.</p></div></div>
+            <div class="rechazos">
+                <template x-for="s in d.data || []" :key="s.id">
+                    <article class="rechazo">
+                        <div class="fecha-bloque"><b x-text="Number(String(s.created_at).slice(8, 10))"></b><span x-text="fechaCorta(s.created_at).split(' ')[1]"></span></div>
+                        <div class="cuerpo-rechazo"><strong x-text="s.proveedor?.nombre || '—'"></strong><small x-text="s.proveedor?.comunidad?.nombre || ''"></small>
+                            <div class="etiquetas-rechazo"><span class="chip" :class="s.tipo === 'ADULTERACION' ? 'mal' : 'ojo'"
+                                x-text="{ ADULTERACION: 'Adulteración', SIGNIFICADA: 'Leche significada' }[s.tipo] || 'Acidez'"></span></div></div>
+                        <div class="vez" :class="s.nivel > 1 ? 'mal' : ''"><b x-text="s.nivel + '.ª'"></b><small>vez</small></div>
+                        <div class="capacitacion"><strong :class="s.medida === 'BAJA_DEFINITIVA' ? 'mal' : ''"
+                            x-text="s.medida === 'PRECIO_REDUCIDO' ? 'Precio reducido' + (s.precio_aplicado ? ' (' + soles(s.precio_aplicado) + '/L)' : '') : (s.medida === 'BAJA_DEFINITIVA' ? 'Baja definitiva' : 'Capacitación')"></strong></div>
+                    </article>
+                </template>
+                <div class="vacio-lista" x-show="!(d.data || []).length"><span aria-hidden="true">✓</span><p>No hay infractores registrados.</p></div>
+            </div>
         </section>
         </template>
 
         {{-- ---------------------------------------------------- CALIDAD: HISTORIAL --}}
         <template x-if="dDe === 'historial-calidad'">
         <section x-show="seccion === 'historial-calidad' && !cargando && !error">
-            <h1>Historial de análisis</h1>
-            <p class="sub" x-text="'Últimos ' + (d.analisis || []).length + ' análisis, con quién los hizo.'"></p>
-            <table class="lista"><tr><th>Fecha</th><th>Proveedor</th><th class="num">Litros</th><th class="num">Grasa</th><th class="num">Agua</th><th>Veredicto</th><th>Analizó</th></tr>
-                <template x-for="a in d.analisis || []" :key="a.id"><tr>
-                    <td x-text="fechaCorta(a.fecha) + ' ' + a.hora"></td>
-                    <td><strong x-text="a.proveedor"></strong><small class="apoyo-fila" x-text="a.vehiculo + ' · muestra de ' + (a.muestra === 'PLANTA' ? 'planta' : 'ruta')"></small></td>
-                    <td class="num" x-text="num(a.litros) + ' L'"></td>
-                    <td class="num" x-text="num(a.grasa, 2) + ' %'"></td>
-                    <td class="num" x-text="num(a.agua, 2) + ' %'"></td>
-                    <td><span class="chip" :class="a.veredicto === 'ACEPTADO' ? 'ok' : 'mal'" x-text="a.veredicto.toLowerCase()"></span>
-                        <small class="apoyo-fila" x-show="a.causas.length" x-text="a.causas.join(' · ')"></small></td>
-                    <td x-text="a.analista || '—'"></td></tr></template>
-                <tr x-show="!(d.analisis || []).length"><td colspan="7">Todavía no hay análisis.</td></tr>
-            </table>
+            <div class="cabecera"><div><h1>Historial de análisis</h1>
+                <p class="sub" style="margin: 0" x-text="'Últimos ' + (d.analisis || []).length + ' análisis, con quién los hizo.'"></p></div></div>
+            <div class="rechazos">
+                <template x-for="a in d.analisis || []" :key="a.id">
+                    <article class="rechazo analisis-fila" :class="a.veredicto === 'ACEPTADO' ? '' : 'malo'">
+                        <div class="fecha-bloque"><b x-text="Number(String(a.fecha).slice(8, 10))"></b><span x-text="fechaCorta(a.fecha).split(' ')[1]"></span></div>
+                        <div class="cuerpo-rechazo"><strong x-text="a.proveedor"></strong>
+                            <small x-text="a.hora + ' · ' + a.vehiculo + ' · muestra de ' + (a.muestra === 'PLANTA' ? 'planta' : 'ruta') + (a.analista ? ' · ' + a.analista : '')"></small>
+                            <div class="etiquetas-rechazo" x-show="a.causas.length"><template x-for="c in a.causas"><span class="chip mal" x-text="c"></span></template></div></div>
+                        <dl class="medidas-vehiculo medidas-analisis">
+                            <div><dt>Litros</dt><dd x-text="num(a.litros)"></dd></div>
+                            <div><dt>Grasa</dt><dd x-text="num(a.grasa, 2) + ' %'"></dd></div>
+                            <div><dt>Agua</dt><dd :class="a.veredicto !== 'ACEPTADO' && a.agua > 0 ? 'mal' : ''" x-text="num(a.agua, 2) + ' %'"></dd></div>
+                        </dl>
+                        <div class="capacitacion"><span class="chip" :class="a.veredicto === 'ACEPTADO' ? 'ok' : 'mal'" x-text="a.veredicto.toLowerCase()"></span></div>
+                    </article>
+                </template>
+                <div class="vacio-lista" x-show="!(d.analisis || []).length"><span aria-hidden="true">·</span><p>Todavía no hay análisis.</p></div>
+            </div>
         </section>
         </template>
     </main>
