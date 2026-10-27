@@ -74,9 +74,9 @@ fun ContenidoAcopiador(ruta: String, estado: EstadoAcopio, irA: (Int) -> Unit) {
     AltaProveedor(estado)
     val filas = Demo.proveedores.map {
         FilaProveedor(it, Demo.comunidad(it.comunidadId).nombre, Demo.vehiculo(it.vehiculoId).codigo, estado.entregaParaMostrar(it.id))
-    }.cercaDeMiRuta()
+    }.deMiRuta() // solo los de su carro, en el orden de su recorrido
     when (ruta) {
-        "acopiador/hoy" -> PantallaHoy(filas, estado, irA)
+        "acopiador/hoy" -> PantallaHoyAcopiador(filas, estado, irA)
         "acopiador/registrar" -> PantallaRegistrar(
             filas = filas,
             parametros = ParametrosCalidad(),
@@ -100,7 +100,7 @@ fun EtiquetaNuevoEnRuta(p: Proveedor) {
  * 15 días): para pasar a recoger al nuevo y no esperar al que ya no está.
  */
 @Composable
-private fun TarjetaCambiosRuta(filas: List<FilaProveedor>) {
+internal fun TarjetaCambiosRuta(filas: List<FilaProveedor>) {
     val mio = VehiculoElegido.id ?: return
     val llegaron = filas.map { it.proveedor }.filter { it.nuevoEnRuta(mio) }
     val seFueron = Demo.seFueron.filter { it.deVehiculoId == mio }
@@ -119,68 +119,6 @@ private fun TarjetaCambiosRuta(filas: List<FilaProveedor>) {
             Text("👋 ${s.nombre}", style = Texto.Fila, color = Altiplano.Texto)
             Text("Ya no está en tu ruta: se cambió de ${s.antes} a ${s.ahora} desde el ${fechaCorta(s.desde)}. No lo esperes.",
                 style = Texto.Apoyo, color = Altiplano.TextoSecundario)
-        }
-    }
-}
-
-@Composable
-private fun PantallaHoy(filas: List<FilaProveedor>, estado: EstadoAcopio, irA: (Int) -> Unit) {
-    val registrados = filas.count { it.entrega != null }
-    val faltan = filas.filter { it.entrega == null }
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Medidas.Pantalla),
-        verticalArrangement = Arrangement.spacedBy(Medidas.Hueco),
-    ) {
-        TarjetaMiVehiculo(filas) { irA(1) }
-        TarjetaCambiosRuta(filas)
-        TarjetaDato(
-            eyebrow = "LITROS ACOPIADOS HOY",
-            valor = formatear(estado.litrosHoy), unidad = "L",
-            apoyo = "$registrados de ${filas.size} proveedores registrados",
-            destacada = true,
-        ) {
-            Spacer(Modifier.height(12.dp))
-            LinearProgressIndicator(
-                progress = { registrados / filas.size.toFloat() },
-                modifier = Modifier.fillMaxWidth().height(7.dp),
-                color = Altiplano.Exito, trackColor = Altiplano.Fondo,
-            )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(Medidas.Hueco)) {
-            MiniDato("Valor del día", "S/ ${formatear(estado.litrosHoy * 1.8, 2)}", Modifier.weight(1f))
-            MiniDato("Sin enviar", "${estado.pendientes}", Modifier.weight(1f), Altiplano.Aviso)
-        }
-        if (faltan.isNotEmpty()) {
-            Text("PENDIENTES DE REGISTRAR", style = Texto.Eyebrow, color = Altiplano.TextoTerciario)
-            faltan.forEach { f ->
-                Surface(
-                    onClick = { irA(1) },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = Medidas.FilaProveedor),
-                    shape = RoundedCornerShape(14.dp), color = Altiplano.Superficie,
-                    border = BorderStroke(1.dp, Altiplano.VerdeBorde),
-                ) {
-                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(f.proveedor.nombre, style = Texto.Fila, color = Altiplano.Texto)
-                            Text("${f.comunidad} · ${f.vehiculo}", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
-                            if (f.proveedor.nuevoEnRuta(VehiculoElegido.id)) EtiquetaNuevoEnRuta(f.proveedor)
-                        }
-                        ChipEstado(Estado.FALTA)
-                    }
-                }
-            }
-        }
-        TarjetaAcopiadores(filas)
-    }
-}
-
-@Composable
-private fun MiniDato(etiqueta: String, valor: String, modifier: Modifier, color: Color = Altiplano.Texto) {
-    Surface(modifier, shape = RoundedCornerShape(14.dp), color = Altiplano.Superficie, border = BorderStroke(1.dp, Altiplano.Borde)) {
-        Column(Modifier.padding(14.dp)) {
-            Text(etiqueta, style = Texto.Apoyo, color = Altiplano.TextoTerciario)
-            Spacer(Modifier.height(5.dp))
-            Text(valor, style = Texto.DatoMedio.copy(fontSize = Texto.DatoMedio.fontSize * 0.75f), color = color)
         }
     }
 }
