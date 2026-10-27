@@ -88,36 +88,78 @@
         {{-- ---------------------------------------------------- TOTALES --}}
         <template x-if="dDe === 'totales'">
         <section x-show="seccion === 'totales' && !cargando && !error">
-            <h1>Totales de acopio</h1>
-            <p class="sub" x-text="d.desde === d.hasta ? fechaCorta(d.desde) : fechaCorta(d.desde) + ' – ' + fechaCorta(d.hasta)"></p>
-            <div class="pestanas">
-                <template x-for="p in [['dia','Día'],['semana','Semana'],['mes','Mes']]">
-                    <button :class="{ activo: periodo === p[0] }" @click="cambiar('periodo', p[0])" x-text="p[1]"></button>
-                </template>
+            {{-- encabezado: título, fechas y periodo a la derecha --}}
+            <div class="cabecera">
+                <div><h1>Totales de acopio</h1>
+                    <p class="sub" style="margin: 0" x-text="(d.desde === d.hasta ? fechaCorta(d.desde) : fechaCorta(d.desde) + ' – ' + fechaCorta(d.hasta)) + ' · ' + num(d.entregas, 0) + ' entregas'"></p></div>
+                <div class="espacio"></div>
+                <div class="pestanas" style="margin: 0">
+                    <template x-for="p in [['dia','Día'],['semana','Semana'],['mes','Mes']]">
+                        <button :class="{ activo: periodo === p[0] }" @click="cambiar('periodo', p[0])" x-text="p[1]"></button>
+                    </template>
+                </div>
             </div>
-            <div class="tarjetas">
-                <div class="tarjeta destacada"><div class="eti">Litros acopiados</div><div class="valor" x-text="num(d.litros, 0) + ' L'"></div>
-                    <div class="apoyo" x-text="soles(d.a_pagar) + ' a pagar a proveedores'"></div></div>
-                <div class="tarjeta"><div class="eti">Aceptados</div><div class="valor ok" x-text="num(d.aceptados_pct) + ' %'"></div></div>
-                <div class="tarjeta"><div class="eti">Rechazados</div><div class="valor mal" x-text="num(d.rechazados_pct) + ' %'"></div></div>
-                <div class="tarjeta"><div class="eti">Adulterada</div><div class="valor mal" x-text="num(d.adulterada_pct) + ' %'"></div></div>
+
+            {{-- arriba: los litros con su gráfico por día y la calidad en un anillo --}}
+            <div class="resumen-acopio">
+                <div class="tarjeta destacada grande-litros">
+                    <div class="eti">Litros acopiados</div>
+                    <div class="valor enorme" x-text="num(d.litros, 0) + ' L'"></div>
+                    <div class="apoyo" x-text="soles(d.a_pagar) + ' a pagar a proveedores' + (d.pendientes ? ' · ' + d.pendientes + ' entregas aún sin analizar' : '')"></div>
+                    <div class="grafico-dias" x-show="(d.por_dia || []).length > 1"
+                         x-html="svgBarrasDia((d.por_dia || []).map((x) => ({ fecha: x.fecha, valor: x.litros })))"></div>
+                </div>
+                <div class="tarjeta calidad-acopio">
+                    <div class="eti">Calidad de las entregas</div>
+                    <div class="dona-fila">
+                        <div class="dona" x-html="svgDona([
+                            { valor: d.aceptados_pct || 0, color: 'var(--exito)', nombre: 'Aceptadas' },
+                            { valor: d.rechazados_pct || 0, color: 'var(--alerta)', nombre: 'Rechazadas' },
+                            { valor: d.adulterada_pct || 0, color: 'rgba(239,107,107,.5)', nombre: 'Adulteradas' },
+                            { valor: d.entregas ? d.pendientes / d.entregas * 100 : 0, color: 'var(--aviso)', nombre: 'Sin analizar' }],
+                            num(d.aceptados_pct, 1) + '%', 'aceptadas')"></div>
+                        <ul class="leyenda-dona">
+                            <li><i style="background: var(--exito)"></i>Aceptadas<b x-text="num(d.aceptados_pct, 1) + ' %'"></b></li>
+                            <li><i style="background: var(--alerta)"></i>Rechazadas<b x-text="num(d.rechazados_pct, 1) + ' %'"></b></li>
+                            <li><i style="background: rgba(239,107,107,.5)"></i>Adulteradas<b x-text="num(d.adulterada_pct, 1) + ' %'"></b></li>
+                            <li x-show="d.pendientes"><i style="background: var(--aviso)"></i>Sin analizar<b x-text="d.pendientes"></b></li>
+                        </ul>
+                    </div>
+                    {{-- el promedio y el mejor día del periodo --}}
+                    <div class="mini-datos" x-show="(d.por_dia || []).length > 1">
+                        <div><span>Promedio por día</span><b x-text="num(d.litros / d.por_dia.length, 0) + ' L'"></b></div>
+                        <div><span>Mejor día</span><b x-text="(() => { const m = [...(d.por_dia || [])].sort((a, b) => b.litros - a.litros)[0]; return m ? num(m.litros, 0) + ' L · ' + fechaCorta(m.fecha) : ''; })()"></b></div>
+                    </div>
+                </div>
             </div>
+
+            {{-- un carro por tarjeta: litros, su parte del total, ruta y calidad --}}
             <h2>Por vehículo · litros y calidad</h2>
-            <table class="lista">
-                <tr><th>Vehículo</th><th>Acopiador</th><th>Ruta</th><th class="num">Litros</th><th style="width:18%"></th>
-                    <th class="num">Grasa</th><th class="num">Densidad</th><th class="num">Temp.</th><th class="num">Rechazo</th><th></th></tr>
+            <div class="vehiculos">
                 <template x-for="v in dDe === 'totales' ? (d.vehiculos || []) : []" :key="v.codigo">
-                    <tr><td x-text="v.codigo"></td><td x-text="v.acopiador || 'sin acopiador'"></td><td x-text="v.ruta"></td>
-                        <td class="num" x-text="num(v.litros, 0) + ' L'"></td>
-                        <td><div class="barra"><span :style="'width:' + (v.litros / maximo(d.vehiculos, 'litros') * 100) + '%'"></span></div></td>
-                        <td class="num" x-text="v.analisis ? num(v.grasa, 2) + ' %' : '—'"></td>
-                        <td class="num" x-text="v.analisis ? Number(v.densidad).toFixed(4) : '—'"></td>
-                        <td class="num" x-text="v.analisis ? num(v.temperatura) + ' °C' : '—'"></td>
-                        <td class="num" :class="{ mal: v.rechazo_pct > 8 }" x-text="v.analisis ? num(v.rechazo_pct) + ' %' : '—'"></td>
-                        <td><span class="chip mal" x-show="v.adulteradas" x-text="v.adulteradas + ' adulterada(s)'"></span></td></tr>
+                    <article class="vehiculo" :class="{ alerta: v.adulteradas || v.rechazo_pct > 8 }">
+                        <header>
+                            <span class="placa" x-text="v.codigo"></span>
+                            <span class="tipo-vehiculo" x-html="iconoMenu('acopio')" :title="v.tipo || 'Vehículo'"></span>
+                            <div class="quien"><strong x-text="v.acopiador || 'Sin acopiador'"></strong>
+                                <small x-text="(v.ruta || '').split(', ').filter(Boolean).length + ' comunidades'"></small></div>
+                        </header>
+                        <div class="litros-vehiculo"><b x-text="num(v.litros, 0)"></b> L
+                            <span x-text="d.litros ? num(v.litros / d.litros * 100, 0) + ' % del total' : ''"></span></div>
+                        <div class="barra"><span :style="'width:' + (v.litros / maximo(d.vehiculos, 'litros') * 100) + '%'"></span></div>
+                        <div class="ruta-chips"><template x-for="c in (v.ruta || '').split(', ').filter(Boolean)"><span x-text="c"></span></template></div>
+                        <dl class="medidas-vehiculo" x-show="v.analisis">
+                            <div><dt>Grasa</dt><dd x-text="num(v.grasa, 2) + ' %'"></dd></div>
+                            <div><dt>Densidad</dt><dd x-text="Number(v.densidad).toFixed(4)"></dd></div>
+                            <div><dt>Temp.</dt><dd x-text="num(v.temperatura) + ' °C'"></dd></div>
+                            <div><dt>Rechazo</dt><dd :class="{ mal: v.rechazo_pct > 8 }" x-text="num(v.rechazo_pct) + ' %'"></dd></div>
+                        </dl>
+                        <p class="apoyo-fila" x-show="!v.analisis">Sin análisis de Calidad en estas fechas.</p>
+                        <span class="chip mal" x-show="v.adulteradas" x-text="v.adulteradas + (v.adulteradas === 1 ? ' entrega adulterada' : ' entregas adulteradas')"></span>
+                    </article>
                 </template>
-            </table>
-            <p class="sub">Grasa, densidad y temperatura son promedios de los análisis de Calidad en estas fechas.</p>
+            </div>
+            <p class="sub" style="margin-top: 12px">Grasa, densidad y temperatura son promedios de los análisis de Calidad en estas fechas.</p>
         </section>
         </template>
 

@@ -98,10 +98,40 @@ function oficina() {
       if (this.usuario) this.ir(this.menu()[0].pestanas[0].id);
     },
 
-    /**
-     * Menú: cada opción agrupa una o más pantallas que se muestran como
-     * pestañas arriba (ej. Calidad → Por vehículo | Adulteraciones).
-     */
+    // ------------------------------------------------- gráficos chicos (SVG)
+    /** Barras por día (viewBox 0 0 640 112, ancho y bajo): [{ fecha, valor, clase? }]; la más alta llega arriba y debajo va el día. */
+    svgBarrasDia(serie, unidad = 'L') {
+      if (!serie?.length) return '';
+      const max = Math.max(...serie.map((x) => x.valor), 1);
+      const ancho = 620 / serie.length, barra = Math.min(46, ancho * 0.58);
+      const DIAS = ['do', 'lu', 'ma', 'mi', 'ju', 'vi', 'sá'];
+      return `<svg viewBox="0 0 640 112" role="img" aria-label="Litros por día">${serie.map((x, k) => {
+        const h = Math.max(2, (x.valor / max) * 70), cx = 10 + ancho * k + ancho / 2;
+        const [a, m, d] = String(x.fecha).slice(0, 10).split('-').map(Number);
+        const dia = serie.length <= 8 ? DIAS[new Date(a, m - 1, d).getDay()] + ' ' + d : String(d);
+        return `<g><title>${fechaCorta(x.fecha)}: ${num(x.valor, 0)} ${unidad}</title>
+          <rect x="${cx - barra / 2}" y="${88 - h}" width="${barra}" height="${h}" rx="4" class="${x.clase || ''}"/>
+          ${serie.length <= 8 ? `<text x="${cx}" y="${82 - h}" class="g-valor">${num(x.valor, 0)}</text>` : ''}
+          <text x="${cx}" y="106" class="g-eje">${dia}</text></g>`;
+      }).join('')}</svg>`;
+    },
+    /** Anillo con partes [{ valor, color, nombre }] y un número al centro (viewBox 0 0 120 120). */
+    svgDona(partes, centro, debajo = '') {
+      const total = partes.reduce((t, x) => t + x.valor, 0) || 1;
+      const R = 46, C = 2 * Math.PI * R;
+      let va = 0;
+      return `<svg viewBox="0 0 120 120" role="img" aria-label="${partes.map((x) => x.nombre + ' ' + num(x.valor, 1)).join(', ')}">
+        <circle cx="60" cy="60" r="${R}" fill="none" stroke="var(--superficie-2)" stroke-width="13"/>
+        ${partes.filter((x) => x.valor > 0).map((x) => {
+          const largo = (x.valor / total) * C;
+          const s = `<circle cx="60" cy="60" r="${R}" fill="none" stroke="${x.color}" stroke-width="13"
+            stroke-dasharray="${Math.max(0.1, largo - (partes.filter((y) => y.valor > 0).length > 1 ? 1.5 : 0))} ${C}"
+            stroke-dashoffset="${-va}" transform="rotate(-90 60 60)"/>`;
+          va += largo;
+          return s;
+        }).join('')}
+        <text x="60" y="62" class="dona-centro">${centro}</text><text x="60" y="80" class="dona-debajo">${debajo}</text></svg>`;
+    },
     /** Ícono de línea de cada opción del menú (SVG 24×24, toma el color del texto). */
     iconoMenu(id) {
       const T = {
@@ -120,6 +150,10 @@ function oficina() {
       };
       return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${T[id] || '<circle cx="12" cy="12" r="4"/>'}</svg>`;
     },
+    /**
+     * Menú: cada opción agrupa una o más pantallas que se muestran como
+     * pestañas arriba (ej. Calidad → Por vehículo | Adulteraciones).
+     */
     menu() {
       // el analista registra los análisis con su propio usuario (el administrador solo los supervisa)
       if (this.usuario?.rol === 'CALIDAD') {

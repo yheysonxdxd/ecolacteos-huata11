@@ -87,6 +87,10 @@ class AdminAppController extends Controller
             'aceptados_pct' => $pct($aceptadas), 'rechazados_pct' => $pct($rechazadas),
             'adulterada_pct' => $pct($adulteradas), 'pendientes' => $pendientes,
             'vehiculos' => $porVehiculo,
+            // para el gráfico de la web: litros de cada día del periodo
+            'por_dia' => (clone $ents)->groupBy('fecha')->orderBy('fecha')
+                ->selectRaw("fecha, SUM(litros) as litros, SUM(CASE WHEN estado_calidad = 'RECHAZADO' THEN 1 ELSE 0 END) as rechazadas, COUNT(*) as entregas")
+                ->get()->map(fn ($x) => ['fecha' => $x->fecha, 'litros' => (float) $x->litros, 'rechazadas' => (int) $x->rechazadas, 'entregas' => (int) $x->entregas]),
         ]);
     }
 
