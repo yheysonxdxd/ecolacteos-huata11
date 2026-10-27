@@ -1342,3 +1342,11 @@ input.buscador { padding-left: 38px; background-image: url("data:image/svg+xml,%
   .deuda-semana .btn { justify-self: start; }
 }
 @media (prefers-reduced-motion: reduce) { .cal-dia { transition: none; } }
+
+/* ---- Padrón > ficha del proveedor: lo que se le debe, con Pagar ahí mismo ---- */
+.deuda-ficha { margin-top: 12px; padding: 12px 14px; border-radius: var(--radio); background: var(--aviso-fondo); border: 1px solid var(--aviso-borde); }
+.deuda-ficha strong { display: block; font: 700 16px var(--letra-titulo); color: var(--aviso); }
+.deuda-ficha small { display: block; font-size: 12.5px; color: var(--texto-2); }
+.deuda-ficha-semanas { display: grid; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--aviso-borde); font-size: 14px; }
+.deuda-ficha-semanas b { font-family: var(--letra-titulo); }
+table.semanas td .btn.chico { margin-left: 6px; }

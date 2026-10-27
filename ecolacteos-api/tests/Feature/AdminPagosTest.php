@@ -151,4 +151,17 @@ class AdminPagosTest extends TestCase
         $t->assertJsonPath('desde', $this->lunesPasado->toDateString())->assertJsonPath('hasta', $this->lunesPasado->toDateString());
         $this->assertEquals(20, $t->json('litros'));
     }
+
+    public function test_la_ficha_del_padron_trae_lo_que_se_debe_para_pagarlo(): void
+    {
+        $this->getJson('/api/v1/admin/pagos')->assertOk(); // genera la boleta
+        $f = $this->getJson("/api/v1/admin/proveedores/{$this->proveedorId}/ficha")->assertOk();
+        $this->assertCount(1, $f->json('pagos.pendientes'));
+        $this->assertEquals(63, $f->json('pagos.pendientes.0.monto'));
+        $semana = collect($f->json('semanas'))->firstWhere('estado', 'PENDIENTE');
+        $this->assertSame($f->json('pagos.pendientes.0.id'), $semana['boleta_id']);
+
+        $this->postJson('/api/v1/admin/pagos/pagar', ['ids' => [$semana['boleta_id']], 'metodo' => 'YAPE'])->assertOk();
+        $this->assertCount(0, $this->getJson("/api/v1/admin/proveedores/{$this->proveedorId}/ficha")->json('pagos.pendientes'));
+    }
 }

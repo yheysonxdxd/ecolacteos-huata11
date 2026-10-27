@@ -1000,17 +1000,20 @@ function oficina() {
       this.ventana = 'boleta';
       try { this.f.dias = (await this.api('/admin/pagos/' + b.id)).dias; } catch (e) { this.f.error = e.message; }
     },
-    pagar(ids, titulo) {
-      this.f = { ids, titulo, error: null, enviando: false };
+    /** fichaId: se pagó desde la ficha del proveedor (Padrón) → al terminar se vuelve a ella. */
+    pagar(ids, titulo, fichaId = null) {
+      this.f = { ids, titulo, fichaId, error: null, enviando: false };
       this.ventana = 'pagar';
     },
     async confirmarPago(metodo) {
       this.f.enviando = true;
       try {
         const r = await this.api('/admin/pagos/pagar', { ids: this.f.ids, metodo });
+        const fichaId = this.f.fichaId;
         this.ventana = null;
         this.aviso = { texto: `✓ Se registraron ${r.pagadas} pagos por ${soles(r.total)} (${metodo === 'YAPE' ? 'Yape' : 'efectivo'})` };
         await this.cargar();
+        if (fichaId) await this.abrirFicha(fichaId);
       } catch (e) { this.f.error = e.message; } finally { this.f.enviando = false; }
     },
 

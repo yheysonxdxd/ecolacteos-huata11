@@ -1943,7 +1943,7 @@
         <div class="dos"><button class="btn" :disabled="!!f.enviando" @click="confirmarPago('EFECTIVO')">Efectivo</button>
             <button class="btn" :disabled="!!f.enviando" @click="confirmarPago('YAPE')">Yape</button></div>
         <div class="aviso error" x-show="f.error" x-text="f.error"></div>
-        <div class="pie"><button class="btn gris" @click="ventana = null">Cancelar</button></div>
+        <div class="pie"><button class="btn gris" @click="f.fichaId ? abrirFicha(f.fichaId) : (ventana = null)">Cancelar</button></div>
     </div>
 
     {{-- anular una orden de compra que no llegó --}}
@@ -2084,6 +2084,27 @@
                     <div class="apoyo" x-text="'semana en curso ' + soles(f.ficha.pagos.semana_en_curso.monto) + ' (se paga el ' + fechaCorta(f.ficha.pagos.semana_en_curso.se_paga) + ')'"></div></div>
             </div>
 
+            {{-- lo que se le debe: pagarlo aquí mismo, todo junto o semana por semana --}}
+            <template x-if="(f.ficha.pagos.pendientes || []).length">
+                <div class="deuda-ficha">
+                    <div class="fila">
+                        <div><strong x-text="'Se le debe ' + soles(f.ficha.pagos.pendientes.reduce((t, b) => t + b.monto, 0))"></strong>
+                            <small x-text="f.ficha.pagos.pendientes.length === 1 ? '1 semana sin pagar' : f.ficha.pagos.pendientes.length + ' semanas sin pagar · desde el ' + fechaCorta(f.ficha.pagos.pendientes[0].inicio)"></small></div>
+                        <div class="espacio"></div>
+                        <button class="btn" @click="pagar(f.ficha.pagos.pendientes.map((b) => b.id),
+                                'Pagar a ' + f.ficha.proveedor.nombre + ' todo lo que se le debe (' + soles(f.ficha.pagos.pendientes.reduce((t, b) => t + b.monto, 0)) + ')', f.ficha.proveedor.id)"
+                                x-text="f.ficha.pagos.pendientes.length > 1 ? 'Pagar todo' : 'Pagar'"></button>
+                    </div>
+                    <div class="deuda-ficha-semanas" x-show="f.ficha.pagos.pendientes.length > 1">
+                        <template x-for="b in f.ficha.pagos.pendientes" :key="b.id">
+                            <div class="fila"><span x-text="'Semana ' + fechaCorta(b.inicio) + ' – ' + fechaCorta(b.fin)"></span>
+                                <div class="espacio"></div><b x-text="soles(b.monto)"></b>
+                                <button class="btn chico gris" @click="pagar([b.id], 'Pagar a ' + f.ficha.proveedor.nombre + ' la semana del ' + fechaCorta(b.inicio) + ' (' + soles(b.monto) + ')', f.ficha.proveedor.id)">Pagar esta</button></div>
+                        </template>
+                    </div>
+                </div>
+            </template>
+
             {{-- entregas y pagos juntos, una fila por semana; al tocarla se ven sus días --}}
             <h2>Entregas y pagos por semana</h2>
             <table class="lista semanas">
@@ -2099,7 +2120,9 @@
                             <td class="num" x-text="soles(s.monto)"></td>
                             <td><span class="chip" :class="{ ok: s.estado === 'PAGADO', ojo: s.estado === 'PENDIENTE' }"
                                       x-text="s.estado === 'PAGADO' ? '✓ ' + fechaCorta(s.pagado_el) + (s.metodo ? ' · ' + (s.metodo === 'YAPE' ? 'Yape' : 'efectivo') : '')
-                                            : (s.estado === 'EN_CURSO' ? 'en curso · se paga el ' + fechaCorta(s.fin) : 'Pendiente')"></span></td>
+                                            : (s.estado === 'EN_CURSO' ? 'en curso · se paga el ' + fechaCorta(s.fin) : 'Pendiente')"></span>
+                                <button class="btn chico" x-show="s.estado === 'PENDIENTE' && s.boleta_id && s.monto > 0"
+                                        @click.stop="pagar([s.boleta_id], 'Pagar a ' + f.ficha.proveedor.nombre + ' la semana del ' + fechaCorta(s.inicio) + ' (' + soles(s.monto) + ')', f.ficha.proveedor.id)">Pagar</button></td>
                         </tr>
                         <tr x-show="f.abierta === s.inicio" class="dias-semana"><td colspan="5">
                             <template x-for="e in s.detalle" :key="e.fecha">

@@ -169,7 +169,7 @@ class AdminPadronController extends Controller
             ->orderBy('fecha')->get(['fecha', 'litros', 'ausente', 'estado_calidad', 'monto'])
             ->groupBy(fn ($e) => Carbon::parse($e->fecha)->startOfWeek(Carbon::MONDAY)->toDateString());
         $boletas = DB::table('pagos_semanales')->where('proveedor_id', $id)->where('inicio', '>=', $primerLunes->toDateString())
-            ->get(['inicio', 'monto', 'estado', 'pagado_el', 'metodo'])->keyBy(fn ($b) => substr((string) $b->inicio, 0, 10));
+            ->get(['id', 'inicio', 'monto', 'estado', 'pagado_el', 'metodo'])->keyBy(fn ($b) => substr((string) $b->inicio, 0, 10));
         $semanas = [];
         for ($k = 0; $k < $n; $k++) {
             $ini = $lunes->copy()->subWeeks($k)->toDateString();
@@ -186,6 +186,7 @@ class AdminPadronController extends Controller
                 // EN_CURSO: aún no cierra · PAGADO · PENDIENTE (ya cerró, falta pagar)
                 'estado' => $k === 0 ? 'EN_CURSO' : ($b->estado ?? 'PENDIENTE'),
                 'pagado_el' => $b->pagado_el ?? null, 'metodo' => $b->metodo ?? null,
+                'boleta_id' => $k > 0 ? ($b->id ?? null) : null, // para pagarla desde la ficha
                 'detalle' => $es->map(fn ($e) => ['fecha' => $e->fecha, 'litros' => (float) $e->litros,
                     'ausente' => (bool) $e->ausente, 'calidad' => $e->estado_calidad])->values(),
             ];
@@ -208,6 +209,11 @@ class AdminPadronController extends Controller
             'semanas' => $semanas, 'semanas_pedidas' => $n, 'hay_mas' => $hayMas,
             'pagos' => [
                 'por_pagar' => round((float) DB::table('pagos_semanales')->where('proveedor_id', $id)->where('estado', 'PENDIENTE')->sum('monto'), 2),
+                // todo lo que se le debe (también semanas más viejas que las de la tabla), para pagarlo desde aquí
+                'pendientes' => DB::table('pagos_semanales')->where('proveedor_id', $id)->where('estado', 'PENDIENTE')
+                    ->where('monto', '>', 0)->whereDate('inicio', '<', $lunes->toDateString())->orderBy('inicio')
+                    ->get(['id', 'inicio', 'fin', 'monto'])->map(fn ($b) => ['id' => $b->id, 'inicio' => substr((string) $b->inicio, 0, 10),
+                        'fin' => substr((string) $b->fin, 0, 10), 'monto' => (float) $b->monto]),
                 'pagado_total' => round((float) DB::table('pagos_semanales')->where('proveedor_id', $id)->where('estado', 'PAGADO')->sum('monto'), 2),
                 'semana_en_curso' => ['litros' => round((float) (clone $estaSemana)->sum('litros'), 1),
                     'monto' => round((float) (clone $estaSemana)->sum('monto'), 2), 'se_paga' => $lunes->copy()->endOfWeek(Carbon::SUNDAY)->toDateString()],
