@@ -34,6 +34,18 @@ class Formulas
             ['Envase 1 L', 95], // 95 L de yogurt por cada 100 L
             ['Sorbato de potasio', 0.05], // 0,05 %: evita hongos y levaduras, el yogurt dura más
         ],
+        // queso semiduro tipo suizo (Flüeler y Marbach, Guía para la elaboración de quesos, CEDEPAS,
+        // 6.3): CaCl2 2 g por 10 L; cuajo líquido 8–12 g por 100 L. La sal va en salmuera aparte.
+        'Queso andino' => [
+            ['Cloruro de calcio', 0.02], ['Cultivo láctico', 0.005], // cultivo: el de la planta, según su sobre
+            ['Cuajo líquido', 0.01],
+        ],
+        // informe de elaboración de queso mantecoso (Ing. Industrias Alimentarias, Cajamarca, 2010):
+        // CaCl2 20 g y sal 0,5 kg por 100 L (2–2,5 % del quesillo); cultivo 1 g por 100 L (UNT Huamachuco)
+        'Queso mantecoso' => [
+            ['Cloruro de calcio', 0.02], ['Cultivo láctico', 0.001],
+            ['Cuajo líquido', 0.01], ['Sal industrial', 0.5],
+        ],
     ];
 
     /**
@@ -64,6 +76,27 @@ class Formulas
             'Incubar a 42–45 °C por 4–5 horas, sin mover, hasta que quede firme (pH 4,4–4,6).',
             'Enfriar a 4–6 °C, batir y agregar el sorbato de potasio (disuelto antes en un poco de leche).',
             'Envasar en botellas de 1 L y guardar en frío.',
+        ],
+        'Queso andino' => [
+            'Filtrar la leche aceptada (pH mayor a 6,20) y agregar 10 % de agua (10 L por cada 100 L).',
+            'Pasteurizar a 65 °C por 30 minutos y enfriar a 35 °C.',
+            'Agregar el cultivo láctico y el cloruro de calcio (20 g por cada 100 L) y dejar madurar al menos 30 minutos.',
+            'Agregar el cuajo y dejar cuajar 25–40 minutos (empieza a flocular a los 10–20 minutos).',
+            'Cortar en granos del tamaño de un maíz, agitar y sacar el 30 % del suero (unos 30 minutos).',
+            'Calentar unos 20 minutos agregando 20 % de agua caliente a 60 °C, batiendo, hasta que la cuajada llegue a 39–42 °C.',
+            'Moldear rápido, molde por molde, y prensar volteando a 35–40 °C durante 20 horas.',
+            'Salar en salmuera al 22 % (25 kg de sal por 100 L de salmuera, a 12–16 °C): 6–8 horas por cada kilo de queso.',
+            'Secar 2 días y madurar a 12–15 °C con unos 90 % de humedad, de 2 a 15 semanas.',
+        ],
+        'Queso mantecoso' => [
+            'Filtrar la leche aceptada y pasteurizar a 70 °C por 15 minutos.',
+            'Enfriar a 30–35 °C (nunca más de 35 °C) y agregar el cultivo, el cloruro de calcio y el cuajo; dejar cuajar unos 45 minutos.',
+            'Cortar en cubos de 3–4 cm, reposar 5 minutos y batir suave 15–20 minutos.',
+            'Sacar el suero hasta dos tercios de la tina, agregar agua a 70–75 °C hasta que la cuajada llegue a 37 °C y batir otros 15–20 minutos.',
+            'Sacar todo el suero: esa cuajada es el quesillo. Ponerlo en costalillos de 20–25 kg y desaguarlo hasta 48 horas en agua, con 4–6 cambios, volteando los costales en cada cambio.',
+            'Prensar el quesillo (solo, unas 12 horas) hasta que no se pegue entre los dedos ni se desmorone.',
+            'Moler el quesillo, agregar la sal (2–2,5 % del peso del quesillo: 0,5 kg por cada 100 L de leche) y amasar hasta que quede una masa pareja y pastosa.',
+            'Moldear (15 × 10 × 6 cm), voltear a los 30 minutos, envolver en papel poligrasa y guardar a 2–5 °C al menos 6 horas antes de vender. Dura unas 2 semanas en frío.',
         ],
     ];
 
