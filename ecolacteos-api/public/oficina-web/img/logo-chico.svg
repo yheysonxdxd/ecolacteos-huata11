@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">
+  <!-- versión para la pestaña del navegador (16–32 px): sin la totora, trazos más gruesos -->
+  <defs><linearGradient id="fondo" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#163A55"/><stop offset="1" stop-color="#124A2C"/></linearGradient></defs>
+  <rect width="108" height="108" rx="24" fill="url(#fondo)"/>
+  <g transform="translate(-6.8 -10.8) scale(1.6)" stroke-linecap="round" fill="none">
+    <path d="M11,50 A27,27 0 0 1 65,50" stroke="#7FD4E0" stroke-width="3.2"/>
+    <path d="M17,50 A21,21 0 0 1 59,50" stroke="#4FC47A" stroke-width="4.2"/>
+    <g fill="#fff" stroke="none">
+      <path d="M25,32 C23.5,26 25,21 28,19 C31,21 32.5,26 32.5,31 Z"/>
+      <path d="M51,32 C52.5,26 51,21 48,19 C45,21 43.5,26 43.5,31 Z"/>
+      <path d="M27,33 C27,28 32,25 38,25 C44,25 49,28 49,33 C49,42 45,48 38,48 C31,48 27,42 27,33 Z"/>
+    </g>
+    <g fill="#1E6E3E"><circle cx="33.5" cy="34" r="2.4"/><circle cx="42.5" cy="34" r="2.4"/><ellipse cx="38" cy="42.3" rx="6" ry="3.7" fill-opacity=".35"/></g>
+    <path d="M12,60 C22,57 30,62 38,62 C46,62 54,57 64,60" stroke="#7FD4E0" stroke-width="3.6"/>
+  </g>
+</svg>

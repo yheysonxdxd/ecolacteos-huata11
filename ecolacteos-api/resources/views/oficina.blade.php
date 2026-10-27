@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ecolácteos Huata · Oficina</title>
+{{-- logo: la vaca frente al arco, con totora y el lago (el mismo de la app del celular) --}}
+<link rel="icon" type="image/svg+xml" href="/oficina-web/img/logo-chico.svg">
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="apple-touch-icon" href="/oficina-web/img/logo-180.png">
+<meta name="theme-color" content="#0f1a24">
 <link rel="stylesheet" href="/oficina-web/vendor/leaflet/leaflet.css">
 <script src="/oficina-web/vendor/leaflet/leaflet.js"></script>
 <link rel="stylesheet" href="/oficina-web/estilos.css">
@@ -20,6 +25,7 @@
        target="_blank" rel="noopener">Foto: Olga Ernst · CC BY-SA 4.0</a>
 
     <div class="login-intro">
+        <img class="logo-login" src="/oficina-web/img/logo.svg" alt="" width="84" height="84">
         <div class="marca grande">Ecolácteos <em>Huata</em></div>
         <p>De la vaca a la planta: el acopio de leche, su calidad, la producción y las ventas de Huata en un solo lugar.</p>
         <div class="chips">
@@ -28,6 +34,7 @@
     </div>
 
     <form @submit.prevent="entrar()">
+        <img class="logo-form" src="/oficina-web/img/logo.svg" alt="" width="64" height="64">
         <div class="marca">Ecolácteos <em>Huata</em></div>
         <div class="marca-sub">OFICINA · ADMINISTRACIÓN Y COMPRAS</div>
         <label>DNI</label>
@@ -46,7 +53,7 @@
 {{-- ============================================================ APP --}}
 <div class="app" x-show="usuario" x-cloak>
     <nav class="menu">
-        <div class="marca"><span class="sello" aria-hidden="true"></span><span>Ecolácteos <em>Huata</em></span></div>
+        <div class="marca"><img class="sello" src="/oficina-web/img/logo.svg" alt="" width="38" height="38"><span>Ecolácteos <em>Huata</em></span></div>
         <div class="rol"><span class="avatar" aria-hidden="true" x-text="(usuario?.nombre || '?').trim().charAt(0).toUpperCase()"></span>
             <span><strong x-text="usuario?.nombre || ''"></strong><small x-text="ROLES[usuario?.rol] || ''"></small></span></div>
         <template x-for="(m, i) in menu()" :key="m.id">

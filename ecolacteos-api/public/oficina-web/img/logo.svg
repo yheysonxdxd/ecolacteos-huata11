@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">
+  <!-- Ecolácteos Huata: la vaca frente al arco, con totora y el lago (el mismo dibujo que la app) -->
+  <defs><linearGradient id="fondo" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#163A55"/><stop offset="1" stop-color="#124A2C"/></linearGradient></defs>
+  <rect width="108" height="108" rx="26" fill="url(#fondo)"/>
+  <g transform="translate(12.2 10.6) scale(1.1)" stroke-linecap="round" fill="none">
+    <path d="M5,50 A33,33 0 0 1 71,50" stroke="#7FD4E0" stroke-opacity=".8" stroke-width="1.8"/>
+    <path d="M11,50 A27,27 0 0 1 65,50" stroke="#2F8F4E" stroke-opacity=".9" stroke-width="2.8"/>
+    <path d="M17,50 A21,21 0 0 1 59,50" stroke="#4FC47A" stroke-width="3.4"/>
+    <g fill="#fff" stroke="none">
+      <path d="M25,32 C23.5,26 25,21 28,19 C31,21 32.5,26 32.5,31 Z"/>
+      <path d="M51,32 C52.5,26 51,21 48,19 C45,21 43.5,26 43.5,31 Z"/>
+      <path d="M27,33 C27,28 32,25 38,25 C44,25 49,28 49,33 C49,42 45,48 38,48 C31,48 27,42 27,33 Z"/>
+    </g>
+    <g fill="#1E6E3E" stroke="none">
+      <circle cx="33.5" cy="34" r="2.1"/><circle cx="42.5" cy="34" r="2.1"/>
+      <ellipse cx="38" cy="42.3" rx="6" ry="3.7" fill-opacity=".3"/>
+      <circle cx="35.4" cy="41.6" r="1.1"/><circle cx="40.6" cy="41.6" r="1.1"/>
+    </g>
+    <path d="M4,60 C18,56 28,62 38,62 C48,62 58,56 72,60" stroke="#7FD4E0" stroke-width="2.8"/>
+    <path d="M12,58 C12,51 15,44 15,38" stroke="#4FC47A" stroke-opacity=".9" stroke-width="2.2"/>
+    <path d="M17,58 C17,52 20,45 21,41" stroke="#4FC47A" stroke-opacity=".65" stroke-width="2.2"/>
+    <path d="M60,58 C60,53 62,48 62,44" stroke="#4FC47A" stroke-opacity=".55" stroke-width="2"/>
+  </g>
+</svg>
