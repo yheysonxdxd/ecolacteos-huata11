@@ -1367,3 +1367,15 @@ table.semanas td .btn.chico { margin-left: 6px; }
 .pago-chip.grande { padding: 8px 14px; font-size: 13.5px; gap: 10px; }
 .pago-chip.grande b { font: 800 15px var(--letra-titulo); color: var(--texto); }
 @media (prefers-reduced-motion: reduce) { .metodos-pago button { transition: none; } }
+
+/* ---- Vender / cliente: el nombre que sale al escribir un DNI o RUC ---- */
+.doc-encontrado { display: flex; align-items: center; gap: 14px; margin-top: 10px; padding: 12px 14px; border-radius: 12px;
+  background: var(--verde-suave); border: 1px solid var(--verde-borde); }
+.doc-encontrado.nada { background: var(--superficie-2); border-color: var(--borde); }
+.doc-encontrado .que { flex: 1; min-width: 0; }
+.doc-encontrado .que strong { display: block; font: 700 16px var(--letra-titulo); }
+.doc-encontrado .que small { display: block; font-size: 12.5px; color: var(--texto-3); }
+.doc-estado { margin: 6px 0 0; font-size: 13px; color: var(--texto-3); }
+.doc-estado.ok { color: var(--exito); }
+.doc-estado.mal { color: var(--aviso); }
+@media (max-width: 640px) { .doc-encontrado { flex-direction: column; align-items: stretch; } }

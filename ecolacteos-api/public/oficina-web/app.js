@@ -12,6 +12,8 @@ const API = '/api/v1';
 // ------------------------------------------------------------------ formato
 const soles = (v) => 'S/ ' + Number(v || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const num = (v, d = 1) => Number(v || 0).toLocaleString('es-PE', { maximumFractionDigits: d });
+/** De dónde salió el nombre de un DNI/RUC (ConsultaDocumento). */
+const FUENTE_DOC = { cliente: 'Ya es cliente', proveedor: 'Es proveedor de leche', trabajador: 'Trabaja en la planta', reniec: 'Según RENIEC', sunat: 'Según SUNAT' };
 /** Cómo pagó el cliente una venta (ventas.metodo_pago). */
 const METODO_PAGO = {
   EFECTIVO: { nombre: 'Efectivo', icono: '💵' },
@@ -66,6 +68,7 @@ function oficina() {
     acopioMes: '',    // calendario de Acopio: mes a la vista (vacío = el del último día con entregas)
     acopioFecha: '',  // y el día tocado (vacío = el último con entregas de ese mes)
     deudaAbierta: {}, // Pagos > Lo que se debe: proveedor => sus semanas desplegadas
+    docVenta: null,   // Vender, paso 1: lo que se encontró del DNI/RUC escrito en el buscador { numero, cargando, nombre, fuente, … }
     semana: null,
     dinero: 'ventas',
     semanaRech: null, // rechazos de calidad: semana a la vista (null = esta semana)
@@ -100,7 +103,7 @@ function oficina() {
     cfgInsumos: {}, nuevoInsumo: { nombre: '', unidad: 'kg', minimo: '' },
     cfgVeh: {}, cfgCom: {}, nuevaCom: {}, nuevoVeh: { codigo: '', tipo: 'CARRO', acopiador_id: null },
 
-    soles, num, fechaCorta, hora, TIPO_CLIENTE, ROLES, METODO_PAGO, esCorreo,
+    soles, num, fechaCorta, hora, TIPO_CLIENTE, ROLES, METODO_PAGO, FUENTE_DOC, esCorreo,
 
     iniciar() {
       // si la ventana del cliente se cierra con Esc o clic afuera, se vuelve a la venta a medias
@@ -1127,13 +1130,42 @@ function oficina() {
       const todos = [...(this.d.clientes || []), ...(this.verClientesInactivos ? this.d.inactivos || [] : [])];
       return todos.filter((c) => !q || c.nombre.toLowerCase().includes(q) || (c.ruc || '').includes(q) || (c.telefono || '').includes(q));
     },
-    abrirCliente(c = null) {
+    /** nuevo = { nombre, documento } ya encontrados (DNI escrito en el buscador del paso 1). */
+    abrirCliente(c = null, nuevo = null) {
       this.fVenta = this.f; // se guarda la venta a medias y se vuelve a ella al terminar
       this.f = c
         ? { id: c.id, nombre: c.nombre, tipo: c.tipo, documento: c.ruc || '', telefono: c.telefono || '', email: c.email || '',
             activo: !!Number(c.activo), error: null, enviando: false }
-        : { id: null, nombre: '', tipo: 'MAYORISTA', documento: '', telefono: '', email: '', activo: true, error: null, enviando: false };
+        : { id: null, nombre: nuevo?.nombre || '', tipo: nuevo ? (nuevo.documento.length === 8 ? 'DIRECTO' : 'MAYORISTA') : 'MAYORISTA',
+            documento: nuevo?.documento || '', telefono: '', email: '', activo: true, error: null, enviando: false };
+      this.f.doc = nuevo ? { numero: nuevo.documento, nombre: nuevo.nombre, fuente: nuevo.fuente } : null; // de dónde salió el nombre
       this.ventana = 'cliente';
+    },
+    /** Nombre de un DNI (8) o RUC (11): de la planta o de RENIEC/SUNAT. null si no es un número así. */
+    async consultarDocumento(numero) {
+      if (!/^(\d{8}|\d{11})$/.test(numero)) return null;
+      try { return await this.api('/compras/documento/' + numero); }
+      catch (e) { return { numero, nombre: null, error: 'No se pudo consultar: ' + e.message }; }
+    },
+    /** Paso 1: si lo escrito es un DNI/RUC que no es de ningún cliente, se busca el nombre para agregarlo al toque. */
+    async alBuscarCliente() {
+      const q = this.buscarCliente.trim();
+      if (!/^(\d{8}|\d{11})$/.test(q) || this.clientesVisibles().some((c) => c.ruc === q)) return (this.docVenta = null);
+      if (this.docVenta?.numero === q) return;
+      this.docVenta = { numero: q, cargando: true };
+      const r = await this.consultarDocumento(q);
+      if (this.buscarCliente.trim() === q) this.docVenta = { ...r, cargando: false }; // si siguió escribiendo, se descarta
+    },
+    /** Ventana de cliente: al completar el DNI/RUC se pone el nombre (si el nombre está vacío o lo puso la consulta anterior). */
+    async alEscribirDocumento() {
+      const f = this.f; const numero = f.documento;
+      if (!/^(\d{8}|\d{11})$/.test(numero) || f.doc?.numero === numero) return;
+      f.doc = { numero, cargando: true };
+      const r = await this.consultarDocumento(numero);
+      if (this.f !== f || f.documento !== numero) return;
+      const puedoPoner = !f.nombre.trim() || f.nombre === f.nombrePuesto;
+      f.doc = { ...r, cargando: false, puesto: !!(r?.nombre && puedoPoner) };
+      if (r?.nombre && puedoPoner) { f.nombre = r.nombre; f.nombrePuesto = r.nombre; }
     },
     cerrarCliente() { this.f = this.fVenta; this.fVenta = null; this.ventana = null; },
     async guardarCliente() {

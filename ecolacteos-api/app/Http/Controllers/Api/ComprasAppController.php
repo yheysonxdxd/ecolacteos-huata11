@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\Compras;
+use App\Services\ConsultaDocumento;
 use App\Services\Formulas;
 use App\Services\Mermas;
 use Illuminate\Http\Request;
@@ -207,6 +208,12 @@ class ComprasAppController extends Controller
             'correo' => $data['correo'] ?? null,
             'correo_enviado' => ! empty($data['correo']) && ! $errorCorreo,
             'correo_error' => $errorCorreo], 201);
+    }
+
+    /** GET /api/v1/compras/documento/{dni o ruc} — el nombre de esa persona o empresa (ver ConsultaDocumento). */
+    public function documento(string $numero)
+    {
+        return response()->json(ConsultaDocumento::buscar($numero));
     }
 
     private function filaVendida(array $ids, int $clienteId, array $l, ?int $loteId, float $cant, int $usuarioId, array $pago): int

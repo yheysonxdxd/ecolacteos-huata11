@@ -2,6 +2,11 @@
 
 return [
 
+    // nombre de un DNI (RENIEC) o RUC (SUNAT) al registrar un cliente: App\Services\ConsultaDocumento
+    'decolecta' => [
+        'token' => env('DECOLECTA_TOKEN'),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Third Party Services

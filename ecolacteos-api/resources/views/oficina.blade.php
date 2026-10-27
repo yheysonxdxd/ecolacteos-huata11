@@ -939,7 +939,7 @@
             {{-- 1 · cliente --}}
             <div class="tarjeta paso-venta" x-show="f.paso === 1">
                 <h2>¿A quién le vendes?</h2>
-                <input type="search" x-model="buscarCliente" placeholder="Buscar por nombre, DNI/RUC o teléfono" class="grande">
+                <input type="search" x-model="buscarCliente" @input.debounce.350ms="alBuscarCliente()" placeholder="Buscar por nombre, DNI/RUC o teléfono" class="grande" inputmode="search">
                 <template x-if="!buscarCliente.trim()"><div>
                     <div class="eti" style="margin-top: 14px" x-show="clientesFrecuentes().length">Últimos clientes</div>
                     <div class="chips-cliente">
@@ -952,7 +952,20 @@
                         <button class="cliente-op" @click="elegirCliente(c, true)">
                             <strong x-text="c.nombre"></strong>
                             <small x-text="[TIPO_CLIENTE[c.tipo] || c.tipo, c.ruc ? (c.ruc.length === 8 ? 'DNI ' : 'RUC ') + c.ruc : '', c.telefono ? 'Tel. ' + c.telefono : ''].filter(Boolean).join(' · ')"></small></button></template>
-                    <div class="apoyo" x-show="!clientesVisibles().filter((c) => Number(c.activo)).length">Nadie se llama así. Agrégalo con <strong>+ Nuevo cliente</strong>.</div>
+                    {{-- un DNI/RUC que no es de ningún cliente: su nombre (RENIEC/SUNAT o de la planta) y agregarlo al toque --}}
+                    <template x-if="docVenta && docVenta.numero === buscarCliente.trim() && !clientesVisibles().some((c) => c.ruc === docVenta.numero)">
+                        <div class="doc-encontrado" :class="{ nada: !docVenta.cargando && !docVenta.nombre }">
+                            <div class="que">
+                                <small x-text="(docVenta.numero.length === 8 ? 'DNI ' : 'RUC ') + docVenta.numero"></small>
+                                <strong x-text="docVenta.cargando ? 'Buscando el nombre…' : (docVenta.nombre || (docVenta.sin_token ? 'No es de ningún cliente' : 'No se encontró'))"></strong>
+                                <small x-show="docVenta.nombre" x-text="FUENTE_DOC[docVenta.fuente] || ''"></small>
+                                <small x-show="!docVenta.cargando && !docVenta.nombre" x-text="docVenta.error || (docVenta.sin_token ? 'Para traer el nombre de RENIEC falta poner el token (DECOLECTA_TOKEN). Puedes escribirlo a mano.' : '')"></small>
+                            </div>
+                            <button class="btn" x-show="!docVenta.cargando" @click="abrirCliente(null, { nombre: docVenta.nombre || '', documento: docVenta.numero, fuente: docVenta.fuente })"
+                                    x-text="docVenta.nombre ? '+ Agregar y vender' : '+ Agregar a mano'"></button>
+                        </div>
+                    </template>
+                    <div class="apoyo" x-show="!clientesVisibles().filter((c) => Number(c.activo)).length && !docVenta">Nadie se llama así. Agrégalo con <strong>+ Nuevo cliente</strong>.</div>
                 </div></template>
                 <div class="fila" style="margin-top: 18px">
                     <button class="btn gris" @click="abrirCliente()">+ Nuevo cliente</button>
@@ -2519,9 +2532,15 @@
             <button :class="{ activo: f.tipo === 'MAYORISTA' }" @click="f.tipo = 'MAYORISTA'">Mayorista (compra para revender)</button>
             <button :class="{ activo: f.tipo === 'DIRECTO' }" @click="f.tipo = 'DIRECTO'">Cliente directo (para su casa)</button></div>
         <p class="sub" style="margin: 6px 0 0">El precio de cada venta sale solo según este tipo.</p>
-        <label>Nombre de la persona o del negocio</label><input x-model="f.nombre" placeholder="Ej.: Puesto Mercado Túpac Amaru">
+        {{-- primero el DNI/RUC: al completarlo, el nombre se pone solo (RENIEC/SUNAT) --}}
         <label>DNI o RUC (opcional)</label>
-        <input x-model="f.documento" maxlength="11" @input="f.documento = f.documento.replace(/\D/g, '')" placeholder="8 dígitos (DNI) u 11 (RUC)">
+        <input x-model="f.documento" maxlength="11" inputmode="numeric" @input="f.documento = f.documento.replace(/\D/g, ''); alEscribirDocumento()" placeholder="8 dígitos (DNI) u 11 (RUC): el nombre sale solo">
+        <p class="doc-estado" x-show="f.doc" :class="{ ok: f.doc?.nombre, mal: f.doc && !f.doc.cargando && !f.doc.nombre }"
+           x-text="!f.doc ? '' : f.doc.cargando ? 'Buscando el nombre…'
+                 : f.doc.nombre ? '✓ ' + (FUENTE_DOC[f.doc.fuente] || 'Encontrado') + (f.doc.puesto === false ? ': ' + f.doc.nombre + ' (no se cambió el nombre que escribiste)' : '')
+                 : (f.doc.error || (f.doc.sin_token ? 'Falta el token de RENIEC (DECOLECTA_TOKEN): escribe el nombre a mano.' : 'No se encontró: escribe el nombre a mano.'))"></p>
+        <p class="doc-estado mal" x-show="f.doc?.fuente === 'cliente' && f.doc?.cliente_id !== f.id">⚠ Ya hay un cliente con ese documento.</p>
+        <label>Nombre de la persona o del negocio</label><input x-model="f.nombre" placeholder="Ej.: Puesto Mercado Túpac Amaru">
         <div class="dos">
             <div><label>Teléfono (opcional)</label><input x-model="f.telefono"></div>
             <div><label>Correo (opcional)</label><input type="email" x-model="f.email" placeholder="Para mandarle la nota de venta"></div>
