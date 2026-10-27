@@ -1291,3 +1291,13 @@ input.buscador { padding-left: 38px; background-image: url("data:image/svg+xml,%
 .grupo-insumos .insumo-tarjeta { background: radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--tono) 13%, transparent), transparent 62%), var(--superficie-2); }
 @media (max-width: 640px) { .cabeza-grupo .iconitos { display: none; } .cabeza-grupo { flex-wrap: wrap; } .cabeza-grupo .chip { order: 5; margin-left: 56px; } }
 @media (prefers-reduced-motion: reduce) { .cabeza-grupo .flecha { transition: none; } }
+
+/* --- Almacén: productos terminados en grupos --- */
+.puntos-productos { display: flex; gap: 4px; }
+.puntos-productos i { width: 11px; height: 11px; border-radius: 50%; }
+.puntos-productos i.vacio { opacity: .3; }
+.total-grupo { font-size: 13px; color: var(--texto-3); white-space: nowrap; }
+.total-grupo b { font: 800 20px var(--letra-titulo); color: var(--texto); font-variant-numeric: tabular-nums; }
+.grupo-insumos .productos-almacen { padding-top: 2px; }
+.grupo-insumos .producto-almacen { background: var(--superficie-2); box-shadow: none; }
+@media (max-width: 640px) { .puntos-productos { display: none; } }

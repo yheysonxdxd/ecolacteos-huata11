@@ -996,8 +996,21 @@
             </template>
 
             <h2>Productos terminados</h2>
+            {{-- productos agrupados: quesos y yogurt (con sus sabores); cada grupo se abre como un combo --}}
+            <div class="grupos-insumos">
+                <template x-for="g in gruposProductosAlmacen()" :key="g.id">
+                    <section class="grupo-insumos" :class="{ abierto: almacenAbierto[g.id] }">
+                        <button class="cabeza-grupo" @click="almacenAbierto[g.id] = !almacenAbierto[g.id]" :aria-expanded="!!almacenAbierto[g.id]">
+                            <span class="ico-grupo" aria-hidden="true" x-text="g.icono"></span>
+                            <span class="texto"><strong x-text="g.nombre"></strong>
+                                <small x-text="g.items.length + (g.items.length === 1 ? ' producto' : ' productos') + ' · ' + g.conStock + ' con stock'"></small></span>
+                            <span class="puntos-productos" aria-hidden="true"><template x-for="x in g.items" :key="x.id"><i :style="'background: ' + colorReceta(x)" :class="{ vacio: !(x.stock > 0) }"></i></template></span>
+                            <span class="total-grupo" x-show="g.total !== null"><b x-text="num(g.total, 0)"></b> <span x-text="g.unidad"></span></span>
+                            <span class="flecha" aria-hidden="true">▾</span>
+                        </button>
+                        <div class="desplegable" :class="{ abierto: almacenAbierto[g.id] }"><div class="dentro">
             <div class="productos-almacen">
-                <template x-for="p in d.productos || []" :key="p.id">
+                <template x-for="p in g.items" :key="p.id">
                     <article class="producto-almacen" :class="{ cero: !(p.stock > 0) }" :style="'--tono: ' + colorReceta(p)">
                         <div class="mini-dibujo" x-html="dibujoReceta(p)"></div>
                         <div class="info">
@@ -1011,6 +1024,10 @@
                         </div>
                         <button class="btn chico gris" @click="verKardex(p.id, 'producto')">Kardex</button>
                     </article>
+                </template>
+            </div>
+                        </div></div>
+                    </section>
                 </template>
             </div>
 

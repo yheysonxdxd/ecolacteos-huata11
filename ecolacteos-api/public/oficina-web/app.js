@@ -137,6 +137,18 @@ function oficina() {
         return { id, icono, nombre, items, faltan: items.filter((i) => i.stock < i.minimo).length };
       }).filter((g) => g.items.length);
     },
+    /** Productos terminados en grupos: quesos, yogurt (con sus sabores) y otros; lo que tiene stock va primero. */
+    gruposProductosAlmacen() {
+      const GRUPOS = [['P-QUESO', 'QUESO', '🧀', 'Quesos'], ['P-YOGURT', 'YOGURT', '🥛', 'Yogurt'], ['P-OTRO', 'OTRO', '📦', 'Otros productos']];
+      return GRUPOS.map(([id, tipo, icono, nombre]) => {
+        const items = (this.d.productos || []).filter((p) => (p.tipo || 'OTRO') === tipo)
+          .sort((a, b) => (b.stock > 0) - (a.stock > 0) || a.nombre.localeCompare(b.nombre));
+        // el total solo si todos se cuentan igual (quesos de 1 kg, litros)
+        const unidades = new Set(items.map((p) => p.unidad));
+        return { id, icono, nombre, items, conStock: items.filter((p) => p.stock > 0).length,
+          total: unidades.size === 1 ? items.reduce((t, p) => t + Math.max(0, p.stock), 0) : null, unidad: this.unidadProducto(items[0]) };
+      }).filter((g) => g.items.length);
+    },
     grupoInsumoAbierto(g) { return this.almacenAbierto[g.id] ?? g.faltan > 0; },
     /** Ícono de cada insumo según su nombre (sal, cuajo, cultivo, azúcar, saborizante, envase…). */
     iconoInsumo(i) {
