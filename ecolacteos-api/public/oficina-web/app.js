@@ -1643,17 +1643,27 @@ function oficina() {
       const todos = this.d.productos || [];
       const familias = todos.filter((p) => !p.base_id || !todos.some((b) => b.id === p.base_id))
         .map((base) => ({ base, items: [base, ...todos.filter((x) => x.base_id === base.id)] }));
+      // los quesos van todos juntos en un solo "Quesos" que se despliega (como el yogurt con sus sabores)
+      const quesos = familias.filter((fa) => fa.base.tipo === 'QUESO');
+      const juntos = quesos.length > 1
+        ? [{ base: { id: 'QUESOS', nombre: 'Quesos', tipo: 'QUESO', unidad: quesos[0].base.unidad }, items: quesos.flatMap((fa) => fa.items), mezcla: true }]
+        : quesos;
       return [['QUESO', '🧀 Quesos'], ['YOGURT', '🥛 Yogurt'], ['OTRO', 'Otros']]
-        .map(([tipo, nombre]) => ({ tipo, nombre, familias: familias.filter((fa) => (fa.base.tipo || 'OTRO') === tipo) }))
+        .map(([tipo, nombre]) => ({ tipo, nombre, familias: tipo === 'QUESO' ? juntos : familias.filter((fa) => (fa.base.tipo || 'OTRO') === tipo) }))
         .filter((g) => g.familias.length);
+    },
+    /** Cómo se llama cada renglón dentro de su lista: "Queso Paria", "Fresa", "Natural". */
+    nombreEnFamilia(fa, x) {
+      if (fa.mezcla) return x.nombre;
+      return x.base_id ? x.variante : (fa.items.length > 1 ? 'Natural' : x.nombre);
     },
     /** Lo que dice la familia cerrada: lo elegido ("60 litros natural · 40 fresa") o cuántos sabores tiene. */
     resumenFamilia(fa) {
       const u = /litro/i.test(fa.base.unidad) ? 'L' : this.unidadProducto(fa.base);
-      const elegidos = fa.items.filter((x) => Number(this.varios[x.id]) > 0)
-        .map((x) => num(Number(this.varios[x.id]), 0) + ' ' + u + ' ' + (x.base_id ? x.variante.toLowerCase() : 'natural'));
+      const elegidos = fa.items.filter((x) => Number(this.varios[x.id]) > 0).map((x) => num(Number(this.varios[x.id]), 0) + ' ' +
+        (fa.mezcla ? x.nombre.replace(/^queso\s+/i, '') : u + ' ' + (x.base_id ? x.variante.toLowerCase() : 'natural')));
       if (elegidos.length) return elegidos.join(' · ');
-      return fa.items.length + (fa.base.tipo === 'YOGURT' ? ' sabores' : ' variedades') + ' · toca para elegir';
+      return fa.items.length + (fa.mezcla ? ' tipos de queso' : fa.base.tipo === 'YOGURT' ? ' sabores' : ' variedades') + ' · toca para elegir';
     },
     /** Litros de leche que usa lo elegido de [p] (0 si no se hace). */
     litrosDe(p) { return this.planVarios().elegidos.find((e) => e.p.id === p.id)?.litros || 0; },

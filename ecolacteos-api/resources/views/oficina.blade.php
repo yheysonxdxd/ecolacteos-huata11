@@ -983,7 +983,7 @@
                                             <div class="nombre">
                                                 <i x-show="fa.items.length > 1"></i>
                                                 <div>
-                                                    <strong x-text="x.base_id ? x.variante : (fa.items.length > 1 ? 'Natural' : x.nombre)"></strong>
+                                                    <strong x-text="nombreEnFamilia(fa, x)"></strong>
                                                     <template x-for="k in [litrosDe(x)]" :key="k"><small class="brinca" x-text="Number(varios[x.id]) > 0 ? 'usa ' + num(k, 0) + ' L de leche' : 'rinde ' + num(x.rendimiento_min * 100, 1) + ' ' + unidadProducto(x) + ' por 100 L'"></small></template>
                                                 </div>
                                             </div>
