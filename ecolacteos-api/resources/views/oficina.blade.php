@@ -958,8 +958,8 @@
         {{-- ---------------------------------------------------- KARDEX --}}
         <template x-if="dDe === 'kardex'">
         <section x-show="seccion === 'kardex' && !cargando && !error">
-            <div class="fila no-imprimir"><h1>Kardex · entradas y salidas</h1><div class="espacio"></div>
-                <button class="btn gris" @click="window.print()">Imprimir</button></div>
+            <div class="cabecera no-imprimir"><div><h1>Kardex · entradas y salidas</h1></div><div class="espacio"></div>
+                <button class="btn gris" @click="window.print()">🖨 Imprimir</button></div>
             <h1 class="solo-imprimir" x-text="'Kardex · ' + (d.item?.nombre || '')"></h1>
             <div class="pestanas no-imprimir" style="margin-top: 10px">
                 <template x-for="t in pestanasKardex()" :key="t.tipo + t.id">
@@ -978,13 +978,18 @@
                 <div style="flex: 1; min-width: 140px"><label>Hasta</label><input type="date" x-model="kardex.hasta" @change="cargar()"></div>
                 <button class="btn gris" x-show="kardex.desde || kardex.hasta" @click="kardex.desde = ''; kardex.hasta = ''; cargar()">Todo</button>
             </div>
-            <div class="tarjetas" style="margin-top: 16px" x-show="d.item">
-                <div class="tarjeta"><div class="eti">Entró</div><div class="valor ok" x-text="'+ ' + num(d.totales?.entradas.cantidad, 3) + ' ' + (d.item?.unidad || '')"></div>
-                    <div class="apoyo" x-show="kardexContable" x-text="soles(d.totales?.entradas.total)"></div></div>
-                <div class="tarjeta"><div class="eti">Salió</div><div class="valor" x-text="'− ' + num(d.totales?.salidas.cantidad, 3) + ' ' + (d.item?.unidad || '')"></div>
-                    <div class="apoyo" x-show="kardexContable" x-text="soles(d.totales?.salidas.total)"></div></div>
-                <div class="tarjeta destacada"><div class="eti">Queda</div><div class="valor" :class="d.item?.stock < d.item?.minimo ? 'mal' : ''" x-text="num(d.totales?.saldo.cantidad, 3) + ' ' + (d.item?.unidad || '')"></div>
-                    <div class="apoyo" x-text="(kardexContable ? 'vale ' + soles(d.totales?.saldo.total) + ' · costo promedio ' + cu(d.totales?.saldo.costo) : '') + (d.item?.minimo ? (kardexContable ? ' · ' : '') + 'mínimo ' + num(d.item.minimo, 3) : '')"></div></div>
+            {{-- entró → salió → queda, y cómo fue cambiando lo que queda --}}
+            <div class="flujo-kardex" x-show="d.item">
+                <div class="paso-flujo entra"><span class="eti">Entró</span><b x-text="'+ ' + num(d.totales?.entradas.cantidad, 3)"></b><small x-text="(d.item?.unidad || '') + (kardexContable ? ' · ' + soles(d.totales?.entradas.total) : '')"></small></div>
+                <span class="flecha-flujo" aria-hidden="true">→</span>
+                <div class="paso-flujo sale"><span class="eti">Salió</span><b x-text="'− ' + num(d.totales?.salidas.cantidad, 3)"></b><small x-text="(d.item?.unidad || '') + (kardexContable ? ' · ' + soles(d.totales?.salidas.total) : '')"></small></div>
+                <span class="flecha-flujo" aria-hidden="true">→</span>
+                <div class="paso-flujo queda" :class="d.item?.stock < d.item?.minimo ? 'mal' : ''"><span class="eti">Queda</span><b x-text="num(d.totales?.saldo.cantidad, 3)"></b>
+                    <small x-text="(d.item?.unidad || '') + (kardexContable ? ' · vale ' + soles(d.totales?.saldo.total) : '') + (d.item?.minimo ? ' · mínimo ' + num(d.item.minimo, 3) : '')"></small></div>
+                <div class="tarjeta linea-saldo" x-show="(d.filas || []).length > 2">
+                    <div class="eti">Cómo fue cambiando lo que queda</div>
+                    <div x-html="svgLineaSaldo(d.filas || [], d.item?.minimo)"></div>
+                </div>
             </div>
             {{-- resumen en una frase: entró tanto (por compras…), salió tanto (en producción…), queda tanto --}}
             <div class="resumen-kardex" x-show="d.item" x-html="resumenKardex()"></div>
@@ -997,16 +1002,19 @@
             </div>
 
             {{-- vista sencilla --}}
-            <table class="lista kardex-simple" style="margin-top: 12px" x-show="!kardexContable">
-                <tr><th>Fecha</th><th>Qué pasó</th><th class="num">Entró</th><th class="num">Salió</th><th class="num">Queda</th></tr>
-                <template x-for="(m, k) in dDe === 'kardex' ? (d.filas || []) : []" :key="k"><tr :class="m.tipo === 'ANTERIOR' || m.tipo === 'INICIAL' ? 'tenue' : ''">
-                    <td x-text="fechaCorta(m.fecha) + ' ' + hora(m.fecha)"></td>
-                    <td><strong class="que-kardex" x-show="m.que" x-text="m.que"></strong><span :class="m.tipo === 'MERMA' ? 'mal' : ''" x-text="m.texto"></span><div class="quien" x-show="m.usuario" x-text="'Registró: ' + m.usuario"></div></td>
-                    <td class="num ok"><strong x-text="m.entrada ? '+ ' + num(m.entrada.cantidad, 3) + ' ' + d.item.unidad : ''"></strong></td>
-                    <td class="num sale"><strong x-text="m.salida ? '− ' + num(m.salida.cantidad, 3) + ' ' + d.item.unidad : ''"></strong></td>
-                    <td class="num" :class="m.saldo.cantidad < 0 ? 'mal' : ''"><strong x-text="num(m.saldo.cantidad, 3) + ' ' + d.item.unidad"></strong></td></tr></template>
-                <tr x-show="!(d.filas || []).length"><td colspan="5">No hay movimientos en estas fechas.</td></tr>
-            </table>
+            <ol class="linea-kardex" x-show="!kardexContable">
+                <template x-for="(m, k) in dDe === 'kardex' ? (d.filas || []) : []" :key="k">
+                    <li :class="[m.entrada ? 'entra' : (m.salida ? 'sale' : 'nada'), m.tipo === 'ANTERIOR' || m.tipo === 'INICIAL' ? 'tenue' : '', m.tipo === 'MERMA' ? 'merma' : '']">
+                        <span class="punto-kardex" aria-hidden="true" x-text="({ COMPRA: '🛒', ACOPIO: '🥛', PRODUCCION: m.entrada ? '🧀' : '⚙', VENTA: '🏷', MERMA: '⚠', AJUSTE: '✎', ANTERIOR: '↺', INICIAL: '↺' })[m.tipo] || '•'"></span>
+                        <div class="cuando"><b x-text="fechaCorta(m.fecha)"></b><span x-text="hora(m.fecha)"></span></div>
+                        <div class="que"><strong x-show="m.que" x-text="m.que"></strong><span x-text="m.texto"></span>
+                            <small x-show="m.usuario" x-text="'Registró: ' + m.usuario"></small></div>
+                        <span class="mov" x-show="m.entrada || m.salida" x-text="m.entrada ? '+ ' + num(m.entrada.cantidad, 3) : '− ' + num(m.salida?.cantidad, 3)"></span>
+                        <div class="saldo" :class="m.saldo.cantidad < 0 ? 'mal' : ''"><b x-text="num(m.saldo.cantidad, 3)"></b><span x-text="d.item.unidad"></span></div>
+                    </li>
+                </template>
+                <li class="vacio-lista" x-show="!(d.filas || []).length"><p>No hay movimientos en estas fechas.</p></li>
+            </ol>
 
             {{-- vista contable (valorizada por costo promedio ponderado) --}}
             <table class="lista kardex" style="margin-top: 12px" x-show="kardexContable">
