@@ -153,6 +153,7 @@ private fun VentaReal(irA: (Int) -> Unit) {
                         lineas.forEach { (p, cant, precio) ->
                             Spacer(Modifier.height(6.dp))
                             FilaValor("${formatear(cant, 0)} × ${p.txt("nombre")} a ${soles(precio)}", soles(cant * precio))
+                            Text(textoLotes(p, cant), style = Texto.Apoyo, color = Altiplano.TextoTerciario)
                         }
                     }
                     sinStock.forEach { (p, _, _) -> AvisoCampo("Solo hay ${formatear(p.num("stock"), 0)} de ${p.txt("nombre")} en stock.", esAlerta = true) }
@@ -262,8 +263,8 @@ private fun PasoProductos(prods: List<JsonObject>, c: JsonObject, lineas: List<T
             Text(nombre, style = Texto.Apoyo, color = Altiplano.TextoTerciario)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 delTipo.forEach { (b, sabores) ->
-                    val etiqueta = if (sabores.size > 1) b.txt("nombre").replace(Regex("\\s+natural$", RegexOption.IGNORE_CASE), "") + " · ${sabores.size} sabores"
-                        else b.txt("nombre")
+                    val etiqueta = (if (sabores.size > 1) b.txt("nombre").replace(Regex("\\s+natural$", RegexOption.IGNORE_CASE), "") + " · ${sabores.size} sabores"
+                        else b.txt("nombre")) + if (sabores.any(::vencePronto)) " ⏳" else ""
                     Chip(etiqueta, v.familia == id(b)) {
                         v.familia = id(b)
                         if (sabores.size == 1) elegir(sabores[0]) else v.producto = null
@@ -279,7 +280,7 @@ private fun PasoProductos(prods: List<JsonObject>, c: JsonObject, lineas: List<T
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 sabores.forEach { p ->
                     val nombre = if (p.txt("base_id").isEmpty()) "Natural / sin sabor" else p.txt("variante").ifEmpty { p.txt("nombre") }
-                    Chip("$nombre (${formatear(p.num("stock"), 0)})", v.producto == id(p)) { elegir(p) }
+                    Chip("$nombre (${formatear(p.num("stock"), 0)})" + if (vencePronto(p)) " ⏳" else "", v.producto == id(p)) { elegir(p) }
                 }
             }
         }
@@ -291,6 +292,9 @@ private fun PasoProductos(prods: List<JsonObject>, c: JsonObject, lineas: List<T
             Text(p.txt("nombre"), style = Texto.Fila, color = Altiplano.Texto)
             Text("${soles(precio(p))} c/u · hay ${formatear(p.num("stock"), 0)} ${p.txt("unidad")}" + if (ya > 0) " · ya lleva ${formatear(ya, 0)}" else "",
                 style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+            // sale primero lo que vence primero
+            Text(textoLotes(p, ya + v.cuantos), style = Texto.Apoyo, color = if (vencePronto(p)) Altiplano.Aviso else Altiplano.TextoTerciario)
+            if (p.num("vencido") > 0) AvisoCampo("${formatear(p.num("vencido"), 0)} ${p.txt("unidad")} ya vencieron: no se venden, regístralos en Almacén → Pérdidas.")
             Spacer(Modifier.height(8.dp))
             StepperGrande(v.cuantos, { v.cuantos = (it ?: 1.0).coerceAtLeast(1.0) }, paso = 1.0, minimo = 1.0, decimales = 0,
                 unidad = p.txt("unidad"), fueraDeRango = pasa, compacto = true)
@@ -307,7 +311,10 @@ private fun PasoProductos(prods: List<JsonObject>, c: JsonObject, lineas: List<T
     if (lineas.isEmpty()) Text("Todavía no lleva nada.", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
     lineas.forEach { (p, cant, pr) ->
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("${formatear(cant, 0)} × ${p.txt("nombre")}", style = Texto.Cuerpo, color = Altiplano.Texto, modifier = Modifier.weight(1f))
+            Column(Modifier.weight(1f)) {
+                Text("${formatear(cant, 0)} × ${p.txt("nombre")}", style = Texto.Cuerpo, color = Altiplano.Texto)
+                Text(textoLotes(p, cant), style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+            }
             Text(soles(cant * pr), style = Texto.Fila, color = Altiplano.Texto)
             TextButton(onClick = { v.cantidades.remove(id(p)) }) { Text("✕", color = Altiplano.Alerta) }
         }
@@ -318,6 +325,22 @@ private fun PasoProductos(prods: List<JsonObject>, c: JsonObject, lineas: List<T
     }
     TextButton(onClick = { v.pasoVenta = 1 }) { Text("← Cliente", color = Altiplano.CelesteAcento) }
 }
+
+/** De qué lotes sale [cant] de p: primero el que vence primero, igual que el servidor. */
+private fun textoLotes(p: JsonObject, cant: Double): String {
+    var falta = cant
+    val usa = p.lista("lotes").mapNotNull { l ->
+        if (falta <= 0.005) null else minOf(falta, l.num("queda")).let { u -> falta -= u; l to u }
+    }
+    return usa.joinToString(" · ") { (l, u) ->
+        val dias = l.num("dias").toInt()
+        (if (usa.size > 1) "${formatear(u, 0)} del " else "Sale del ") + "lote ${l.txt("codigo")}, vence el ${fechaCorta(l.txt("vence_el"))}" +
+            when (dias) { 0 -> " (hoy)"; 1 -> " (mañana)"; else -> " (en $dias días)" }
+    }
+}
+
+/** Tiene un lote que vence en 7 días o menos: hay que venderlo primero. */
+private fun vencePronto(p: JsonObject) = p.lista("lotes").any { it.num("dias") <= 7 }
 
 /** Agregar o editar a quién le vendemos; el DNI o RUC es opcional. Al agregar uno, queda elegido para la venta. */
 @OptIn(ExperimentalLayoutApi::class)

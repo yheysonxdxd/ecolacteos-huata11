@@ -19,16 +19,29 @@ class ComprasAppController extends Controller
         return Compras::costosUnitarios();
     }
 
-    /** Stock de producto terminado = obtenido en lotes cerrados − vendido − perdido. */
-    private function productos()
+    /**
+     * Stock de producto terminado = obtenido en lotes cerrados − vendido − perdido.
+     * Para vender: stock = solo lo que no venció, con sus lotes (el que vence primero arriba)
+     * y cuánto ya venció (eso no se vende: se registra como pérdida).
+     */
+    private function productos(bool $paraVender = false)
     {
         $precios = DB::table('precios_venta')->whereNull('vigente_hasta')->get()->groupBy('producto_id');
-        return DB::table('productos')->orderBy('id')->get()->map(function ($p) use ($precios) {
-            return [
+        return DB::table('productos')->orderBy('id')->get()->map(function ($p) use ($precios, $paraVender) {
+            $fila = [
                 'id' => $p->id, 'nombre' => $p->nombre, 'tipo' => $p->tipo, 'base_id' => $p->base_id, 'variante' => $p->variante, 'unidad' => $p->unidad, 'activo' => (bool) $p->activo,
                 'stock' => Mermas::stockProducto($p->id),
                 'precios' => ($precios[$p->id] ?? collect())->mapWithKeys(fn ($x) => [$x->tipo_cliente => (float) $x->precio]),
             ];
+            if ($paraVender) {
+                [$vencidos, $buenos] = Mermas::lotesConStock($p->id)->partition('vencido');
+                $fila['stock'] = round((float) $buenos->sum('queda'), 2);
+                $fila['vencido'] = round((float) $vencidos->sum('queda'), 2);
+                $hoy = now('America/Lima')->startOfDay();
+                $fila['lotes'] = $buenos->map(fn ($l) => ['codigo' => $l->codigo, 'vence_el' => $l->vence_el, 'queda' => $l->queda,
+                    'dias' => (int) round($hoy->diffInDays(\Illuminate\Support\Carbon::parse($l->vence_el, 'America/Lima'), false))])->values();
+            }
+            return $fila;
         })->filter(fn ($p) => $p['activo'] || $p['stock'] > 0)->values(); // el que ya no se produce sale mientras quede stock
     }
 
@@ -59,7 +72,7 @@ class ComprasAppController extends Controller
             ->get(['id', 'nombre', 'tipo', 'ruc', 'telefono', 'email', 'activo', 'u.ultima_venta']);
 
         return response()->json([
-            'productos' => $this->productos(),
+            'productos' => $this->productos(true),
             'clientes' => $clientes->where('activo', true)->values(),
             'inactivos' => $clientes->where('activo', false)->values(), // la web los muestra si se piden
         ]);
@@ -131,7 +144,7 @@ class ComprasAppController extends Controller
             'items.*.cantidad.min' => 'La cantidad debe ser mayor a 0.',
         ]);
         $cliente = DB::table('clientes')->find($data['cliente_id']);
-        $productos = collect($this->productos())->keyBy('id');
+        $productos = collect($this->productos(true))->keyBy('id');
 
         // primero se revisa todo (precio y stock de cada producto); si algo falla no se vende nada
         $varios = count($data['items']) > 1;
@@ -139,29 +152,35 @@ class ComprasAppController extends Controller
             $p = $productos[(int) $it['producto_id']];
             $precio = $p['precios'][$cliente->tipo] ?? null;
             abort_if(! $precio, 422, "No hay precio vigente de {$p['nombre']} para ese tipo de cliente");
-            abort_if($p['stock'] < $it['cantidad'], 422, $varios ? "Solo hay {$p['stock']} de {$p['nombre']} en stock" : "Solo hay {$p['stock']} en stock");
+            $vencido = $p['vencido'] > 0 ? " (otros {$p['vencido']} ya vencieron: regístralos en Pérdidas)" : '';
+            abort_if($p['stock'] < $it['cantidad'], 422, ($varios ? "Solo hay {$p['stock']} de {$p['nombre']} en stock" : "Solo hay {$p['stock']} en stock").$vencido);
             return ['producto_id' => $p['id'], 'cantidad' => (float) $it['cantidad'], 'precio' => (float) $precio];
         });
 
         $ids = DB::transaction(function () use ($lineas, $cliente, $r) {
             $ids = [];
             foreach ($lineas as $l) {
-                // el lote cerrado más antiguo que aún no vence
-                $lote = DB::table('lotes')->where('producto_id', $l['producto_id'])->where('estado', 'TERMINADO')
-                    ->where('vence_el', '>=', now()->toDateString())->orderBy('iniciado_en')->value('id');
-                $ids[] = DB::table('ventas')->insertGetId([
-                    'uuid' => (string) Str::uuid(), 'nota_id' => $ids[0] ?? null, 'cliente_id' => $cliente->id,
-                    'producto_id' => $l['producto_id'], 'lote_id' => $lote, 'cantidad' => $l['cantidad'],
-                    'precio_unitario' => $l['precio'], 'total' => round($l['precio'] * $l['cantidad'], 2),
-                    'registrada_por' => $r->user()->id, 'vendida_en' => now(), 'created_at' => now(), 'updated_at' => now(),
-                ]);
+                // sale primero lo que vence primero; si un lote no alcanza, sigue con el siguiente (una fila por lote)
+                $falta = $l['cantidad'];
+                foreach (Mermas::lotesConStock($l['producto_id'])->reject->vencido as $lote) {
+                    if ($falta <= 0.005) break;
+                    $cant = round(min($falta, $lote->queda), 2);
+                    $falta = round($falta - $cant, 2);
+                    $ids[] = DB::table('ventas')->insertGetId([
+                        'uuid' => (string) Str::uuid(), 'nota_id' => $ids[0] ?? null, 'cliente_id' => $cliente->id,
+                        'producto_id' => $l['producto_id'], 'lote_id' => $lote->id, 'cantidad' => $cant,
+                        'precio_unitario' => $l['precio'], 'total' => round($l['precio'] * $cant, 2),
+                        'registrada_por' => $r->user()->id, 'vendida_en' => now(), 'created_at' => now(), 'updated_at' => now(),
+                    ]);
+                }
+                abort_if($falta > 0.005, 422, 'Alguien vendió al mismo tiempo y ya no alcanza el stock. Vuelve a intentar.');
             }
             // con varios productos, la primera fila también lleva la nota (así se encuentran todas)
             if (count($ids) > 1) DB::table('ventas')->where('id', $ids[0])->update(['nota_id' => $ids[0]]);
             return $ids;
         });
         $id = $ids[0];
-        $total = round($lineas->sum(fn ($l) => round($l['precio'] * $l['cantidad'], 2)), 2);
+        $total = round((float) DB::table('ventas')->whereIn('id', $ids)->sum('total'), 2);
         $precio = $lineas->first()['precio'];
 
         // si pidieron correo, se manda la nota; si falla, la venta igual queda hecha

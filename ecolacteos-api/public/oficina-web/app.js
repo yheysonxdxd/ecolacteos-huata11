@@ -906,6 +906,24 @@ function oficina() {
       f.producto = null; f.familia = null; f.cuantos = '1'; f.error = null;
     },
     quitarProducto(p) { this.f.cantidades[p.id] = ''; },
+    /** De qué lotes sale [cantidad] de p: primero el que vence primero, igual que el servidor. [{ codigo, vence_el, dias, cantidad }] */
+    lotesQueSalen(p, cantidad) {
+      let falta = Number(cantidad) || 0;
+      return (p?.lotes || []).flatMap((l) => {
+        if (falta <= 0.005) return [];
+        const usa = Math.min(falta, Number(l.queda)); falta -= usa;
+        return [{ ...l, cantidad: usa }];
+      });
+    },
+    cuandoVence(l) {
+      return 'vence el ' + fechaCorta(l.vence_el) + (l.dias === 0 ? ' (hoy)' : l.dias === 1 ? ' (mañana)' : ` (en ${l.dias} días)`);
+    },
+    /** Tiene un lote que vence en 7 días o menos: hay que venderlo primero. */
+    vencePronto(p) { return (p?.lotes || []).some((l) => l.dias <= 7); },
+    textoLotes(p, cantidad) {
+      const ls = this.lotesQueSalen(p, cantidad);
+      return ls.map((l) => (ls.length > 1 ? num(l.cantidad, 2) + ' del ' : 'Sale del ') + 'lote ' + l.codigo + ', ' + this.cuandoVence(l)).join(' · ');
+    },
     clienteVenta() { return (this.d.clientes || []).find((c) => c.id === this.f.cliente); },
     /** Lo que lleva el cliente: [{ p, cantidad, precio, importe }] (precio según su tipo, 0 si aún no se eligió). */
     lineasVenta() {

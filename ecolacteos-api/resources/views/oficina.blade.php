@@ -695,7 +695,8 @@
                         <template x-for="fa in g.familias" :key="fa.base.id">
                             <button class="btn gris" :class="{ elegido: f.familia === fa.base.id }" @click="elegirFamilia(fa)">
                                 <span x-text="fa.sabores.length > 1 ? fa.base.nombre.replace(/\s+natural$/i, '') : fa.base.nombre"></span>
-                                <small class="cuantos-sabores" x-show="fa.sabores.length > 1" x-text="fa.sabores.length + ' sabores'"></small></button></template>
+                                <small class="cuantos-sabores" x-show="fa.sabores.length > 1" x-text="fa.sabores.length + ' sabores'"></small>
+                                <small class="chip ojo" x-show="fa.sabores.some((p) => vencePronto(p))" title="Tiene un lote que vence esta semana: véndelo primero">⏳ vence pronto</small></button></template>
                     </div>
                 </div></template>
                 <div class="apoyo" x-show="!gruposVenta().length">No hay productos en stock. Primero cierra un lote en Producir.</div>
@@ -706,7 +707,8 @@
                     <div class="chips-cliente">
                         <template x-for="p in familiaVenta().sabores" :key="p.id">
                             <button class="btn gris" :class="{ elegido: f.producto === p.id }" @click="elegirProducto(p)">
-                                <span x-text="nombreSabor(p)"></span> <small x-text="'hay ' + num(p.stock, 0)"></small></button></template>
+                                <span x-text="nombreSabor(p)"></span> <small x-text="'hay ' + num(p.stock, 0)"></small>
+                                <small class="chip ojo" x-show="vencePronto(p)" title="Tiene un lote que vence esta semana: véndelo primero">⏳</small></button></template>
                     </div>
                 </div></template>
 
@@ -714,7 +716,12 @@
                 <template x-if="f.producto"><div class="agregar-producto">
                     <div style="flex: 1; min-width: 200px"><div class="eti">Elegiste</div>
                         <strong style="font-size: 17px" x-text="(d.productos || []).find((x) => x.id === f.producto)?.nombre"></strong>
-                        <small class="apoyo" style="display: block" x-text="(() => { const p = (d.productos || []).find((x) => x.id === f.producto); return p ? soles(p.precios?.[clienteVenta()?.tipo]) + ' c/u · hay ' + num(p.stock, 0) + ' ' + p.unidad : ''; })()"></small></div>
+                        <small class="apoyo" style="display: block" x-text="(() => { const p = (d.productos || []).find((x) => x.id === f.producto); return p ? soles(p.precios?.[clienteVenta()?.tipo]) + ' c/u · hay ' + num(p.stock, 0) + ' ' + p.unidad : ''; })()"></small>
+                        {{-- sale primero lo que vence primero --}}
+                        <small class="apoyo" style="display: block" :class="{ ojo: vencePronto((d.productos || []).find((x) => x.id === f.producto)) }"
+                               x-text="(() => { const p = (d.productos || []).find((x) => x.id === f.producto); return p ? textoLotes(p, (Number(f.cantidades[p.id]) || 0) + (Number(f.cuantos) || 0)) : ''; })()"></small>
+                        <small class="apoyo ojo" style="display: block" x-show="(d.productos || []).find((x) => x.id === f.producto)?.vencido > 0"
+                               x-text="(() => { const p = (d.productos || []).find((x) => x.id === f.producto); return p ? num(p.vencido, 2) + ' ' + p.unidad + ' ya vencieron: no se venden, regístralos en Almacén → Pérdidas' : ''; })()"></small></div>
                     <div style="width: 110px"><label for="venta-cuantos">Cuántos</label>
                         <input id="venta-cuantos" type="number" min="1" step="1" class="grande" x-model="f.cuantos" @keydown.enter.prevent="agregarProducto()"></div>
                     <button class="btn" @click="agregarProducto()">Agregar</button>
@@ -723,7 +730,8 @@
                 <div class="eti" style="margin-top: 18px">Lleva</div>
                 <div class="lleva-lista">
                     <template x-for="l in lineasVenta()" :key="l.p.id"><div class="renglon">
-                        <span><strong x-text="num(l.cantidad, 2)"></strong> × <span x-text="l.p.nombre"></span> <small x-text="'(' + soles(l.precio) + ')'"></small></span>
+                        <span><strong x-text="num(l.cantidad, 2)"></strong> × <span x-text="l.p.nombre"></span> <small x-text="'(' + soles(l.precio) + ')'"></small>
+                            <small style="display: block" x-text="textoLotes(l.p, l.cantidad)"></small></span>
                         <span class="espacio"></span>
                         <strong x-text="soles(l.importe)"></strong>
                         <button class="btn chico gris" @click="quitarProducto(l.p)" :aria-label="'Quitar ' + l.p.nombre" title="Quitar">✕</button></div></template>
@@ -742,7 +750,8 @@
                 <div class="eti">Nota de venta</div>
                 <div class="cliente" x-text="clienteVenta()?.nombre"></div>
                 <template x-for="l in lineasVenta()" :key="l.p.id"><div class="renglon">
-                    <span x-text="num(l.cantidad, 2) + ' × ' + l.p.nombre + ' (' + soles(l.precio) + ')'"></span>
+                    <span><span x-text="num(l.cantidad, 2) + ' × ' + l.p.nombre + ' (' + soles(l.precio) + ')'"></span>
+                        <small class="apoyo" style="display: block" x-text="textoLotes(l.p, l.cantidad)"></small></span>
                     <span x-text="soles(l.importe)"></span></div></template>
                 <div class="total"><span>Total</span><strong x-text="soles(totalVenta())"></strong></div>
                 <label>Enviar la nota al correo (opcional)</label>

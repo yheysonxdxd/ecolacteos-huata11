@@ -59,6 +59,37 @@ class Mermas
         return round($producido - $vendido - $perdido, 2);
     }
 
+    /**
+     * Lo que queda de cada lote cerrado, el que vence primero arriba (así se vende
+     * primero lo que está por vencer). Cada lote: id, codigo, vence_el, queda, vencido.
+     * Lo vendido o perdido sin lote (o de más en un lote) se descuenta de los que vencen
+     * primero, así la suma de "queda" es igual al stockProducto.
+     */
+    public static function lotesConStock(int $productoId)
+    {
+        $hoy = now('America/Lima')->toDateString();
+        $lotes = DB::table('lotes')->where('producto_id', $productoId)->where('estado', 'TERMINADO')
+            ->orderBy('vence_el')->orderBy('iniciado_en')->orderBy('id')->get(['id', 'codigo', 'vence_el', 'obtenido']);
+        $salio = DB::table('ventas')->where('producto_id', $productoId)->select('lote_id', 'cantidad')
+            ->unionAll(DB::table('mermas')->where('tipo', 'PRODUCTO')->where('producto_id', $productoId)->select('lote_id', 'cantidad'))
+            ->get()->groupBy(fn ($x) => (int) $x->lote_id)->map(fn ($g) => (float) $g->sum('cantidad'));
+
+        $suelto = (float) $salio->except($lotes->pluck('id')->all())->sum(); // sin lote o de un lote que ya no está
+        $lotes = $lotes->map(function ($l) use ($salio, $hoy, &$suelto) {
+            $queda = (float) $l->obtenido - ($salio[$l->id] ?? 0);
+            if ($queda < 0) { $suelto -= $queda; $queda = 0; }
+            return (object) ['id' => $l->id, 'codigo' => $l->codigo, 'vence_el' => $l->vence_el, 'queda' => $queda,
+                'vencido' => $l->vence_el < $hoy];
+        });
+        foreach ($lotes as $l) {
+            $usa = min($suelto, $l->queda);
+            $l->queda = round($l->queda - $usa, 2);
+            $suelto -= $usa;
+        }
+
+        return $lotes->filter(fn ($l) => $l->queda > 0.005)->values();
+    }
+
     /** Toda la leche aceptada que todavía no entró a un lote ni se perdió. */
     public static function lecheSinUsar(): float
     {
