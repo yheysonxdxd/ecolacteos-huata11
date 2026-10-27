@@ -893,31 +893,65 @@
         {{-- ---------------------------------------------------- INVENTARIO --}}
         <template x-if="dDe === 'inventario'">
         <section x-show="seccion === 'inventario' && !cargando && !error">
-            <div class="fila"><h1>Almacén</h1><div class="espacio"></div>
-                <button class="btn rojo" @click="abrirMerma('PRODUCTO')">+ Registrar pérdida</button></div>
-            <p class="sub">Lo que hay hoy y lo que se pierde. Si un insumo se malogró, se venció o al contar no cuadra, toca <strong>Corregir</strong> en su fila.
-                Lo que falta se compra en <strong>Compras de insumos</strong>.</p>
-            <div class="aviso bien" x-show="!(d.avisos || []).length">✓ No falta ningún insumo.</div>
+            <div class="cabecera">
+                <div><h1>Almacén</h1>
+                    <p class="sub" style="margin: 0">Lo que hay hoy y lo que se pierde. Si un insumo se malogró, se venció o al contar no cuadra, toca <strong>Corregir</strong>.
+                        Lo que falta se compra en <strong>Compras de insumos</strong>.</p></div>
+                <div class="espacio"></div>
+                <button class="btn rojo" @click="abrirMerma('PRODUCTO')">+ Registrar pérdida</button>
+            </div>
+            <div class="kpis-fila">
+                <div class="kpi ok"><span class="kpi-ico" aria-hidden="true">🧀</span><div>
+                    <b x-text="(d.productos || []).filter((p) => p.stock > 0).length + ' de ' + (d.productos || []).length"></b><span>Productos con stock</span><small>listos para vender</small></div></div>
+                <div class="kpi ok"><span class="kpi-ico" aria-hidden="true">✓</span><div>
+                    <b x-text="(d.insumos || []).filter((i) => i.stock >= i.minimo).length"></b><span>Insumos bien</span><small>sobre su mínimo</small></div></div>
+                <div class="kpi" :class="(d.insumos || []).some((i) => i.stock < i.minimo) ? 'mal' : 'ok'"><span class="kpi-ico" aria-hidden="true">⚠</span><div>
+                    <b x-text="(d.insumos || []).filter((i) => i.stock < i.minimo).length"></b><span>Bajo el mínimo</span><small>hay que comprar pronto</small></div></div>
+            </div>
+            <div class="aviso bien" x-show="!(d.avisos || []).length">No falta ningún insumo.</div>
             <template x-for="a in d.avisos || []" :key="a.nivel + a.insumo_id + a.producto">
-                <div class="aviso" :class="a.nivel === 'FALTA' ? 'error' : ''">
-                    <span x-text="a.texto"></span>
-                </div>
+                <div class="aviso" :class="a.nivel === 'FALTA' ? 'error' : ''"><span x-text="a.texto"></span></div>
             </template>
+
             <h2>Productos terminados</h2>
-            <table class="lista"><tr><th>Producto</th><th class="num">Stock</th><th class="num">Mayorista</th><th class="num">Vecino</th><th class="num">Proveedor</th><th></th></tr>
-                <template x-for="p in d.productos || []" :key="p.id"><tr><td x-text="p.nombre"></td><td class="num" x-text="num(p.stock, 0) + ' ' + p.unidad"></td>
-                    <td class="num" x-text="soles(p.precios?.MAYORISTA)"></td><td class="num" x-text="soles(p.precios?.DIRECTO)"></td><td class="num" x-text="soles(p.precios?.PLANTA)"></td>
-                    <td class="num"><button class="btn chico gris" @click="verKardex(p.id, 'producto')">Kardex</button></td></tr></template>
-            </table>
+            <div class="productos-almacen">
+                <template x-for="p in d.productos || []" :key="p.id">
+                    <article class="producto-almacen" :class="{ cero: !(p.stock > 0) }" :style="'--tono: ' + colorReceta(p)">
+                        <div class="mini-dibujo" x-html="dibujoReceta(p)"></div>
+                        <div class="info">
+                            <strong x-text="p.nombre"></strong>
+                            <div class="stock-grande"><b x-text="num(p.stock, 0)"></b> <span x-text="p.unidad"></span></div>
+                            <div class="precios">
+                                <span title="Precio mayorista">May. <b x-text="soles(p.precios?.MAYORISTA)"></b></span>
+                                <span title="Precio vecino de Huata">Vec. <b x-text="soles(p.precios?.DIRECTO)"></b></span>
+                                <span title="Precio proveedor de leche">Prov. <b x-text="soles(p.precios?.PLANTA)"></b></span>
+                            </div>
+                        </div>
+                        <button class="btn chico gris" @click="verKardex(p.id, 'producto')">Kardex</button>
+                    </article>
+                </template>
+            </div>
+
             <h2>Insumos</h2>
-            <table class="lista"><tr><th>Insumo</th><th class="num">Stock</th><th class="num">Mínimo</th><th class="num">Costo unit.</th><th></th></tr>
-                <template x-for="i in d.insumos || []" :key="i.id"><tr><td x-text="i.nombre"></td>
-                    <td class="num" :class="i.stock < i.minimo ? 'mal' : ''" x-text="num(i.stock, 3) + ' ' + i.unidad"></td>
-                    <td class="num" x-text="num(i.minimo, 3)"></td><td class="num" x-text="soles(i.costo)"></td>
-                    <td class="num"><span class="chip mal" x-show="i.stock < i.minimo">Bajo el mínimo</span>
-                        <button class="btn chico" @click="abrirAjuste(i)">Corregir</button>
-                        <button class="btn chico gris" @click="verKardex(i.id)">Kardex</button></td></tr></template>
-            </table>
+            <div class="insumos-almacen">
+                <template x-for="i in [...(d.insumos || [])].sort((a, b) => (a.stock >= a.minimo) - (b.stock >= b.minimo) || a.nombre.localeCompare(b.nombre))" :key="i.id">
+                    <div class="insumo-fila" :class="{ bajo: i.stock < i.minimo }">
+                        <div class="que"><strong x-text="i.nombre"></strong>
+                            <small x-text="'Costo ' + soles(i.costo) + ' por ' + i.unidad"></small></div>
+                        {{-- nivel: la barra llena es el doble del mínimo; la rayita marca el mínimo --}}
+                        <div class="nivel" :title="'Mínimo ' + num(i.minimo, 3) + ' ' + i.unidad">
+                            <div class="barra-nivel"><span :style="'width:' + Math.min(100, i.minimo > 0 ? i.stock / (i.minimo * 2) * 100 : 100) + '%'"></span><i style="left: 50%"></i></div>
+                            <small x-text="'mínimo ' + num(i.minimo, 3) + ' ' + i.unidad"></small>
+                        </div>
+                        <div class="cantidad" :class="{ mal: i.stock < i.minimo }"><b x-text="num(i.stock, 3)"></b> <span x-text="i.unidad"></span></div>
+                        <div class="acciones-fila">
+                            <span class="chip mal" x-show="i.stock < i.minimo">Bajo el mínimo</span>
+                            <button class="btn chico" @click="abrirAjuste(i)">Corregir</button>
+                            <button class="btn chico gris" @click="verKardex(i.id)">Kardex</button>
+                        </div>
+                    </div>
+                </template>
+            </div>
         </section>
         </template>
 
