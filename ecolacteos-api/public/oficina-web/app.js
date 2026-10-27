@@ -1634,6 +1634,39 @@ function oficina() {
         : falta.length ? `Falta ${falta.join(', ')}. Baja alguna cantidad o consigue lo que falta.` : '';
       return { elegidos, litros, insumos, ok, motivo };
     },
+    /** Producir: cada base con sus sabores, separados en Quesos / Yogurt / Otros. */
+    gruposProducir() {
+      const todos = this.d.productos || [];
+      const familias = todos.filter((p) => !p.base_id || !todos.some((b) => b.id === p.base_id))
+        .map((base) => ({ base, items: [base, ...todos.filter((x) => x.base_id === base.id)] }));
+      return [['QUESO', '🧀 Quesos'], ['YOGURT', '🥛 Yogurt'], ['OTRO', 'Otros']]
+        .map(([tipo, nombre]) => ({ tipo, nombre, familias: familias.filter((fa) => (fa.base.tipo || 'OTRO') === tipo) }))
+        .filter((g) => g.familias.length);
+    },
+    /** Litros de leche que usa lo elegido de [p] (0 si no se hace). */
+    litrosDe(p) { return this.planVarios().elegidos.find((e) => e.p.id === p.id)?.litros || 0; },
+    /** Lo más que se puede hacer de [p] con la leche que queda (sin contar lo que ya usa p) y sus insumos. */
+    maximoDe(p) {
+      const libre = Math.max(0, (this.d.tanque || 0) - (this.planVarios().litros - this.litrosDe(p)));
+      const litros = p.alcanza_litros === null || p.alcanza_litros === undefined ? libre : Math.min(libre, p.alcanza_litros);
+      return Math.floor(litros * p.rendimiento_min + 1e-9);
+    },
+    /** − / + de a 1 (quesos) o de a 5 (litros de yogurt). */
+    sumarVarios(p, signo) {
+      const paso = /litro/i.test(p.unidad) ? 5 : 1;
+      const n = Math.max(0, (Number(this.varios[p.id]) || 0) + signo * paso);
+      this.varios[p.id] = n ? String(n) : '';
+    },
+    /** El tanque dibujado: un tramo por producto elegido (de su color) y lo que queda libre. */
+    tanqueProducir() {
+      const plan = this.planVarios(), tanque = Math.max(this.d.tanque || 0, 0.0001);
+      const total = Math.max(tanque, plan.litros);
+      return {
+        tramos: plan.elegidos.map((e) => ({ id: e.p.id, nombre: e.p.nombre, litros: e.litros, ancho: (e.litros / total) * 100, color: this.colorReceta(e.p) })),
+        libre: Math.max(0, (this.d.tanque || 0) - plan.litros), pasa: plan.litros > (this.d.tanque || 0) + 1e-9,
+        marca: (tanque / total) * 100, // dónde termina el tanque cuando se pide más de lo que hay
+      };
+    },
     textoVarios(plan) { return plan.elegidos.map((e) => `${num(e.q, 0)} ${this.unidadProducto(e.p)} de ${e.p.nombre}`).join(' y '); },
     abrirProducirVarios() {
       this.f = { plan: this.planVarios(), error: null, enviando: false };
