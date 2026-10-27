@@ -356,44 +356,70 @@
         {{-- ---------------------------------------------------- PADRÓN --}}
         <template x-if="dDe === 'padron'">
         <section x-show="seccion === 'padron' && !cargando && !error">
-            <h1>Padrón</h1>
-            <div class="fila" style="margin-bottom: 14px">
+            <div class="cabecera"><div><h1>Padrón</h1>
+                <p class="sub" style="margin: 0">Los productores que entregan leche y la gente que trabaja en la planta.</p></div></div>
+            <div class="kpis-fila">
+                <div class="kpi ok"><span class="kpi-ico" aria-hidden="true">👩‍🌾</span><div>
+                    <b x-text="(d.proveedores || []).filter((p) => p.estado === 'ACTIVO').length"></b><span>Proveedores activos</span>
+                    <small x-text="new Set((d.proveedores || []).map((p) => p.comunidad)).size + ' comunidades · ' + new Set((d.proveedores || []).map((p) => p.vehiculo)).size + ' vehículos'"></small></div></div>
+                <div class="kpi"><span class="kpi-ico" aria-hidden="true">🥛</span><div>
+                    <b x-text="num((d.proveedores || []).reduce((t, p) => t + (p.leche?.litros_7 || 0), 0), 0) + ' L'"></b><span>Leche de los últimos 7 días</span>
+                    <small>de todos los proveedores</small></div></div>
+                <div class="kpi" :class="(d.proveedores || []).some((p) => p.programado) ? 'ojo' : 'ok'"><span class="kpi-ico" aria-hidden="true">🔄</span><div>
+                    <b x-text="(d.proveedores || []).filter((p) => p.programado || p.cambio_reciente).length"></b><span>Cambios de comunidad</span>
+                    <small>recientes o programados</small></div></div>
+            </div>
+            <div class="barra-herramientas">
                 <div class="pestanas" style="margin: 0">
                     <button :class="{ activo: padron === 'proveedores' }" @click="padron = 'proveedores'" x-text="'Proveedores · ' + (d.proveedores || []).length"></button>
                     <button :class="{ activo: padron === 'trabajadores' }" @click="padron = 'trabajadores'" x-text="'Trabajadores · ' + (d.trabajadores || []).length"></button>
                 </div>
-                <div class="espacio"></div>
+                <input type="search" class="buscador" x-show="padron === 'proveedores'" x-model="buscar" placeholder="Buscar por nombre, DNI, comunidad o vehículo" aria-label="Buscar proveedor">
+                <div class="espacio" x-show="padron !== 'proveedores'"></div>
                 <button class="btn gris" x-show="padron === 'proveedores'" @click="excel('/admin/excel/padron')" title="Descargar en Excel">⬇ Excel</button>
                 <button class="btn" x-show="padron === 'proveedores'" @click="abrirNuevoProveedor()">+ Nuevo proveedor</button>
                 <button class="btn" x-show="padron === 'trabajadores'" @click="abrirNuevoTrabajador()">+ Nuevo trabajador</button>
             </div>
-            <div x-show="padron === 'proveedores'">
-                <input x-model="buscar" placeholder="Buscar por nombre, DNI, comunidad o vehículo · toca un proveedor para ver todo" style="margin-bottom: 12px">
-                <table class="lista"><tr><th>Nombre</th><th>DNI</th><th>Comunidad</th><th>Vehículo</th><th>Estado</th><th></th><th></th></tr>
-                    <template x-for="p in proveedoresFiltrados()" :key="p.id"><tr class="clic" @click="abrirFicha(p.id)" title="Toca para ver todo">
-                        <td x-text="p.nombre"></td><td x-text="p.dni"></td>
-                        <td><span x-text="p.comunidad"></span>
-                            {{-- cambio reciente (15 días) y traslado programado; al tocar la fila: ficha con su historial --}}
-                            <div x-show="p.cambio_reciente"><span class="etiqueta reciente"
-                                x-text="'🔄 Cambió el ' + fechaCorta(p.cambio_reciente?.desde) + ' · antes ' + p.cambio_reciente?.antes"></span></div>
-                            <div x-show="p.programado"><span class="etiqueta programado"
-                                x-text="'⏳ Pasa a ' + p.programado?.comunidad + ' el ' + fechaCorta(p.programado?.desde)"></span></div></td>
-                        <td x-text="p.vehiculo"></td>
-                        <td><span class="chip" :class="p.estado === 'ACTIVO' ? 'ok' : 'mal'" x-text="p.estado === 'ACTIVO' ? 'Activo' : p.estado" :title="p.motivo_baja || ''"></span></td>
-                        <td class="num">
+            <div x-show="padron === 'proveedores'" class="proveedores-lista">
+                <template x-for="p in proveedoresFiltrados()" :key="p.id">
+                    <div class="proveedor-fila" :class="{ baja: p.estado !== 'ACTIVO' }" role="button" tabindex="0" title="Toca para ver todo"
+                         @click="abrirFicha(p.id)" @keydown.enter="abrirFicha(p.id)">
+                        <span class="inicial" x-text="p.nombre.trim().charAt(0)"></span>
+                        <div class="que"><strong x-text="p.nombre"></strong><small x-text="'DNI ' + p.dni + (p.vacas ? ' · ' + p.vacas + ' vacas en ordeño' : '')"></small></div>
+                        <div class="donde">
+                            <span class="placa-ruta" :style="'--ruta: ' + colorRuta(p.vehiculo)" x-text="p.vehiculo"></span>
+                            <span x-text="p.comunidad"></span>
+                            {{-- cambio reciente (15 días) y traslado programado; al tocar: ficha con su historial --}}
+                            <span class="etiqueta reciente" x-show="p.cambio_reciente" x-text="'🔄 desde el ' + fechaCorta(p.cambio_reciente?.desde) + ' · antes ' + p.cambio_reciente?.antes"></span>
+                            <span class="etiqueta programado" x-show="p.programado" x-text="'⏳ pasa a ' + p.programado?.comunidad + ' el ' + fechaCorta(p.programado?.desde)"></span>
+                        </div>
+                        <div class="leche-dia" :title="p.leche ? num(p.leche.litros_30, 0) + ' L en los últimos 30 días' : 'Sin entregas recientes'">
+                            <b x-text="p.leche?.por_dia ? num(p.leche.por_dia, 1) + ' L/día' : '—'"></b>
+                            <div class="barra"><span :style="'width:' + Math.min(100, (p.leche?.por_dia || 0) / Math.max(1, ...(d.proveedores || []).map((x) => x.leche?.por_dia || 0)) * 100) + '%'"></span></div>
+                        </div>
+                        <span class="chip" :class="p.estado === 'ACTIVO' ? 'ok' : 'mal'" x-text="p.estado === 'ACTIVO' ? 'Activo' : 'De baja'" :title="p.motivo_baja || ''"></span>
+                        <div class="acciones-fila">
                             {{-- .stop: el botón no abre la ficha --}}
                             <button class="btn chico gris" x-show="p.estado !== 'BAJA' && (p.programado || p.cambio_reciente)" @click.stop="abrirCambio(p.id, true)">Editar traslado</button>
-                            <button class="btn chico gris" x-show="p.estado !== 'BAJA' && !p.programado" @click.stop="abrirCambio(p.id)">Cambiar comunidad</button></td>
-                        <td class="num" style="color: var(--texto-3)">›</td></tr></template>
-                </table>
+                            <button class="btn chico gris" x-show="p.estado !== 'BAJA' && !p.programado" @click.stop="abrirCambio(p.id)">Cambiar comunidad</button>
+                            <span class="chevron" aria-hidden="true">›</span>
+                        </div>
+                    </div>
+                </template>
+                <div class="vacio-lista" x-show="!proveedoresFiltrados().length"><span aria-hidden="true">·</span><p>Nadie coincide con la búsqueda.</p></div>
             </div>
-            <div x-show="padron === 'trabajadores'">
-                <table class="lista"><tr><th>Nombre</th><th>DNI</th><th>Rol</th><th>Estado</th><th></th></tr>
-                    <template x-for="t in d.trabajadores || []" :key="t.id"><tr>
-                        <td x-text="t.nombre"></td><td x-text="t.dni"></td><td x-text="ROLES[t.rol] || t.rol"></td>
-                        <td><span class="chip" :class="t.activo ? 'ok' : 'mal'" x-text="t.activo ? 'Activo' : 'Desactivado'"></span></td>
-                        <td class="num"><button class="btn chico" :class="t.activo ? 'rojo' : ''" @click="cambiarActivo(t)" x-text="t.activo ? 'Desactivar' : 'Activar'"></button></td></tr></template>
-                </table>
+            <div x-show="padron === 'trabajadores'" class="trabajadores">
+                <template x-for="t in d.trabajadores || []" :key="t.id">
+                    <div class="trabajador" :class="{ apagado: !t.activo }">
+                        <span class="inicial grande" x-text="t.nombre.trim().charAt(0)"></span>
+                        <div class="que"><strong x-text="t.nombre"></strong><small x-text="'DNI ' + t.dni"></small>
+                            <span class="rol-chip" x-text="ROLES[t.rol] || t.rol"></span></div>
+                        <div class="pie-trabajador">
+                            <span class="chip" :class="t.activo ? 'ok' : 'mal'" x-text="t.activo ? 'Activo' : 'Desactivado'"></span>
+                            <button class="btn chico" :class="t.activo ? 'rojo' : ''" @click="cambiarActivo(t)" x-text="t.activo ? 'Desactivar' : 'Activar'"></button>
+                        </div>
+                    </div>
+                </template>
             </div>
         </section>
         </template>

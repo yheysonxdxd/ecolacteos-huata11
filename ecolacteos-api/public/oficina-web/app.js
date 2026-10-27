@@ -98,6 +98,8 @@ function oficina() {
       if (this.usuario) this.ir(this.menu()[0].pestanas[0].id);
     },
 
+    /** Color de la ruta de un vehículo (el mismo del mapa de Huata). */
+    colorRuta(codigo) { return COLOR_RUTA[codigo] || '#8394a4'; },
     // ------------------------------------------------- gráficos chicos (SVG)
     /** Barras por día (viewBox 0 0 640 112, ancho y bajo): [{ fecha, valor, clase? }]; la más alta llega arriba y debajo va el día. */
     svgBarrasDia(serie, unidad = 'L') {

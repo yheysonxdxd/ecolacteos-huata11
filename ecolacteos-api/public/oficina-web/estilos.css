@@ -1057,3 +1057,44 @@ input.buscador { padding-left: 38px; background-image: url("data:image/svg+xml,%
 .producto-venta.sabor { padding: 8px 14px; }
 .producto-venta .punto { width: 14px; height: 14px; border-radius: 50%; background: var(--tono); flex: none; }
 @media (prefers-reduced-motion: reduce) { .producto-venta { transition: none; } }
+
+/* =====================================================================
+   PARTE 4 · el resto de pantallas (mismos colores)
+   ===================================================================== */
+.inicial { width: 40px; height: 40px; flex: none; border-radius: 50%; display: grid; place-items: center; font: 800 16px var(--letra-titulo);
+  background: var(--verde-suave); border: 1px solid var(--verde-borde); color: var(--exito); }
+.inicial.grande { width: 52px; height: 52px; font-size: 20px; }
+.chevron { color: var(--texto-3); font-size: 20px; padding-left: 4px; }
+.placa-ruta { --ruta: #8394a4; font: 800 12px var(--letra-titulo); letter-spacing: .04em; padding: 3px 8px; border-radius: 7px; white-space: nowrap;
+  color: var(--ruta); background: color-mix(in srgb, var(--ruta) 14%, transparent); border: 1px solid color-mix(in srgb, var(--ruta) 45%, transparent); }
+
+/* --- Padrón --- */
+.proveedores-lista { display: grid; gap: 6px; }
+.proveedor-fila { display: grid; grid-template-columns: 40px minmax(170px, 1.2fr) minmax(200px, 1.6fr) 120px 76px auto; align-items: center; gap: 14px;
+  padding: 10px 14px; border-radius: var(--radio); background: var(--superficie); border: 1px solid var(--borde); cursor: pointer;
+  transition: border-color .15s ease, background .15s ease; }
+.proveedor-fila:hover { border-color: var(--verde-borde); background: var(--superficie-2); }
+.proveedor-fila.baja { opacity: .6; }
+.proveedor-fila.baja .inicial { background: var(--alerta-fondo); border-color: var(--alerta-borde); color: var(--alerta); }
+.proveedor-fila .que strong, .trabajador .que strong { display: block; font-size: 15px; }
+.proveedor-fila .que small, .trabajador .que small { display: block; font-size: 12.5px; color: var(--texto-3); }
+.proveedor-fila .donde { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 14px; color: var(--texto-2); }
+.proveedor-fila .donde .etiqueta { margin: 0; }
+.leche-dia b { display: block; font: 800 14px var(--letra-titulo); font-variant-numeric: tabular-nums; }
+.leche-dia .barra { height: 5px; margin-top: 4px; }
+.proveedor-fila .acciones-fila { flex-wrap: nowrap; }
+.trabajadores { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+.trabajador { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 12px 14px; align-items: center; padding: 16px; border-radius: var(--radio);
+  background: var(--superficie); border: 1px solid var(--borde); box-shadow: var(--sombra); }
+.trabajador.apagado { opacity: .6; }
+.trabajador.apagado .inicial { background: var(--superficie-2); border-color: var(--borde); color: var(--texto-3); }
+.rol-chip { display: inline-block; margin-top: 6px; font: 700 11.5px var(--letra-titulo); letter-spacing: .04em; padding: 2px 9px; border-radius: 99px;
+  background: var(--fondo); border: 1px solid var(--borde); color: var(--texto-2); }
+.pie-trabajador { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; padding-top: 10px; border-top: 1px dashed var(--borde); }
+@media (max-width: 1000px) {
+  .proveedor-fila { grid-template-columns: 40px minmax(0, 1fr) auto; }
+  .proveedor-fila .donde, .proveedor-fila .leche-dia { grid-column: 2 / -1; }
+  .proveedor-fila .chip { grid-column: 3; grid-row: 1; }
+  .proveedor-fila .acciones-fila { grid-column: 2 / -1; justify-content: flex-start; flex-wrap: wrap; }
+}
+@media (prefers-reduced-motion: reduce) { .proveedor-fila { transition: none; } }
