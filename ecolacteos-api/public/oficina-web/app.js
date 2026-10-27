@@ -62,7 +62,9 @@ function oficina() {
     adulteracion: 'todos',
     buscar: '',
     kardex: { tipo: 'insumo', id: null, desde: '', hasta: '' }, // tipo: insumo | producto | leche
-    recetaAbierta: null, // receta desplegada en Producir > Recetas
+    recetaAbierta: null, // receta abierta en el recetario (Producir > Recetario)
+    recetaFiltro: 'TODOS', // TODOS · QUESO · YOGURT · OTRO
+    recetaLitros: 100, // la ficha recalcula los insumos para estos litros
     varios: {},     // producir varios a la vez: producto => cuánto (vacío o 0 = no se hace)
     mapaFecha: '',  // vacío = hoy
     mesCompras: '', // vacío = mes actual (2026-10)
@@ -1468,6 +1470,141 @@ function oficina() {
     // la leche se calcula con el rendimiento mínimo, así la cantidad pedida sale segura
     unidadProducto(p) { return String(p?.unidad || '').split(' ')[0]; }, // "quesos de 1 kg" → "quesos"
     /** Lo que se cuenta por unidad (envases) va entero: no existe medio envase. Igual que en el servidor. */
+    // ---------------------------------------------------------- recetario
+    /** Cada base (Queso Paria, Yogurt natural…) con sus sabores, filtrado por tipo. */
+    recetasBase() {
+      const todos = this.d.productos || [];
+      return todos.filter((p) => !p.base_id || !todos.some((b) => b.id === p.base_id))
+        .filter((p) => this.recetaFiltro === 'TODOS' || (p.tipo || 'OTRO') === this.recetaFiltro)
+        .map((p) => ({ p, sabores: todos.filter((x) => x.base_id === p.id) }));
+    },
+    recetaActual() { return (this.d.productos || []).find((p) => p.id === this.recetaAbierta); },
+    /** La base y sus sabores, para pasar de uno a otro dentro de la ficha. */
+    familiaReceta(p) {
+      const todos = this.d.productos || [];
+      const base = p.base_id ? todos.find((b) => b.id === p.base_id) || p : p;
+      return [base, ...todos.filter((x) => x.base_id === base.id)];
+    },
+    verReceta(p) {
+      if (this.recetaAbierta === p.id) { this.recetaAbierta = null; return; }
+      this.recetaAbierta = p.id;
+      this.$nextTick(() => document.getElementById('ficha-receta')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    },
+    /** Color de cada receta: el de la fruta en los sabores, crema o dorado en quesos y yogurt. */
+    colorReceta(p) {
+      const n = ((p?.variante || '') + ' ' + (p?.nombre || '')).toLowerCase();
+      const frutas = [['fresa', '#e5566f'], ['frambuesa', '#d6336c'], ['mora', '#8e3f8f'], ['arándano', '#5b5fc7'], ['maracuy', '#f0b429'],
+        ['lúcuma', '#c98a3c'], ['lucuma', '#c98a3c'], ['plátano', '#f2d14a'], ['platano', '#f2d14a'], ['durazno', '#f4a261'],
+        ['mango', '#f7a325'], ['piña', '#e9c46a'], ['coco', '#e9e4d8'], ['vainilla', '#efe1b0'], ['guanábana', '#cfe3c0'],
+        ['aguaymanto', '#f39c12'], ['chirimoya', '#b5cf8a'], ['camu', '#c0392b'], ['orégano', '#7aa65a'], ['ají', '#e76f51'],
+        ['hierbas', '#6a994e'], ['aceituna', '#556b2f'], ['pimienta', '#5c4a3d']];
+      const f = frutas.find(([k]) => n.includes(k));
+      if (f) return f[1];
+      if (p?.tipo === 'QUESO') return n.includes('mantecoso') ? '#f3e2a9' : n.includes('andino') ? '#e7b54a' : '#f1cf6b';
+      if (p?.tipo === 'YOGURT') return '#e9e3d3';
+      return '#9fc5e8';
+    },
+    /** Dibujo de la receta (SVG): rueda de queso con su tajada, vasito de yogurt o botella. */
+    dibujoReceta(p) {
+      const c = this.colorReceta(p);
+      if (p?.tipo === 'QUESO') return `<svg viewBox="0 0 120 90" aria-hidden="true">
+        <ellipse cx="60" cy="76" rx="48" ry="9" fill="rgba(0,0,0,.28)"/>
+        <path d="M14 40 v22 a46 14 0 0 0 92 0 v-22" fill="${c}" style="filter:brightness(.8)"/>
+        <ellipse cx="60" cy="40" rx="46" ry="14" fill="${c}"/>
+        <path d="M60 40 L104 36 L104 58 L60 62 Z" fill="${c}" style="filter:brightness(.68)"/>
+        <path d="M60 40 L104 36 A46 14 0 0 0 96 31 Z" fill="#0f1a24" opacity=".5"/>
+        <circle cx="36" cy="38" r="3.4" fill="rgba(0,0,0,.18)"/><circle cx="50" cy="45" r="2.3" fill="rgba(0,0,0,.18)"/>
+        <circle cx="28" cy="57" r="3" fill="rgba(0,0,0,.16)"/><circle cx="80" cy="51" r="2.6" fill="rgba(0,0,0,.2)"/>
+        <circle cx="46" cy="64" r="2.1" fill="rgba(0,0,0,.16)"/><circle cx="92" cy="47" r="1.8" fill="rgba(0,0,0,.2)"/></svg>`;
+      if (p?.tipo === 'YOGURT') return `<svg viewBox="0 0 120 90" aria-hidden="true">
+        <ellipse cx="60" cy="83" rx="30" ry="5" fill="rgba(0,0,0,.28)"/>
+        <path d="M34 22 L40 80 H80 L86 22 Z" fill="#f4f1ea"/>
+        <path d="M37 46 L40 80 H80 L83 46 Z" fill="${c}"/>
+        <path d="M37 46 q11 -6 23 0 t23 0" fill="${c}" style="filter:brightness(1.08)"/>
+        <rect x="30" y="15" width="60" height="9" rx="3" fill="#2e8b57"/>
+        <path d="M45 30 L47 76" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".45"/>
+        ${p.base_id ? `<circle cx="89" cy="22" r="11" fill="${c}" stroke="#0f1a24" stroke-width="2"/><path d="M89 11 q4 -6 9 -4" stroke="#4cc38a" stroke-width="2.5" fill="none"/>` : ''}</svg>`;
+      return `<svg viewBox="0 0 120 90" aria-hidden="true"><ellipse cx="60" cy="83" rx="26" ry="5" fill="rgba(0,0,0,.28)"/>
+        <rect x="42" y="18" width="36" height="64" rx="10" fill="${c}"/><rect x="50" y="8" width="20" height="12" rx="3" fill="#2e8b57"/></svg>`;
+    },
+    /** 0,02 kg → "20 g"; 0,01 L → "10 ml"; envases enteros. */
+    cantidadBonita(c, unidad) {
+      const u = String(unidad || '').trim();
+      if (u === 'kg' && c > 0 && c < 1) return num(c * 1000, c * 1000 < 10 ? 1 : 0) + ' g';
+      if (u === 'L' && c > 0 && c < 1) return num(c * 1000, c * 1000 < 10 ? 1 : 0) + ' ml';
+      return num(c, c >= 100 ? 0 : 2) + ' ' + u;
+    },
+    /** Insumos de la receta para [litros], con lo que hay en almacén. */
+    insumosReceta(p, litros) {
+      return (p.insumos || []).map((i) => {
+        const necesita = this.cantidadInsumo(i.por_100l, litros, i.unidad);
+        return { ...i, necesita, alcanza: i.stock + 1e-9 >= necesita,
+          cubre: necesita > 0 ? Math.min(1, i.stock / necesita) : 1,
+          propio: (p.propios || []).some((x) => x.insumo_id === i.id) };
+      });
+    },
+    /** Lo que sale de [litros] de leche: "13–13,3 quesos". */
+    salenReceta(p, litros) {
+      const a = p.rendimiento_min * litros, b = p.rendimiento_max * litros;
+      return num(a, 1) + (Math.abs(b - a) > 0.05 ? '–' + num(b, 1) : '') + ' ' + this.unidadProducto(p);
+    },
+    /** Cada paso con su ícono y lo que dice de temperatura y de tiempo (sacado del mismo texto). */
+    pasosReceta(p) {
+      // el primero que calza en el texto (los más específicos primero: "Cortar la cuajada" es cortar, no cuajo)
+      const ICONOS = [[/filtr/i, '🧺'], [/pasteuri/i, '🔥'], [/incub/i, '🌡️'], [/cort/i, '🔪'], [/suero|desagu/i, '💧'],
+        [/mol(er|ino)/i, '⚙️'], [/salmuera|salar|\bsal\b/i, '🧂'], [/mold/i, '🧱'], [/prens/i, '⚖️'], [/cuaj/i, '🧪'],
+        [/enfri/i, '❄️'], [/agreg|disolv/i, '➕'], [/madur|orear|secar/i, '⏳'], [/envas|empac|envolver/i, '📦'], [/bat|agit|amas/i, '🥄']];
+      const n = (x) => Number(String(x).replace(',', '.'));
+      return (p.procedimiento || []).map((texto, k) => {
+        // "nunca más de 35 °C" es un límite, no una temperatura del paso
+        const temps = [...texto.matchAll(/(\d+(?:[.,]\d+)?)(?:\s*[–-]\s*(\d+(?:[.,]\d+)?))?\s*°C/g)]
+          .filter((m) => !/(más de|máx\.?|menos de)\s*$/i.test(texto.slice(Math.max(0, m.index - 12), m.index)))
+          .map((m) => ({ txt: m[0].replace(/\s+/g, ' '), valor: m[2] ? (n(m[1]) + n(m[2])) / 2 : n(m[1]) }));
+        // largo = esperar (desaguar, prensar solo, madurar): de 8 horas para arriba no es trabajo en la tina
+        const tiempos = [...texto.matchAll(/(\d+(?:[.,]\d+)?)(?:\s*[–-]\s*(\d+(?:[.,]\d+)?))?\s*(minutos?|horas?|días?|semanas?)/gi)]
+          .map((m) => ({ txt: m[0], min: n(m[1]) * ({ m: 1, h: 60, d: 1440, s: 10080 }[m[3][0].toLowerCase()] || 1) }))
+          .map((t) => ({ ...t, largo: t.min >= 480 }));
+        return { n: k + 1, texto, icono: (ICONOS.find(([r]) => r.test(texto)) || [null, '•'])[1], temps, tiempos };
+      });
+    },
+    /** Curva de temperatura: un punto por cada °C que dicen los pasos, en orden y parejos (viewBox 0 0 320 120). */
+    curvaReceta(p) {
+      const temps = this.pasosReceta(p).flatMap((x) => x.temps.map((t) => ({ ...t, n: x.n })));
+      if (temps.length < 2) return null;
+      const max = Math.max(90, ...temps.map((t) => t.valor));
+      const X = (k) => 34 + (k / (temps.length - 1)) * 266, Y = (t) => 98 - (t / max) * 76;
+      const puntos = temps.map((t, k) => ({ x: X(k), y: Y(t.valor), t: t.txt.replace(' °C', '°'), n: t.n,
+        color: t.valor >= 60 ? '#ef6b6b' : t.valor >= 30 ? '#e8b44c' : '#7fd4e0' }));
+      const linea = puntos.map((q, k) => (k ? 'L' : 'M') + q.x.toFixed(1) + ' ' + q.y.toFixed(1)).join(' ');
+      return { puntos, linea, area: linea + ` L${puntos.at(-1).x.toFixed(1)} 100 L${puntos[0].x.toFixed(1)} 100 Z`,
+        guias: [0, 30, 60, 90].filter((t) => t <= max).map((t) => ({ t, y: Y(t) })) };
+    },
+    /** La curva lista para pintar (SVG con guías de 0/30/60/90 °C, área y un punto por paso). */
+    svgCurva(p) {
+      const c = this.curvaReceta(p);
+      if (!c) return '';
+      const id = 'calor-' + p.id;
+      return `<svg viewBox="0 0 320 120" role="img" aria-label="Temperatura paso a paso">
+        <defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#ef6b6b" stop-opacity=".45"/><stop offset="1" stop-color="#7fd4e0" stop-opacity=".04"/></linearGradient></defs>
+        ${c.guias.map((g) => `<line x1="26" x2="310" y1="${g.y}" y2="${g.y}" class="guia"/><text x="0" y="${g.y + 3}" class="eje">${g.t}°</text>`).join('')}
+        <path d="${c.area}" fill="url(#${id})"/>
+        <path d="${c.linea}" class="linea"/>
+        ${c.puntos.map((q) => `<circle cx="${q.x}" cy="${q.y}" r="5" fill="${q.color}"/>
+          <text x="${q.x}" y="${q.y - 9}" class="valor">${q.t}</text>
+          <text x="${q.x}" y="116" class="eje centro">paso ${q.n}</text>`).join('')}</svg>`;
+    },
+    /** Tiempo de trabajo aproximado (minutos y horas de los pasos) y lo que tarda aparte (días, semanas). */
+    tiempoReceta(p) {
+      const pasos = this.pasosReceta(p);
+      const corto = pasos.reduce((t, x) => t + x.tiempos.filter((y) => !y.largo).reduce((a, y) => a + y.min, 0), 0);
+      const largo = pasos.flatMap((x) => x.tiempos.filter((y) => y.largo).map((y) => y.txt));
+      return { texto: corto ? (corto < 90 ? Math.round(corto) + ' min' : '≈ ' + num(corto / 60, corto / 60 < 10 ? 1 : 0) + ' h') : '—', largo };
+    },
+    imprimirReceta() {
+      document.documentElement.classList.add('imprimir-receta');
+      setTimeout(() => { window.print(); document.documentElement.classList.remove('imprimir-receta'); }, 50);
+    },
     cantidadInsumo(por100, litros, unidad) {
       const c = (por100 * litros) / 100;
       return ['un', 'und', 'unidad', 'unidades'].includes(String(unidad).trim().toLowerCase()) ? Math.ceil(c - 1e-9) : c;

@@ -48,6 +48,16 @@ class Formulas
         ],
     ];
 
+    /** De dónde salen las fórmulas y pasos (la ficha de la receta lo muestra). Un sabor usa la de su base. */
+    public const FUENTES = [
+        'Queso Paria' => ['texto' => 'Guías técnicas de queso Paria de Puno', 'url' => null],
+        'Yogurt natural' => ['texto' => 'Guías técnicas de yogurt (azúcar 4–10 %, sorbato 0,05 %)', 'url' => null],
+        'Queso andino' => ['texto' => 'Flüeler y Marbach, Guía para la elaboración de quesos (CEDEPAS), queso semiduro tipo suizo',
+            'url' => 'https://www.cedepas.org.pe/sites/default/files/guia_para_la_elaboracion_de_quesos_web.pdf'],
+        'Queso mantecoso' => ['texto' => 'Informe de elaboración de queso mantecoso, Ing. Industrias Alimentarias, Cajamarca (2010)',
+            'url' => 'https://idoc.pub/documents/informe-deelaboracion-de-queso-mantecoso-1-en5kwj3j51no'],
+    ];
+
     /**
      * Sabores iniciales: base => [nombre, sabor, insumo, cantidad por 100 L].
      * Fresa: la misma cantidad que llevaba antes el yogurt (0,3 por 100 L).
@@ -279,6 +289,7 @@ class Formulas
                 'id' => $p->id, 'nombre' => $p->nombre, 'tipo' => $p->tipo, 'unidad' => $p->unidad,
                 'rendimiento_min' => (float) $p->rendimiento_min, 'rendimiento_max' => (float) $p->rendimiento_max,
                 'vida_util_dias' => $p->vida_util_dias,
+                'fuente' => self::FUENTES[$p->nombre] ?? ($p->base_id ? self::FUENTES[$todos[$p->base_id]->nombre ?? ''] ?? null : null),
                 'procedimiento' => self::pasos($p, $p->base_id ? $todos[$p->base_id] ?? null : null),
                 // sabor: de qué base sale, cómo se llama el sabor y qué le agrega a la base
                 'base_id' => $p->base_id, 'base' => $p->base_id ? ($todos[$p->base_id]->nombre ?? null) : null,

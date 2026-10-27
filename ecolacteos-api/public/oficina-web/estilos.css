@@ -353,3 +353,120 @@ ol.historial li.futuro::before { background: var(--aviso); }
 .grupo-venta small { font-size: 12px; color: var(--texto-3); }
 .sabores-venta { padding: 12px 14px; border-radius: var(--radio); background: var(--superficie-2); border: 1px solid var(--borde); }
 .agregar-producto { margin-top: 14px; padding: 14px; border-radius: var(--radio); border: 1px solid var(--verde-borde); background: var(--verde-suave); }
+
+/* --- recetario: tarjetas con dibujo y ficha de cada receta --- */
+.recetario-cabeza { margin: 30px 0 12px; align-items: flex-end; gap: 12px; }
+.filtro-recetas { display: flex; gap: 4px; background: var(--superficie); border: 1px solid var(--borde); border-radius: 99px; padding: 3px; }
+.filtro-recetas button, .chips-litros button, .ficha-hero .familia button { border: 0; background: none; color: var(--texto-2); font: inherit; font-size: 13px;
+  padding: 6px 12px; border-radius: 99px; cursor: pointer; }
+.filtro-recetas button.activo { background: var(--verde-suave); color: var(--texto); font-weight: 600; }
+.recetario { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+.receta-card { --tono: #f1cf6b; position: relative; display: flex; flex-direction: column; text-align: left; padding: 0; overflow: hidden; cursor: pointer;
+  font: inherit; color: var(--texto); background: var(--superficie); border: 1px solid var(--borde); border-radius: 16px;
+  transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease; }
+.receta-card:hover, .receta-card:focus-visible { transform: translateY(-3px); border-color: color-mix(in srgb, var(--tono) 55%, var(--borde));
+  box-shadow: 0 10px 28px rgba(0,0,0,.35); outline: none; }
+.receta-card.abierta { border-color: var(--tono); box-shadow: 0 0 0 2px color-mix(in srgb, var(--tono) 40%, transparent); }
+.receta-card .dibujo { height: 118px; display: grid; place-items: center;
+  background: radial-gradient(circle at 50% 70%, color-mix(in srgb, var(--tono) 30%, transparent), transparent 70%),
+              linear-gradient(160deg, color-mix(in srgb, var(--tono) 16%, var(--superficie-2)), var(--superficie)); }
+.receta-card .dibujo svg { width: 128px; height: 96px; transition: transform .25s ease; }
+.receta-card:hover .dibujo svg { transform: scale(1.06) rotate(-2deg); }
+.receta-card .cuerpo { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.receta-card .tipo, .ficha-hero .tipo { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--tono); font-weight: 700; }
+.receta-card strong { font-size: 17px; line-height: 1.2; }
+.receta-card .datos { display: grid; grid-template-columns: repeat(3, auto); justify-content: space-between; gap: 6px; font-size: 11px; color: var(--texto-3); }
+.receta-card .datos b { display: block; font-size: 13px; color: var(--texto); font-weight: 600; white-space: nowrap; }
+.sabores-mini { display: flex; align-items: center; gap: 3px; font-size: 12px; color: var(--texto-3); }
+.sabores-mini i, .ficha-hero .familia i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; border: 2px solid var(--superficie); margin-right: -6px; }
+.sabores-mini span { margin-left: 10px; }
+.receta-card .estado { margin-top: auto; font-size: 12px; padding: 4px 9px; border-radius: 8px; align-self: flex-start; }
+.receta-card .estado.ok { background: var(--verde-suave); color: var(--exito); }
+.receta-card .estado.mal { background: var(--alerta-fondo); color: var(--alerta); }
+.receta-card .estado.ojo { background: var(--aviso-fondo); color: var(--aviso); }
+
+.ficha-receta { --tono: #f1cf6b; margin-top: 18px; border: 1px solid color-mix(in srgb, var(--tono) 40%, var(--borde)); border-radius: 20px; overflow: hidden;
+  background: var(--superficie); scroll-margin-top: 16px; animation: aparecer .2s ease-out; }
+.ficha-hero { position: relative; display: grid; grid-template-columns: 170px 1fr auto; gap: 18px; align-items: center; padding: 20px 22px;
+  background: radial-gradient(circle at 12% 60%, color-mix(in srgb, var(--tono) 32%, transparent), transparent 55%),
+              linear-gradient(120deg, color-mix(in srgb, var(--tono) 14%, var(--superficie-2)), var(--superficie)); }
+.ficha-hero .dibujo svg { width: 170px; height: 128px; filter: drop-shadow(0 8px 14px rgba(0,0,0,.35)); }
+.ficha-hero h3 { margin: 2px 0 4px; font-size: 28px; line-height: 1.1; }
+.ficha-hero .fuente { margin: 0 0 8px; font-size: 12.5px; color: var(--texto-3); }
+.ficha-hero .familia { display: flex; flex-wrap: wrap; gap: 6px; }
+.ficha-hero .familia button { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--borde); background: rgba(15,26,36,.5); }
+.ficha-hero .familia button.activo { border-color: var(--tono); color: var(--texto); font-weight: 600; }
+.ficha-hero .familia i { margin: 0; border: 0; }
+.ficha-hero .acciones { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; align-self: start; max-width: 260px; }
+.ficha-kpis { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--borde); border-bottom: 1px solid var(--borde); }
+.ficha-kpis div { padding: 12px 18px; display: flex; flex-direction: column; gap: 2px; }
+.ficha-kpis div + div { border-left: 1px solid var(--borde); }
+.ficha-kpis span { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--texto-3); }
+.ficha-kpis strong { font-size: 20px; font-variant-numeric: tabular-nums; }
+.ficha-kpis small { font-size: 12px; color: var(--texto-3); }
+.ficha-cuerpo { display: grid; grid-template-columns: minmax(260px, 340px) 1fr; }
+.ficha-cuerpo h4 { margin: 0 0 10px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--texto-3); }
+.ficha-insumos { padding: 18px 20px; background: var(--superficie-2); border-right: 1px solid var(--borde); }
+.litros { display: flex; align-items: center; gap: 8px; }
+.litros input { width: 90px; font-size: 20px; font-weight: 600; text-align: center; }
+.litros span { color: var(--texto-3); font-size: 13px; }
+.chips-litros { display: flex; flex-wrap: wrap; gap: 4px; margin: 10px 0 12px; }
+.chips-litros button { border: 1px solid var(--borde); padding: 4px 10px; font-size: 12px; }
+.chips-litros button.activo { border-color: var(--tono); color: var(--texto); }
+.salen { padding: 10px 12px; border-radius: 10px; margin-bottom: 18px; color: var(--texto-2);
+  background: color-mix(in srgb, var(--tono) 12%, transparent); border: 1px dashed color-mix(in srgb, var(--tono) 50%, transparent); }
+.salen strong { color: var(--texto); font-size: 18px; }
+.ingredientes { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.ingredientes .fila-ing { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.ingredientes .nombre em { font-style: normal; font-size: 11px; margin-left: 6px; padding: 1px 7px; border-radius: 99px;
+  background: color-mix(in srgb, var(--tono) 22%, transparent); color: var(--texto); }
+.ingredientes strong { font-size: 17px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ingredientes .barra { height: 5px; border-radius: 99px; background: var(--borde); margin: 5px 0 3px; overflow: hidden; }
+.ingredientes .barra i { display: block; height: 100%; border-radius: inherit; background: var(--exito); transition: width .3s ease; }
+.ingredientes small { font-size: 12px; color: var(--texto-3); }
+.ingredientes li.falta .barra i { background: var(--alerta); }
+.ingredientes li.falta small, .ingredientes li.falta strong { color: var(--alerta); }
+.ficha-proceso { padding: 18px 22px 22px; min-width: 0; }
+.curva { margin-bottom: 20px; }
+.curva svg { width: 100%; max-height: 190px; display: block; }
+.curva .guia { stroke: var(--borde); stroke-dasharray: 3 4; }
+.curva .eje { fill: var(--texto-3); font-size: 10px; }
+.curva .eje.centro, .curva .valor { text-anchor: middle; }
+.curva .valor { fill: var(--texto); font-size: 11px; font-weight: 700; paint-order: stroke; stroke: var(--superficie); stroke-width: 3px; }
+.curva .linea { fill: none; stroke: var(--texto-2); stroke-width: 2; stroke-linejoin: round; }
+.linea-tiempo { list-style: none; margin: 0; padding: 0; position: relative; }
+.linea-tiempo::before { content: ""; position: absolute; left: 19px; top: 8px; bottom: 8px; width: 2px;
+  background: linear-gradient(var(--tono), color-mix(in srgb, var(--tono) 10%, var(--borde))); }
+.linea-tiempo li { position: relative; display: grid; grid-template-columns: 40px 1fr; gap: 12px; padding: 0 0 16px; }
+.linea-tiempo .punto { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-size: 18px; z-index: 1;
+  background: var(--superficie-2); border: 2px solid color-mix(in srgb, var(--tono) 70%, var(--borde)); }
+.linea-tiempo .num-paso { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--tono); font-weight: 700; }
+.linea-tiempo p { margin: 2px 0 6px; color: var(--texto); }
+.etiquetas { display: flex; flex-wrap: wrap; gap: 6px; }
+.etiquetas span { font-size: 12px; padding: 2px 9px; border-radius: 99px; border: 1px solid var(--borde); color: var(--texto-2); white-space: nowrap; }
+.etiquetas .temp.caliente { border-color: #6b3036; background: var(--alerta-fondo); color: #ff9c9c; }
+.etiquetas .temp.tibio { border-color: #6b5427; background: var(--aviso-fondo); color: var(--aviso); }
+.etiquetas .temp.frio { border-color: #2c5b66; background: #17323a; color: #7fd4e0; }
+@media (max-width: 900px) {
+  .ficha-hero { grid-template-columns: 110px 1fr; padding: 16px; }
+  .ficha-hero .dibujo svg { width: 110px; height: 84px; }
+  .ficha-hero h3 { font-size: 22px; }
+  .ficha-hero .acciones { grid-column: 1 / -1; justify-content: flex-start; max-width: none; }
+  .ficha-hero .acciones .cerrar { position: absolute; top: 12px; right: 12px; }
+  .curva svg { max-height: none; }
+  .ficha-kpis { grid-template-columns: 1fr 1fr; }
+  .ficha-kpis div:nth-child(3) { border-left: 0; }
+  .ficha-kpis div:nth-child(n+3) { border-top: 1px solid var(--borde); }
+  .ficha-cuerpo { grid-template-columns: 1fr; }
+  .ficha-insumos { border-right: 0; border-bottom: 1px solid var(--borde); }
+  .recetario-cabeza { flex-wrap: wrap; }
+}
+@media (prefers-reduced-motion: reduce) { .receta-card, .receta-card .dibujo svg, .ficha-receta { transition: none; animation: none; } }
+/* imprimir solo la ficha de la receta (botón 🖨) */
+@media print {
+  html.imprimir-receta main section > :not(.ficha-receta) { display: none !important; }
+  html.imprimir-receta .ficha-receta { border: 1px solid #999; background: #fff; }
+  html.imprimir-receta .ficha-receta * { color: #000 !important; }
+  html.imprimir-receta .ficha-hero, html.imprimir-receta .ficha-insumos { background: #fff !important; }
+  html.imprimir-receta .ficha-cuerpo { grid-template-columns: 260px 1fr; }
+}

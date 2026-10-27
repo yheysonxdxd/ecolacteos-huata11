@@ -991,40 +991,132 @@
                 </div>
             </div>
 
-            <div class="fila" style="margin: 28px 0 10px"><h2 style="margin: 0">Recetas</h2><div class="espacio"></div>
-                <button class="btn chico gris" x-show="usuario?.rol === 'ADMIN'" @click="ir('config-productos')">+ Producto nuevo (otro queso…)</button></div>
-            <table class="lista">
-                <tr><th>Producto</th><th class="num">Sale de 100 L</th><th class="num">Dura</th><th>Lleva</th><th></th></tr>
-                <template x-for="p in d.productos || []" :key="p.id"><tbody>
-                    <tr class="clic" @click="recetaAbierta = recetaAbierta === p.id ? null : p.id">
-                        <td><span x-text="(recetaAbierta === p.id ? '▾ ' : '▸ ') + (p.base_id ? '↳ ' + p.variante : p.nombre)" :style="p.base_id ? 'padding-left: 14px' : 'font-weight: 600'"></span></td>
-                        <td class="num" x-text="num(p.rendimiento_min * 100) + (p.rendimiento_max !== p.rendimiento_min ? '–' + num(p.rendimiento_max * 100) : '') + ' ' + unidadProducto(p)"></td>
-                        <td class="num" x-text="p.vida_util_dias + ' días'"></td>
-                        <td class="sub" style="margin: 0" x-text="p.base_id ? 'lo del ' + p.base + ' + ' + p.insumos.filter((i) => (p.propios || []).some((x) => x.insumo_id === i.id)).map((i) => i.nombre.toLowerCase()).join(', ') : p.insumos.length + ' insumos'"></td>
-                        <td class="num" @click.stop>
-                            <button class="btn chico gris" x-show="usuario?.rol === 'ADMIN' && !p.base_id" @click="abrirSabor(p)"
-                                    x-text="p.tipo === 'YOGURT' ? '+ Sabor' : '+ Variedad'"></button></td></tr>
-                    <tr x-show="recetaAbierta === p.id"><td colspan="5" style="background: var(--superficie-2)">
-                        <div class="fila" style="margin-bottom: 8px">
-                            <span class="sub" style="margin: 0" x-text="p.base_id ? (p.tipo === 'YOGURT' ? 'Sabor ' : 'Variedad ') + (p.variante || '').toLowerCase() + ': lleva todo lo del ' + p.base + ' (si cambias esa fórmula, cambia aquí también) más lo marcado.' : 'Cantidades por cada 100 L de leche.'"></span>
-                            <div class="espacio"></div>
-                            <button class="btn chico" x-show="usuario?.rol === 'ADMIN' && !p.base_id" @click="abrirFormula(p)">Editar fórmula</button>
-                            <button class="btn chico" x-show="usuario?.rol === 'ADMIN' && p.base_id" @click="abrirSabor(null, p)"
-                                    x-text="p.tipo === 'YOGURT' ? 'Editar sabor' : 'Editar variedad'"></button></div>
-                        <table class="lista"><tr><th>Insumo</th><th class="num">Por 100 L</th><th class="num">Hay en almacén</th></tr>
-                            <template x-for="i in p.insumos" :key="i.id"><tr>
-                                <td><span x-text="i.nombre"></span> <span class="chip ok" x-show="(p.propios || []).some((x) => x.insumo_id === i.id)"
-                                    x-text="p.tipo === 'YOGURT' ? 'del sabor' : 'de la variedad'"></span></td>
-                                <td class="num" x-text="num(i.por_100l, 3) + ' ' + i.unidad"></td>
-                                <td class="num" :class="i.stock < i.minimo ? 'mal' : ''" x-text="num(i.stock, 3) + ' ' + i.unidad"></td></tr></template>
-                            <tr x-show="!p.insumos.length"><td colspan="3">Esta fórmula no tiene insumos todavía.</td></tr>
-                        </table>
-                        <h2>Cómo se hace</h2>
-                        <ol class="pasos"><template x-for="paso in p.procedimiento"><li x-text="paso"></li></template></ol>
-                        <p class="sub" x-show="!p.procedimiento.length">Sin pasos registrados.</p>
-                    </td></tr>
-                </tbody></template>
-            </table>
+            {{-- recetario: una tarjeta por receta (con su dibujo) y la ficha completa al tocarla --}}
+            <div class="fila recetario-cabeza no-imprimir">
+                <div><h2 style="margin: 0">Recetario</h2>
+                    <p class="sub" style="margin: 2px 0 0">Toca una receta para ver cuánto lleva, la curva de temperatura y cada paso.</p></div>
+                <div class="espacio"></div>
+                <div class="filtro-recetas" role="tablist">
+                    <template x-for="t in [['TODOS', 'Todas'], ['QUESO', '🧀 Quesos'], ['YOGURT', '🥛 Yogurt']]" :key="t[0]">
+                        <button :class="{ activo: recetaFiltro === t[0] }" @click="recetaFiltro = t[0]" x-text="t[1]"></button></template>
+                </div>
+                <button class="btn chico gris" x-show="usuario?.rol === 'ADMIN'" @click="ir('config-productos')">+ Producto nuevo</button>
+            </div>
+
+            <div class="recetario no-imprimir">
+                <template x-for="g in recetasBase()" :key="g.p.id">
+                    <button class="receta-card" :class="{ abierta: recetaActual() && familiaReceta(recetaActual())[0].id === g.p.id }"
+                            :style="'--tono: ' + colorReceta(g.p)" @click="verReceta(g.p)">
+                        <div class="dibujo" x-html="dibujoReceta(g.p)"></div>
+                        <div class="cuerpo">
+                            <span class="tipo" x-text="{ QUESO: 'Queso', YOGURT: 'Yogurt' }[g.p.tipo] || 'Producto'"></span>
+                            <strong x-text="g.p.nombre"></strong>
+                            <div class="datos">
+                                <span><b x-text="salenReceta(g.p, 100)"></b>de 100 L</span>
+                                <span><b x-text="g.p.vida_util_dias + ' días'"></b>dura</span>
+                                <span><b x-text="g.p.procedimiento.length"></b>pasos</span>
+                            </div>
+                            <div class="sabores-mini" x-show="g.sabores.length">
+                                <template x-for="x in g.sabores" :key="x.id"><i :style="'background: ' + colorReceta(x)" :title="x.variante"></i></template>
+                                <span x-text="g.sabores.length + (g.p.tipo === 'YOGURT' ? ' sabores' : ' variedades')"></span>
+                            </div>
+                            <span class="estado" :class="!g.p.insumos.length ? 'ojo' : (g.p.alcanza_litros === null || g.p.alcanza_litros >= 100 ? 'ok' : 'mal')"
+                                  x-text="!g.p.insumos.length ? 'Sin fórmula todavía' : (g.p.alcanza_litros === null || g.p.alcanza_litros >= 100 ? '✓ Hay insumos para ' + (g.p.alcanza_litros === null ? 'producir' : num(g.p.alcanza_litros, 0) + ' L') : 'Falta insumo: alcanza para ' + num(g.p.alcanza_litros, 0) + ' L')"></span>
+                        </div>
+                    </button>
+                </template>
+                <div class="apoyo" x-show="!recetasBase().length">No hay recetas de este tipo.</div>
+            </div>
+
+            {{-- ficha de la receta --}}
+            <template x-if="recetaActual()"><article class="ficha-receta" id="ficha-receta" :style="'--tono: ' + colorReceta(recetaActual())"
+                     x-data="{ get p() { return recetaActual(); } }">
+                <header class="ficha-hero">
+                    <div class="dibujo" x-html="dibujoReceta(p)"></div>
+                    <div class="titulo">
+                        <span class="tipo" x-text="({ QUESO: 'Queso', YOGURT: 'Yogurt' }[p.tipo] || 'Producto') + (p.base_id ? ' · sabor de ' + p.base : '')"></span>
+                        <h3 x-text="p.nombre"></h3>
+                        <p x-show="p.fuente" class="fuente">Fuente:
+                            <template x-if="p.fuente?.url"><a :href="p.fuente.url" target="_blank" rel="noopener" x-text="p.fuente.texto"></a></template>
+                            <template x-if="!p.fuente?.url"><span x-text="p.fuente?.texto"></span></template></p>
+                        <div class="familia" x-show="familiaReceta(p).length > 1">
+                            <template x-for="x in familiaReceta(p)" :key="x.id">
+                                <button :class="{ activo: x.id === p.id }" @click="recetaAbierta = x.id">
+                                    <i :style="'background: ' + colorReceta(x)"></i><span x-text="x.base_id ? x.variante : 'Natural'"></span></button></template>
+                        </div>
+                    </div>
+                    <div class="acciones no-imprimir">
+                        <button class="btn chico gris" @click="imprimirReceta()">🖨 Imprimir</button>
+                        <button class="btn chico gris" x-show="usuario?.rol === 'ADMIN' && !p.base_id" @click="abrirSabor(p)" x-text="p.tipo === 'YOGURT' ? '+ Sabor' : '+ Variedad'"></button>
+                        <button class="btn chico" x-show="usuario?.rol === 'ADMIN' && !p.base_id" @click="abrirFormula(p)">Editar fórmula</button>
+                        <button class="btn chico" x-show="usuario?.rol === 'ADMIN' && p.base_id" @click="abrirSabor(null, p)" x-text="p.tipo === 'YOGURT' ? 'Editar sabor' : 'Editar variedad'"></button>
+                        <button class="btn chico gris cerrar" @click="recetaAbierta = null" aria-label="Cerrar receta">✕</button>
+                    </div>
+                </header>
+
+                <div class="ficha-kpis">
+                    <div><span>Rinde (100 L)</span><strong x-text="salenReceta(p, 100)"></strong></div>
+                    <div><span>Dura</span><strong x-text="p.vida_util_dias + ' días'"></strong></div>
+                    <div><span>Trabajo en la tina</span><strong x-text="tiempoReceta(p).texto"></strong>
+                        <small x-show="tiempoReceta(p).largo.length" x-text="'+ esperar ' + tiempoReceta(p).largo.join(' · ')"></small></div>
+                    <div><span>Pasos</span><strong x-text="p.procedimiento.length"></strong></div>
+                </div>
+
+                <div class="ficha-cuerpo">
+                    <section class="ficha-insumos">
+                        <h4>Para cuántos litros</h4>
+                        <div class="litros">
+                            <button class="btn gris chico" @click="recetaLitros = Math.max(10, (Number(recetaLitros) || 0) - 10)" aria-label="10 litros menos">−</button>
+                            <input type="number" min="1" step="10" x-model.number="recetaLitros" aria-label="Litros de leche">
+                            <span>L de leche</span>
+                            <button class="btn gris chico" @click="recetaLitros = (Number(recetaLitros) || 0) + 10" aria-label="10 litros más">+</button>
+                        </div>
+                        <div class="chips-litros">
+                            <template x-for="l in [50, 100, 200, 500]" :key="l"><button :class="{ activo: recetaLitros == l }" @click="recetaLitros = l" x-text="l + ' L'"></button></template>
+                            <button x-show="d.tanque > 0" :class="{ activo: recetaLitros == Math.floor(d.tanque) }" @click="recetaLitros = Math.floor(d.tanque)" x-text="'Tanque (' + num(d.tanque, 0) + ' L)'"></button>
+                        </div>
+                        <div class="salen">Salen <strong x-text="salenReceta(p, Number(recetaLitros) || 0)"></strong></div>
+
+                        <h4>Lleva</h4>
+                        <ul class="ingredientes">
+                            <template x-for="i in insumosReceta(p, Number(recetaLitros) || 0)" :key="i.id"><li :class="{ falta: !i.alcanza }">
+                                <div class="fila-ing">
+                                    <span class="nombre"><span x-text="i.nombre"></span>
+                                        <em x-show="i.propio" x-text="p.tipo === 'YOGURT' ? 'del sabor' : 'de la variedad'"></em></span>
+                                    <strong x-text="cantidadBonita(i.necesita, i.unidad)"></strong>
+                                </div>
+                                <div class="barra"><i :style="'width: ' + (i.cubre * 100) + '%'"></i></div>
+                                <small x-text="i.alcanza ? 'Hay ' + cantidadBonita(i.stock, i.unidad) + ' en almacén' : 'Falta ' + cantidadBonita(i.necesita - i.stock, i.unidad) + ' (hay ' + cantidadBonita(i.stock, i.unidad) + ')'"></small>
+                            </li></template>
+                        </ul>
+                        <p class="apoyo" x-show="!p.insumos.length">Esta receta todavía no tiene insumos.
+                            <a href="#" x-show="usuario?.rol === 'ADMIN'" @click.prevent="abrirFormula(p)">Ponerle su fórmula</a></p>
+                    </section>
+
+                    <section class="ficha-proceso">
+                        <template x-if="curvaReceta(p)"><div class="curva">
+                            <h4>Curva de temperatura</h4>
+                            <div x-html="svgCurva(p)"></div>
+                        </div></template>
+
+                        <h4>Cómo se hace</h4>
+                        <ol class="linea-tiempo">
+                            <template x-for="paso in pasosReceta(p)" :key="paso.n"><li>
+                                <span class="punto" x-text="paso.icono"></span>
+                                <div>
+                                    <span class="num-paso" x-text="'Paso ' + paso.n"></span>
+                                    <p x-text="paso.texto"></p>
+                                    <div class="etiquetas">
+                                        <template x-for="t in paso.temps" :key="t.txt"><span class="temp" :class="t.valor >= 60 ? 'caliente' : t.valor >= 30 ? 'tibio' : 'frio'" x-text="'🌡 ' + t.txt"></span></template>
+                                        <template x-for="t in paso.tiempos" :key="t.txt"><span class="tiempo" x-text="'⏱ ' + t.txt"></span></template>
+                                    </div>
+                                </div>
+                            </li></template>
+                        </ol>
+                        <p class="apoyo" x-show="!p.procedimiento.length">Sin pasos registrados.</p>
+                    </section>
+                </div>
+            </article></template>
         </section>
         </template>
 
