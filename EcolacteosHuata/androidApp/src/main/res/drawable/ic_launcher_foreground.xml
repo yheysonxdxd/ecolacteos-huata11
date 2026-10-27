@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Logo de la app: la misma vaca frente al arco, con totora y el lago, que MarcaHuata (viewBox 76×72),
+     achicada al centro del ícono para que no se corte en el círculo del celular. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="0.72"
+        android:scaleY="0.72"
+        android:translateX="26.6"
+        android:translateY="27.2">
+        <!-- arcos -->
+        <path android:pathData="M5,50 A33,33 0 0 1 71,50" android:strokeColor="#7FD4E0" android:strokeAlpha="0.8"
+            android:strokeWidth="1.8" android:strokeLineCap="round" android:fillColor="#00000000" />
+        <path android:pathData="M11,50 A27,27 0 0 1 65,50" android:strokeColor="#2F8F4E" android:strokeAlpha="0.9"
+            android:strokeWidth="2.8" android:strokeLineCap="round" android:fillColor="#00000000" />
+        <path android:pathData="M17,50 A21,21 0 0 1 59,50" android:strokeColor="#4FC47A"
+            android:strokeWidth="3.4" android:strokeLineCap="round" android:fillColor="#00000000" />
+        <!-- orejas y cara -->
+        <path android:fillColor="#FFFFFF" android:pathData="M25,32 C23.5,26 25,21 28,19 C31,21 32.5,26 32.5,31 Z" />
+        <path android:fillColor="#FFFFFF" android:pathData="M51,32 C52.5,26 51,21 48,19 C45,21 43.5,26 43.5,31 Z" />
+        <path android:fillColor="#FFFFFF"
+            android:pathData="M27,33 C27,28 32,25 38,25 C44,25 49,28 49,33 C49,42 45,48 38,48 C31,48 27,42 27,33 Z" />
+        <!-- ojos, hocico y nariz -->
+        <path android:fillColor="#1E6E3E" android:pathData="M31.4,34 a2.1,2.1 0 1,0 4.2,0 a2.1,2.1 0 1,0 -4.2,0 Z" />
+        <path android:fillColor="#1E6E3E" android:pathData="M40.4,34 a2.1,2.1 0 1,0 4.2,0 a2.1,2.1 0 1,0 -4.2,0 Z" />
+        <path android:fillColor="#1E6E3E" android:fillAlpha="0.3" android:pathData="M32,42.3 a6,3.7 0 1,0 12,0 a6,3.7 0 1,0 -12,0 Z" />
+        <path android:fillColor="#1E6E3E" android:pathData="M34.3,41.6 a1.1,1.1 0 1,0 2.2,0 a1.1,1.1 0 1,0 -2.2,0 Z" />
+        <path android:fillColor="#1E6E3E" android:pathData="M39.5,41.6 a1.1,1.1 0 1,0 2.2,0 a1.1,1.1 0 1,0 -2.2,0 Z" />
+        <!-- lago -->
+        <path android:pathData="M4,60 C18,56 28,62 38,62 C48,62 58,56 72,60" android:strokeColor="#7FD4E0"
+            android:strokeWidth="2.8" android:strokeLineCap="round" android:fillColor="#00000000" />
+        <!-- totora -->
+        <path android:pathData="M12,58 C12,51 15,44 15,38" android:strokeColor="#4FC47A" android:strokeAlpha="0.9"
+            android:strokeWidth="2.2" android:strokeLineCap="round" android:fillColor="#00000000" />
+        <path android:pathData="M17,58 C17,52 20,45 21,41" android:strokeColor="#4FC47A" android:strokeAlpha="0.65"
+            android:strokeWidth="2.2" android:strokeLineCap="round" android:fillColor="#00000000" />
+        <path android:pathData="M60,58 C60,53 62,48 62,44" android:strokeColor="#4FC47A" android:strokeAlpha="0.55"
+            android:strokeWidth="2" android:strokeLineCap="round" android:fillColor="#00000000" />
+    </group>
+</vector>
