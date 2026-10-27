@@ -93,6 +93,9 @@ class AdminAppController extends Controller
             'aceptados_pct' => $pct($aceptadas), 'rechazados_pct' => $pct($rechazadas),
             'adulterada_pct' => $pct($adulteradas), 'pendientes' => $pendientes,
             'vehiculos' => $porVehiculo,
+            // la app: los 7 días que terminan en "hasta", para la tira de barras de Acopio (se toca un día)
+            'recientes' => collect(range(6, 0))->map(fn ($k) => $hasta->copy()->subDays($k)->toDateString())
+                ->map(fn ($f) => ['fecha' => $f, 'litros' => round((float) DB::table('entregas')->where('fecha', $f)->where('ausente', false)->sum('litros'), 1)]),
             // para el gráfico de la web: litros de cada día del periodo
             'por_dia' => (clone $ents)->groupBy('fecha')->orderBy('fecha')
                 ->selectRaw("fecha, SUM(litros) as litros, SUM(CASE WHEN estado_calidad = 'RECHAZADO' THEN 1 ELSE 0 END) as rechazadas, COUNT(*) as entregas")

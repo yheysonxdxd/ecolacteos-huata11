@@ -26,13 +26,13 @@ object ComprasReal {
     var mesVentas by mutableStateOf<String?>(null) // null = este mes · "todo"
     var mensaje by mutableStateOf<String?>(null)
     var version by mutableStateOf(0)
-    var pestanaVentas by mutableStateOf(0)  // Nueva venta · Ventas y notas
+    var pestanaVentas by mutableStateOf(-1)  // -1 menú de tarjetas · 0 Nueva venta · 1 Ventas y notas
     // nueva venta paso a paso, como en la web: 1 cliente · 2 productos · 3 confirmar
     var pasoVenta by mutableStateOf(1)
     var familia by mutableStateOf<Long?>(null)  // base elegida (Yogurt natural…); sus sabores se eligen debajo
     var producto by mutableStateOf<Long?>(null) // el que se va a agregar
     var cuantos by mutableStateOf(1.0)
-    var pestanaAlmacen by mutableStateOf(0) // Stock y avisos · Pérdidas
+    var pestanaAlmacen by mutableStateOf(-1) // -1 menú de tarjetas · 0 Lo que hay · 1 Pérdidas
     var metodoPago by mutableStateOf("EFECTIVO") // EFECTIVO · YAPE · TARJETA
     var operacion by mutableStateOf("")           // N.° de operación del Yape o del voucher (opcional)
     // "Solo vender": quien compra sin registrarlo como cliente (nombre, DNI/RUC); la nota sale a su nombre
@@ -69,14 +69,17 @@ fun ContenidoComprasReal(ruta: String, irA: (Int) -> Unit) {
     val c = ComprasReal
     when (ruta) {
         "compras/formulas" -> FormulasReal(puedeAceptar = false)
-        "compras/ventas" -> ConPestanas(listOf("Nueva venta", "Ventas y notas"), c.pestanaVentas, { c.pestanaVentas = it }) {
-            if (c.pestanaVentas == 0) VentaReal { c.pestanaVentas = 1 } else VentasDelMes()
-        }
-        "compras/almacen" -> ConPestanas(listOf("Stock y avisos", "Pérdidas"), c.pestanaAlmacen, { c.pestanaAlmacen = it }) {
+        "compras/ventas" -> MenuTarjetas("Ventas", c.pestanaVentas, { c.pestanaVentas = it }, listOf(
+            OpcionMenu("🏷️", "Nueva venta", "Cliente → productos → cómo paga", VERDE) { VentaReal { c.pestanaVentas = 1 } },
+            OpcionMenu("🧾", "Ventas y notas", "Lo vendido en el mes y sus notas", CELESTE) { VentasDelMes() },
+        ))
+        "compras/almacen" -> MenuTarjetas("Almacén", c.pestanaAlmacen, { c.pestanaAlmacen = it }, listOf(
             // tocar un insumo abre su kardex, que está en Más
-            if (c.pestanaAlmacen == 0) InventarioReal { ComprasMas.abierta = 1; irA(indiceDe(Rol.COMPRAS, "compras/mas")) }
-            else PerdidasReal("compras")
-        }
+            OpcionMenu("📦", "Lo que hay", "Stock de insumos y productos, y lo que falta", CELESTE) {
+                InventarioReal { ComprasMas.abierta = 1; irA(indiceDe(Rol.COMPRAS, "compras/mas")) }
+            },
+            OpcionMenu("⚠️", "Pérdidas", "Lo que se malogró, se venció o no cuadró", ROSA) { PerdidasReal("compras") },
+        ))
         "compras/ventas-mes" -> VentasDelMes()
         "compras/kardex" -> KardexCompleto()
         "compras/mas" -> ComprasMasMenu()

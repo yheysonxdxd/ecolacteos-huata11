@@ -22,18 +22,30 @@ import pe.gob.huata.ecolacteos.ui.componentes.*
 /** Pestaña elegida dentro de cada opción del menú del admin (como en la web de oficina). */
 object AdminPestanas {
     var acopio by mutableStateOf(0)
-    var dinero by mutableStateOf(0)
+    var dinero by mutableStateOf(-1) // -1 = el menú de tarjetas (DineroMenu)
     var padron by mutableStateOf(0)
     var planta by mutableStateOf(-1) // -1 = el menú de tarjetas (PlantaMenu)
     var mas by mutableStateOf(-1)    // -1 = el menú de tarjetas (MasMenu)
     var calidad by mutableStateOf(0)
 
-    /** Tocar otra vez la opción de abajo vuelve a su menú de tarjetas. */
-    fun volverAlMenu(ruta: String) { if (ruta == "admin/planta") planta = -1; if (ruta == "admin/mas") mas = -1 }
+    /** Tocar otra vez la opción de abajo vuelve a su menú de tarjetas (o a su vista principal). */
+    fun volverAlMenu(ruta: String) {
+        when (ruta) {
+            "admin/planta" -> planta = -1
+            "admin/mas" -> mas = -1
+            "admin/dinero" -> dinero = -1
+            "admin/acopio" -> AcopioCalendario.conciliar = false
+            "compras/ventas" -> ComprasReal.pestanaVentas = -1
+            "compras/almacen" -> ComprasReal.pestanaAlmacen = -1
+            "compras/orden" -> CompraInsumos.pestana = -1
+            "compras/mas" -> ComprasMas.abierta = -1
+        }
+    }
 }
 
 /** Acopio → Totales → Calendario: el mes a la vista y el día tocado (vacíos = el último con entregas). */
 object AcopioCalendario {
+    var conciliar by mutableStateOf(false) // la tarjeta "Campo vs. planta" abierta
     var activo by mutableStateOf(false)
     var mes by mutableStateOf<String?>(null)
     var fecha by mutableStateOf<String?>(null)
@@ -51,16 +63,12 @@ fun ContenidoAdminReal(ruta: String, e: EstadoAdmin, irA: (String) -> Unit = {})
     when (ruta) {
         "admin/inicio" -> InicioAdmin(irA)
         "admin/mas" -> MasMenu()
-        "admin/acopio" -> ConPestanas(listOf("Totales", "Conciliación"), a.acopio, { a.acopio = it }) {
-            if (a.acopio == 0) TotalesReal(e) else ConciliacionReal()
-        }
+        "admin/acopio" -> AcopioAdmin()
         // adulteraciones (precio reducido o baja) y los demás rechazos, que se resuelven capacitando
         "admin/calidad" -> ConPestanas(listOf("Adulteraciones", "Rechazos"), a.calidad, { a.calidad = it }) {
             if (a.calidad == 0) AdulteracionesReal() else RechazosReal()
         }
-        "admin/dinero" ->ConPestanas(listOf("Ventas y pagos", "Costos"), a.dinero, { a.dinero = it }) {
-            if (a.dinero == 0) DineroReal(e) else CostosReal()
-        }
+        "admin/dinero" -> DineroMenu(e)
         "admin/padron" -> ConPestanas(listOf("Proveedores", "Trabajadores", "Cambios"), a.padron, { a.padron = it }) {
             if (a.padron == 2) SolicitudesReal() else PadronReal(a.padron == 1)
         }
@@ -79,7 +87,7 @@ fun ContenidoAdminReal(ruta: String, e: EstadoAdmin, irA: (String) -> Unit = {})
 
 /** Un mes de lunes a domingo: cada día con sus litros (verde más fuerte = más leche); tocar uno muestra sus totales. */
 @Composable
-private fun CalendarioMes(m: JsonObject) {
+internal fun CalendarioMes(m: JsonObject) {
     val cal = AcopioCalendario
     val dias = m.lista("dias").associateBy { it.txt("fecha") }
     val max = maxOf(dias.values.maxOfOrNull { it.num("litros") } ?: 0.0, 1.0)
@@ -95,8 +103,8 @@ private fun CalendarioMes(m: JsonObject) {
     Flechitas(
         nombreMes(m.txt("mes")).replaceFirstChar { it.uppercase() },
         "${formatear(m.num("litros"), 0)} L en el mes · ${dias.size} días con acopio",
-        onAnterior = { cal.mes = m.txt("anterior"); cal.fecha = null },
-        onSiguiente = m.txt("siguiente").takeIf { it.isNotEmpty() }?.let { { cal.mes = it; cal.fecha = null } },
+        onAnterior = { cal.mes = m.txt("anterior") },
+        onSiguiente = m.txt("siguiente").takeIf { it.isNotEmpty() }?.let { { cal.mes = it } },
     )
     Tarjeta {
         Row { listOf("lu", "ma", "mi", "ju", "vi", "sá", "do").forEach { Text(it, Modifier.weight(1f), style = Texto.Apoyo, color = Altiplano.TextoTerciario, textAlign = TextAlign.Center) } }
@@ -314,7 +322,7 @@ private object Conciliacion {
  * ese día se anotan los litros que llegaron a planta y se ve la diferencia.
  */
 @Composable
-private fun ConciliacionReal() {
+internal fun ConciliacionReal() {
     val c = Conciliacion
     CargaServidor("/api/v1/admin/conciliacion" + (c.fecha?.let { "?fecha=$it" } ?: ""), clave = c.version) { d, _ ->
         val fecha = d.txt("fecha")
@@ -391,7 +399,7 @@ private fun FilaConciliacion(v: JsonObject, fecha: String) {
 }
 
 @Composable
-private fun CostosReal() {
+internal fun CostosReal() {
     CargaServidor("/api/v1/admin/costos") { d, _ ->
         val leche = d.num("costo_leche_litro")
         val insumos = d.num("costo_insumos_litro")

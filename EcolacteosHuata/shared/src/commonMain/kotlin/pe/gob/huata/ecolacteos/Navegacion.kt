@@ -165,8 +165,7 @@ fun AppEcolacteos(rolInicial: Rol = Rol.ACOPIADOR, pendientes: Int = 0, hayRed: 
                             selected = activo == i,
                             // tocar otra vez la misma opción vuelve a su menú de tarjetas
                             onClick = {
-                                if (activo == i && r == Rol.ADMIN) AdminPestanas.volverAlMenu(d.ruta)
-                                if (activo == i && d.ruta == "compras/mas") ComprasMas.abierta = -1
+                                if (activo == i) AdminPestanas.volverAlMenu(d.ruta)
                                 activo = i
                             },
                             icon = { Icon(d.icono, contentDescription = d.etiqueta) },

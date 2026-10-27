@@ -51,7 +51,7 @@ fun DineroReal(e: EstadoAdmin) {
 }
 
 @Composable
-private fun PagosProveedores() {
+internal fun PagosProveedores() {
     var pagarTodos by remember { mutableStateOf<List<JsonObject>?>(null) }
     var abierta by remember { mutableStateOf<JsonObject?>(null) }
     val ruta = "/api/v1/admin/pagos" + (DineroAdmin.semana?.let { "?semana=$it" } ?: "")
@@ -136,7 +136,7 @@ private fun PagosProveedores() {
  * en la web): el que espera desde hace más arriba; al tocarlo se ven sus semanas sin pagar.
  */
 @Composable
-private fun DeudasProveedores() {
+internal fun DeudasProveedores() {
     var pagar by remember { mutableStateOf<Triple<String, String, List<Long>>?>(null) } // título, texto, boletas
     var verDias by remember { mutableStateOf<JsonObject?>(null) }
     val abiertos = remember { mutableStateMapOf<String, Boolean>() }

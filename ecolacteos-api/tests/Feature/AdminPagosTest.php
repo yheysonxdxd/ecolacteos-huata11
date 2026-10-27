@@ -150,6 +150,8 @@ class AdminPagosTest extends TestCase
         $t = $this->getJson('/api/v1/admin/totales?fecha=' . $this->lunesPasado->toDateString())->assertOk();
         $t->assertJsonPath('desde', $this->lunesPasado->toDateString())->assertJsonPath('hasta', $this->lunesPasado->toDateString());
         $this->assertEquals(20, $t->json('litros'));
+        $this->assertCount(7, $t->json('recientes'));
+        $this->assertEquals(20, $t->json('recientes.6.litros')); // el último es el día elegido
     }
 
     public function test_la_ficha_del_padron_trae_lo_que_se_debe_para_pagarlo(): void

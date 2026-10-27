@@ -60,9 +60,9 @@ fun InicioAdmin(irA: (String) -> Unit) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Cifra(1, "🥛", "Leche", leche?.num("litros") ?: 0.0, " L",
                     leche?.txt("fecha")?.takeIf { it.isNotEmpty() }?.let { "${fechaCorta(it)} · ${leche.num("entregas").toInt()} entregas" } ?: "sin acopio aún",
-                    CELESTE, Modifier.weight(1f)) { a.acopio = 0; irA("admin/acopio") }
+                    CELESTE, Modifier.weight(1f)) { AcopioCalendario.conciliar = false; irA("admin/acopio") }
                 Cifra(2, "💵", "Se debe", debe?.num("total") ?: 0.0, "", "a ${(debe?.num("proveedores") ?: 0.0).toInt()} proveedores",
-                    AMBAR, Modifier.weight(1f), dinero = true) { DineroAdmin.vista = 2; a.dinero = 0; irA("admin/dinero") }
+                    AMBAR, Modifier.weight(1f), dinero = true) { a.dinero = 0; irA("admin/dinero") }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Cifra(3, "🧀", "Produciendo", d.num("lotes_en_proceso"), " lotes", "toca para cerrarlos",
@@ -77,16 +77,16 @@ fun InicioAdmin(irA: (String) -> Unit) {
             }
             val sinAnalizar = d.num("sin_analizar").toInt()
             if (sinAnalizar > 0) Aparece(6) {
-                Aviso("🔬", "$sinAnalizar ${if (sinAnalizar == 1) "entrega espera" else "entregas esperan"} el análisis de Calidad", "Se ven en Acopio", CELESTE) { a.acopio = 0; irA("admin/acopio") }
+                Aviso("🔬", "$sinAnalizar ${if (sinAnalizar == 1) "entrega espera" else "entregas esperan"} el análisis de Calidad", "Se ven en Acopio", CELESTE) { AcopioCalendario.conciliar = false; irA("admin/acopio") }
             }
 
             Aparece(6) { Text("¿QUÉ QUIERES HACER?", style = Texto.Eyebrow, color = Altiplano.TextoTerciario, modifier = Modifier.padding(top = 6.dp)) }
             Botonera(7, listOf(
                 Accion("🏷️", "Vender", "Queso y yogurt a un cliente", VERDE) { ComprasReal.pestanaVentas = 0; abrirPlanta(5) },
-                Accion("💵", "Pagar", "A los proveedores de leche", AMBAR) { DineroAdmin.vista = 2; irA("admin/dinero") },
+                Accion("💵", "Pagar", "A los proveedores de leche", AMBAR) { a.dinero = 0; irA("admin/dinero") },
                 Accion("🧀", "Producir", "¿Qué vas a hacer hoy?", LILA) { abrirPlanta(3) },
                 Accion("🛒", "Comprar", "Insumos que faltan", ARENA) { abrirPlanta(0) },
-                Accion("🚚", "Acopio", "Leche por día y por carro", CELESTE) { a.acopio = 0; irA("admin/acopio") },
+                Accion("🚚", "Acopio", "Leche por día y por carro", CELESTE) { AcopioCalendario.conciliar = false; irA("admin/acopio") },
                 Accion("🔬", "Calidad", "Rechazos y adulteraciones", ROSA) { abrirMas(0) },
             ))
         }
@@ -138,27 +138,54 @@ fun PlantaMenu() {
     }
 }
 
-/** Lo que se usa menos (Calidad, Padrón, Ajustes) en tarjetas grandes. */
+/** Lo que se usa menos, sin pestañas: cada cosa es una tarjeta. */
 @Composable
 fun MasMenu() {
     val a = AdminPestanas
-    val nombres = listOf("Calidad", "Padrón", "Ajustes")
-    AnimatedContent(a.mas, transitionSpec = { transicionMenu(targetState >= 0) }, label = "mas") { cual ->
-        if (cual < 0) PantallaScroll {
-            Botonera(0, listOf(
-                Accion("🔬", "Calidad", "Adulteraciones, rechazos y capacitación", ROSA) { a.mas = 0 },
-                Accion("👥", "Padrón", "Proveedores, trabajadores y cambios de comunidad", CELESTE) { a.mas = 1 },
-                Accion("⚙️", "Ajustes", "Precios, calidad, almacén, vehículos y rutas", Color(0xFF9FB0C0)) { a.mas = 2 },
-            ), columnas = 1)
-        } else DentroDe("Más", nombres[cual], { a.mas = -1 }) {
-            when (cual) {
-                0 -> ConPestanas(listOf("Adulteraciones", "Rechazos"), a.calidad, { a.calidad = it }) {
-                    if (a.calidad == 0) AdulteracionesReal() else RechazosReal()
-                }
-                1 -> ConPestanas(listOf("Proveedores", "Trabajadores", "Cambios"), a.padron, { a.padron = it }) {
-                    if (a.padron == 2) SolicitudesReal() else PadronReal(a.padron == 1)
-                }
-                else -> ConfiguracionReal()
+    MenuTarjetas("Más", a.mas, { a.mas = it }, listOf(
+        OpcionMenu("💧", "Leche con agua", "Adulteraciones: precio reducido o baja", ROSA) { AdulteracionesReal() },
+        OpcionMenu("🚫", "Rechazos y capacitación", "Quién tuvo leche rechazada y si ya se le capacitó", AMBAR) { RechazosReal() },
+        OpcionMenu("👥", "Proveedores", "Padrón, su leche, sus pagos y su comunidad", CELESTE) { PadronReal(false) },
+        OpcionMenu("🧑‍🔧", "Trabajadores", "Acopiadores, operarios, calidad y compras", VERDE) { PadronReal(true) },
+        OpcionMenu("🔄", "Cambios de comunidad", "Pedidos de traslado por resolver", LILA) { SolicitudesReal() },
+        OpcionMenu("⚙️", "Ajustes", "Precios, calidad, almacén, vehículos y rutas", Color(0xFF9FB0C0)) { ConfiguracionReal() },
+    ))
+}
+
+/** Una opción de un menú de tarjetas: cómo se ve y qué pantalla abre. */
+internal class OpcionMenu(val emoji: String, val titulo: String, val detalle: String, val color: Color, val pantalla: @Composable () -> Unit)
+
+/**
+ * En vez de pestañas: tarjetas grandes; se toca una, se entra, y "← [menu]" vuelve.
+ * [abierta] = -1 es el menú. [encabezado] va arriba de las tarjetas (cifras del día, por ejemplo).
+ */
+@Composable
+internal fun MenuTarjetas(menu: String, abierta: Int, abrir: (Int) -> Unit, opciones: List<OpcionMenu>, columnas: Int = 1,
+                          encabezado: @Composable ColumnScope.() -> Unit = {}) {
+    AnimatedContent(abierta, transitionSpec = { transicionMenu(targetState >= 0) }, label = menu) { i ->
+        if (i < 0 || i >= opciones.size) PantallaScroll {
+            encabezado()
+            Botonera(1, opciones.mapIndexed { k, o -> Accion(o.emoji, o.titulo, o.detalle, o.color) { abrir(k) } }, columnas)
+        } else DentroDe(menu, opciones[i].titulo, { abrir(-1) }) { opciones[i].pantalla() }
+    }
+}
+
+/** Dinero sin pestañas: lo que se debe y lo vendido arriba, y cuatro tarjetas. */
+@Composable
+fun DineroMenu(e: EstadoAdmin) {
+    val a = AdminPestanas
+    MenuTarjetas("Dinero", a.dinero, { a.dinero = it; DineroAdmin.mensaje = null }, listOf(
+        OpcionMenu("💵", "Pagar a proveedores", "Todo lo que se debe, por proveedor", AMBAR) { DeudasProveedores() },
+        OpcionMenu("📅", "Pagos semana por semana", "Boletas de lunes a domingo", ARENA) { PagosProveedores() },
+        OpcionMenu("🛒", "Ventas y producción", "Lo que entra, lo que se produce y lo que hay", VERDE) { NegocioReal(e) },
+        OpcionMenu("📊", "Costos", "Cuánto cuesta cada litro y cada producto", LILA) { CostosReal() },
+    )) {
+        CargaServidor("/api/v1/admin/inicio") { d, _ ->
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Cifra(0, "💵", "Se debe", d.obj("se_debe")?.num("total") ?: 0.0, "", "a ${(d.obj("se_debe")?.num("proveedores") ?: 0.0).toInt()} proveedores",
+                    AMBAR, Modifier.weight(1f), dinero = true) { a.dinero = 0 }
+                Cifra(1, "🛒", "Vendido hoy", d.obj("vendido_hoy")?.num("total") ?: 0.0, "", "${(d.obj("vendido_hoy")?.num("notas") ?: 0.0).toInt()} notas",
+                    VERDE, Modifier.weight(1f), dinero = true) { a.dinero = 2 }
             }
         }
     }

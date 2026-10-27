@@ -21,7 +21,7 @@ import kotlin.time.Instant
 
 /** Estado de Compras de insumos (sobrevive al cambiar de pestaña). */
 object CompraInsumos {
-    var pestana by mutableStateOf(0)            // Comprar · Por llegar · Recibidas · Vendedores
+    var pestana by mutableStateOf(-1)           // -1 menú de tarjetas · 0 Comprar · 1 Por llegar · 2 Recibidas · 3 Vendedores
     var modo by mutableStateOf(0)               // Comprar: 0 ya lo compré · 1 lo pido (llega después)
     var comprobante by mutableStateOf(DatosComprobante())
     var mes by mutableStateOf<String?>(null)    // Recibidas: null = este mes · "todo"
@@ -55,18 +55,25 @@ private fun resumen(o: JsonObject) = o.lista("items").joinToString(" · ") { "${
 @Composable
 fun ComprasInsumosReal() {
     val c = CompraInsumos
-    ConPestanas(listOf("Comprar", "Por llegar", "Recibidas", "Vendedores"), c.pestana, { c.pestana = it; c.recibiendo = null; c.anulando = null }) {
+    // sin pestañas: cuatro tarjetas; la de comprar primero y grande
+    val pantalla: @Composable (Int) -> Unit = { n ->
         CargaServidor("/api/v1/compras/ordenes", clave = c.version + ComprasReal.version * 1000) { d, _ ->
             when {
                 c.recibiendo != null -> RecibirOrden(c.recibiendo!!, d)
                 c.anulando != null -> AnularOrden(c.anulando!!)
-                c.pestana == 0 -> NuevaCompra(d)
-                c.pestana == 1 -> PorLlegar(d)
-                c.pestana == 2 -> Recibidas()
+                n == 0 -> NuevaCompra(d)
+                n == 1 -> PorLlegar(d)
+                n == 2 -> Recibidas()
                 else -> Vendedores()
             }
         }
     }
+    MenuTarjetas("Compras", c.pestana, { c.pestana = it; c.recibiendo = null; c.anulando = null }, listOf(
+        OpcionMenu("🛒", "Comprar insumos", "Ya lo compré o lo pido para que llegue después", ARENA) { pantalla(0) },
+        OpcionMenu("🚚", "Por llegar", "Lo pedido que todavía no llega", AMBAR) { pantalla(1) },
+        OpcionMenu("📜", "Compras recibidas", "Lo comprado en el mes, con su comprobante", CELESTE) { pantalla(2) },
+        OpcionMenu("👤", "Vendedores", "A quién le compramos", LILA) { pantalla(3) },
+    ))
 }
 
 @Composable
