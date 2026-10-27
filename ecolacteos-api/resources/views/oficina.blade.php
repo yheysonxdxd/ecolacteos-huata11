@@ -682,7 +682,7 @@
                     <div class="espacio"></div><button class="btn" @click="abrirProducto()">+ Nuevo producto</button></div>
                 <table class="lista"><tr><th>Producto</th><th>Tipo</th><th>Se cuenta en</th><th class="num">Sale de 100 L</th><th class="num">Dura</th><th>Fórmula</th><th>Estado</th><th></th></tr>
                     <template x-for="p in d.productos" :key="p.id"><tr :class="p.activo ? '' : 'tenue'">
-                        <td><span x-text="(p.base_id ? '↳ ' : '') + p.nombre"></span>
+                        <td><span class="punto-tabla" :style="'background: ' + colorReceta(p) + '; display: inline-block; margin-right: 8px'"></span><span x-text="(p.base_id ? '↳ ' : '') + p.nombre"></span>
                             <div class="sub" style="margin: 0" x-show="p.base_id" x-text="(p.tipo === 'YOGURT' ? 'sabor' : 'variedad') + ' · su fórmula sale de la base'"></div></td>
                         <td x-text="TIPOS_PRODUCTO[p.tipo]"></td><td x-text="p.unidad"></td>
                         <td class="num" x-text="(p.rinde_min === p.rinde_max ? num(p.rinde_min, 2) : num(p.rinde_min, 2) + '–' + num(p.rinde_max, 2))"></td>
@@ -714,7 +714,7 @@
             {{-- vehículos: código, tipo, acopiador y su ruta (comunidades en orden) --}}
             <template x-if="seccion === 'config-vehiculos' && d.vehiculos"><div style="display: grid; gap: 14px">
                 <p class="sub" style="margin: -8px 0 0">Cada vehículo recoge las comunidades de su ruta en este orden. Si pasas una comunidad a otro vehículo, sus proveedores pasan con ella desde hoy.</p>
-                <template x-for="v in d.vehiculos" :key="v.id"><div class="tarjeta" :style="v.activo ? '' : 'opacity: .6'">
+                <template x-for="v in d.vehiculos" :key="v.id"><div class="tarjeta vehiculo-config" :style="(v.activo ? '' : 'opacity: .6; ') + '--ruta: ' + colorRuta(v.codigo)">
                     <div class="fila" style="gap: 8px; align-items: flex-end">
                         <div style="width: 110px"><label :for="'veh-cod-' + v.id">Código</label><input :id="'veh-cod-' + v.id" x-model="cfgVeh[v.id].codigo" maxlength="12"></div>
                         <div style="width: 130px"><label :for="'veh-tipo-' + v.id">Tipo</label>

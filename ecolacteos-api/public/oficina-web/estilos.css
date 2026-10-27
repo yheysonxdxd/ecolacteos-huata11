@@ -1227,3 +1227,11 @@ input.buscador { padding-left: 38px; background-image: url("data:image/svg+xml,%
 .rechazo.analisis-fila.malo { border-color: var(--alerta-borde); }
 .medidas-analisis { grid-template-columns: repeat(3, 1fr); border-top: 0; padding-top: 0; margin: 0; }
 @media (max-width: 800px) { .rechazo.cambio-fila, .rechazo.analisis-fila { grid-template-columns: 52px minmax(0, 1fr); } .rechazo.analisis-fila .medidas-analisis { grid-column: 2; } }
+.tarjeta.vehiculo-config { --ruta: #8394a4; box-shadow: var(--sombra), inset 4px 0 0 var(--ruta); }
+@media (max-width: 640px) {
+  .vehiculo-config .fila { flex-wrap: wrap; }
+  .vehiculo-config .fila > * { min-width: 0; max-width: 100%; }
+  .vehiculo-config .fila > [style*="width"] { width: auto !important; flex: 1 1 130px; }
+  .vehiculo-config input, .vehiculo-config select { min-width: 0; }
+}
+.tarjeta.vehiculo-config { min-width: 0; }
