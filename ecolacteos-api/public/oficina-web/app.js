@@ -110,6 +110,12 @@ function oficina() {
       if (min < 60 * 24) return 'hace ' + Math.round(min / 60) + ' h';
       return 'hace ' + Math.round(min / 1440) + (Math.round(min / 1440) === 1 ? ' día' : ' días');
     },
+    /** Precios vigentes [{ producto, tipo_cliente, precio }] → una fila por producto: { producto, MAYORISTA, DIRECTO, PLANTA }. */
+    preciosPorProducto(precios) {
+      const filas = {};
+      precios.forEach((p) => { (filas[p.producto] ??= { producto: p.producto })[p.tipo_cliente] = p.precio; });
+      return Object.values(filas);
+    },
     /** Color de la ruta de un vehículo (el mismo del mapa de Huata). */
     colorRuta(codigo) { return COLOR_RUTA[codigo] || '#8394a4'; },
     // ------------------------------------------------- gráficos chicos (SVG)

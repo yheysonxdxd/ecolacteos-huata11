@@ -1171,3 +1171,43 @@ input.buscador { padding-left: 38px; background-image: url("data:image/svg+xml,%
   .lote-proceso .cerrar-lote { grid-column: 1 / -1; }
 }
 @media (prefers-reduced-motion: reduce) { .en-proceso i { animation: none; } }
+
+/* --- Ventas y notas --- */
+.notas { display: grid; gap: 8px; }
+.nota { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto auto; align-items: center; gap: 14px; padding: 12px 16px;
+  border-radius: var(--radio); background: var(--superficie); border: 1px solid var(--borde); box-shadow: var(--sombra); }
+.numero-nota { width: 64px; text-align: center; padding: 6px 0; border-radius: 10px; background: var(--fondo); border: 1px dashed var(--borde); }
+.numero-nota span { display: block; font: 700 9.5px var(--letra-titulo); letter-spacing: .1em; text-transform: uppercase; color: var(--texto-3); }
+.numero-nota b { display: block; font: 800 18px var(--letra-titulo); }
+.nota .que strong { display: block; font-size: 15px; }
+.nota .que small { display: block; font-size: 12.5px; color: var(--texto-3); }
+.nota .chip { --tono: var(--exito); display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.punto-chip { width: 8px; height: 8px; border-radius: 50%; background: var(--tono); }
+/* --- Costos --- */
+.barra-partes { display: flex; height: 14px; border-radius: 99px; overflow: hidden; margin: 14px 0 8px; background: var(--fondo); border: 1px solid var(--borde); }
+.barra-partes .leche { background: #e9e3d3; }
+.barra-partes .insumos { background: var(--exito); }
+.rendimientos, .conciliaciones { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.rendimiento, .conciliacion { --tono: var(--exito); display: grid; gap: 12px; padding: 14px 16px; border-radius: var(--radio);
+  background: var(--superficie); border: 1px solid var(--borde); box-shadow: var(--sombra); }
+.rendimiento header, .conciliacion header { display: flex; align-items: center; gap: 8px; }
+.rendimiento header .punto { width: 11px; height: 11px; border-radius: 50%; background: var(--tono); }
+.rendimiento header strong { flex: 1; font-size: 15px; }
+.rendimiento header small { color: var(--texto-3); font-size: 12px; }
+.par-barras { display: grid; grid-template-columns: 62px minmax(0, 1fr) auto; align-items: center; gap: 8px 10px; font-size: 13px; color: var(--texto-3); }
+.par-barras .barra { margin: 0; height: 9px; }
+.par-barras .barra span.esperado { background: var(--texto-3); }
+.par-barras .barra span.bajo { background: var(--aviso); }
+.par-barras b { font: 800 14px var(--letra-titulo); color: var(--texto); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.par-barras b.ojo { color: var(--aviso); } .par-barras b.ok { color: var(--exito); }
+.precios-tabla td:first-child { display: flex; align-items: center; gap: 10px; }
+.punto-tabla { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+/* --- Conciliación --- */
+.conciliacion.falta { border-color: var(--aviso-borde); }
+.conciliacion.fuera { border-color: var(--alerta-borde); }
+.conciliacion header .chip { margin-left: auto; }
+.diferencia { font: 800 15px var(--letra-titulo); }
+@media (max-width: 760px) {
+  .nota { grid-template-columns: 56px minmax(0, 1fr) auto; }
+  .nota .acciones-fila { grid-column: 2 / -1; justify-content: flex-start; }
+}

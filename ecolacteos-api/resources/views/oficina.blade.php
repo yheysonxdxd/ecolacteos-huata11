@@ -557,23 +557,35 @@
         {{-- ---------------------------------------------------- CONCILIACIÓN --}}
         <template x-if="dDe === 'conciliacion'">
         <section x-show="seccion === 'conciliacion' && !cargando && !error">
-            <div class="fila"><h1>Conciliación campo vs. planta</h1><div class="espacio"></div>
-                <input type="date" x-model="concFecha" @change="cargar()" :max="hoy()" style="width:auto" title="Día">
-                <button class="btn chico gris" @click="excel('/admin/excel/entregas?mes=' + (concFecha || hoy()).slice(0, 7))" title="Descargar en Excel">⬇ Entregas del mes en Excel</button></div>
-            <p class="sub">Compara lo que el acopiador anotó en las casas (campo) con lo que se midió al descargar en la tina (planta).
-                Escribe los litros que llegaron de cada vehículo y la diferencia se calcula sola · tolerancia ±<span x-text="num(d.tolerancia)"></span> %.</p>
-            <table class="lista"><tr><th>Vehículo</th><th class="num">Litros en campo</th><th class="num">Litros en planta</th><th class="num">Diferencia</th><th></th></tr>
-                <template x-for="f in dDe === 'conciliacion' ? (d.filas || []) : []" :key="f.vehiculo_id"><tr>
-                    <td x-text="f.codigo"></td><td class="num" x-text="num(f.litros_campo) + ' L'"></td>
-                    <td class="num"><input type="number" min="0" step="0.1" x-model="concLitros[f.vehiculo_id]" @keydown.enter="guardarPlanta(f)"
-                        style="width: 110px; text-align: right" placeholder="L"></td>
-                    <td class="num" :class="f.fuera_tolerancia ? 'mal' : ''" x-text="f.litros_planta === null ? '—' : num(f.diferencia_pct, 2) + ' %'"></td>
-                    <td class="num"><span class="chip" x-show="f.litros_planta !== null" :class="f.fuera_tolerancia ? 'mal' : 'ok'"
-                            x-text="f.fuera_tolerancia ? 'Fuera de tolerancia' : 'Dentro'"></span>
-                        <span class="chip ojo" x-show="f.litros_planta === null">Falta anotar</span>
-                        <button class="btn chico" @click="guardarPlanta(f)" x-text="f.litros_planta === null ? 'Guardar' : 'Corregir'"></button></td></tr></template>
-                <tr x-show="!(d.filas || []).length"><td colspan="5">Ese día no hubo acopio en campo.</td></tr>
-            </table>
+            <div class="cabecera">
+                <div><h1>Conciliación campo vs. planta</h1>
+                    <p class="sub" style="margin: 0">Compara lo que el acopiador anotó en las casas (campo) con lo que se midió al descargar en la tina (planta).
+                        Escribe los litros que llegaron de cada vehículo y la diferencia se calcula sola · tolerancia ±<span x-text="num(d.tolerancia)"></span> %.</p></div>
+                <div class="espacio"></div>
+                <input type="date" x-model="concFecha" @change="cargar()" :max="hoy()" style="width:auto" title="Día" aria-label="Día">
+                <button class="btn chico gris" @click="excel('/admin/excel/entregas?mes=' + (concFecha || hoy()).slice(0, 7))" title="Descargar en Excel">⬇ Entregas del mes</button>
+            </div>
+            <div class="conciliaciones">
+                <template x-for="f in dDe === 'conciliacion' ? (d.filas || []) : []" :key="f.vehiculo_id">
+                    <article class="conciliacion" :class="f.litros_planta === null ? 'falta' : (f.fuera_tolerancia ? 'fuera' : 'bien')">
+                        <header><span class="placa-ruta" :style="'--ruta: ' + colorRuta(f.codigo)" x-text="f.codigo"></span>
+                            <span class="chip" x-show="f.litros_planta !== null" :class="f.fuera_tolerancia ? 'mal' : 'ok'" x-text="f.fuera_tolerancia ? 'Fuera de tolerancia' : 'Dentro'"></span>
+                            <span class="chip ojo" x-show="f.litros_planta === null">Falta anotar</span></header>
+                        <div class="par-barras">
+                            <span>Campo</span><div class="barra"><span class="esperado" :style="'width:' + (f.litros_campo / Math.max(f.litros_campo, f.litros_planta || 0, 0.001) * 100) + '%'"></span></div><b x-text="num(f.litros_campo) + ' L'"></b>
+                            <span>Planta</span><div class="barra"><span :class="f.fuera_tolerancia ? 'bajo' : ''" :style="'width:' + ((f.litros_planta || 0) / Math.max(f.litros_campo, f.litros_planta || 0, 0.001) * 100) + '%'"></span></div>
+                            <b x-text="f.litros_planta === null ? '—' : num(f.litros_planta) + ' L'"></b>
+                        </div>
+                        <div class="diferencia" x-show="f.litros_planta !== null" :class="f.fuera_tolerancia ? 'mal' : 'ok'" x-text="'Diferencia ' + (f.diferencia_pct > 0 ? '+' : '') + num(f.diferencia_pct, 2) + ' %'"></div>
+                        <div class="fila" style="flex-wrap: nowrap">
+                            <input type="number" min="0" step="0.1" x-model="concLitros[f.vehiculo_id]" @keydown.enter="guardarPlanta(f)"
+                                   placeholder="Litros que llegaron a la planta" :aria-label="'Litros en planta de ' + f.codigo">
+                            <button class="btn" @click="guardarPlanta(f)" x-text="f.litros_planta === null ? 'Guardar' : 'Corregir'"></button>
+                        </div>
+                    </article>
+                </template>
+                <div class="vacio-lista" x-show="!(d.filas || []).length"><span aria-hidden="true">·</span><p>Ese día no hubo acopio en campo.</p></div>
+            </div>
         </section>
         </template>
 
@@ -757,25 +769,49 @@
         {{-- ---------------------------------------------------- COSTOS --}}
         <template x-if="dDe === 'costos'">
         <section x-show="seccion === 'costos' && !cargando && !error">
-            <h1>Costos y rendimiento</h1>
-            <p class="sub" x-text="'Desde el ' + fechaCorta(d.desde) + ' (últimos 30 días).'"></p>
-            <div class="tarjetas">
-                <div class="tarjeta destacada"><div class="eti">Costo por litro procesado</div>
-                    <div class="valor" x-text="'S/ ' + (Number(d.costo_leche_litro || 0) + Number(d.costo_insumos_litro || 0)).toFixed(3)"></div>
-                    <div class="apoyo" x-text="'Leche S/ ' + Number(d.costo_leche_litro || 0).toFixed(2) + ' + insumos S/ ' + Number(d.costo_insumos_litro || 0).toFixed(3)"></div></div>
-                <div class="tarjeta"><div class="eti">Leche procesada</div><div class="valor" x-text="num(d.litros_procesados, 0) + ' L'"></div></div>
-                <div class="tarjeta"><div class="eti">Ventas</div><div class="valor" x-text="soles(d.ventas_total)"></div><div class="apoyo" x-text="(d.ventas_cantidad || 0) + ' ventas'"></div></div>
+            <div class="cabecera"><div><h1>Costos y rendimiento</h1>
+                <p class="sub" style="margin: 0" x-text="'Desde el ' + fechaCorta(d.desde) + ' (últimos 30 días).'"></p></div></div>
+            <div class="resumen-acopio">
+                <div class="tarjeta destacada">
+                    <div class="eti">Costo por litro procesado</div>
+                    <div class="valor enorme" x-text="'S/ ' + (Number(d.costo_leche_litro || 0) + Number(d.costo_insumos_litro || 0)).toFixed(3)"></div>
+                    {{-- de qué está hecho ese costo: leche e insumos --}}
+                    <div class="barra-partes" :title="'Leche S/ ' + Number(d.costo_leche_litro || 0).toFixed(2) + ' · insumos S/ ' + Number(d.costo_insumos_litro || 0).toFixed(3)">
+                        <span class="leche" :style="'flex:' + Number(d.costo_leche_litro || 0)"></span><span class="insumos" :style="'flex:' + Number(d.costo_insumos_litro || 0)"></span></div>
+                    <div class="fila pie-progreso">
+                        <span><i class="punto-leyenda" style="background: #e9e3d3"></i>Leche <b x-text="'S/ ' + Number(d.costo_leche_litro || 0).toFixed(2)"></b></span>
+                        <span><i class="punto-leyenda" style="background: var(--exito)"></i>Insumos <b x-text="'S/ ' + Number(d.costo_insumos_litro || 0).toFixed(3)"></b></span>
+                    </div>
+                    <p class="apoyo" style="margin-top: 14px" x-show="Number(d.costo_leche_litro) > 0"
+                       x-text="'La leche es el ' + num(Number(d.costo_leche_litro) / (Number(d.costo_leche_litro) + Number(d.costo_insumos_litro || 0)) * 100, 0) + ' % de lo que cuesta producir: el precio que se paga al productor es lo que más pesa.'"></p>
+                </div>
+                <div class="kpis-fila" style="grid-template-columns: 1fr; margin: 0">
+                    <div class="kpi"><span class="kpi-ico" aria-hidden="true">🥛</span><div><b x-text="num(d.litros_procesados, 0) + ' L'"></b><span>Leche procesada</span><small>en lotes de estos 30 días</small></div></div>
+                    <div class="kpi ok"><span class="kpi-ico" aria-hidden="true">🏷</span><div><b x-text="soles(d.ventas_total)"></b><span>Ventas</span><small x-text="(d.ventas_cantidad || 0) + ' ventas'"></small></div></div>
+                </div>
             </div>
             <h2>Rendimiento por cada 100 L de leche</h2>
-            <table class="lista"><tr><th>Producto</th><th class="num">Lotes</th><th class="num">Esperado</th><th class="num">Real</th></tr>
-                <template x-for="r in d.rendimiento || []" :key="r.producto"><tr><td x-text="r.producto"></td><td class="num" x-text="r.lotes"></td>
-                    <td class="num" x-text="num(r.esperado_100l)"></td>
-                    <td class="num" :class="r.real_100l < r.esperado_100l ? 'ojo' : 'ok'" x-text="num(r.real_100l)"></td></tr></template>
-                <tr x-show="!(d.rendimiento || []).length"><td colspan="4">No hay lotes terminados en este periodo.</td></tr>
-            </table>
+            <div class="rendimientos">
+                <template x-for="r in d.rendimiento || []" :key="r.producto">
+                    <div class="rendimiento" :style="'--tono: ' + colorReceta(productoVisual(r.producto))">
+                        <header><i class="punto"></i><strong x-text="r.producto"></strong><small x-text="r.lotes + (r.lotes === 1 ? ' lote' : ' lotes')"></small></header>
+                        <div class="par-barras">
+                            <span>Esperado</span><div class="barra"><span class="esperado" :style="'width:' + (r.esperado_100l / Math.max(r.esperado_100l, r.real_100l, 0.001) * 100) + '%'"></span></div><b x-text="num(r.esperado_100l)"></b>
+                            <span>Real</span><div class="barra"><span :class="r.real_100l < r.esperado_100l ? 'bajo' : ''" :style="'width:' + (r.real_100l / Math.max(r.esperado_100l, r.real_100l, 0.001) * 100) + '%'"></span></div>
+                            <b :class="r.real_100l < r.esperado_100l ? 'ojo' : 'ok'" x-text="num(r.real_100l)"></b>
+                        </div>
+                    </div>
+                </template>
+                <div class="vacio-lista" x-show="!(d.rendimiento || []).length"><span aria-hidden="true">·</span><p>No hay lotes terminados en este periodo.</p></div>
+            </div>
             <h2>Precios de venta vigentes</h2>
-            <table class="lista"><tr><th>Producto</th><th>Tipo de cliente</th><th class="num">Precio</th></tr>
-                <template x-for="p in d.precios || []"><tr><td x-text="p.producto"></td><td x-text="TIPO_CLIENTE[p.tipo_cliente] || p.tipo_cliente"></td><td class="num" x-text="soles(p.precio)"></td></tr></template>
+            {{-- un producto por fila y un tipo de cliente por columna --}}
+            <table class="lista precios-tabla"><tr><th>Producto</th><th class="num">Mayorista</th><th class="num">Vecino de Huata</th><th class="num">Proveedor de leche</th></tr>
+                <template x-for="fila in preciosPorProducto(d.precios || [])" :key="fila.producto"><tr>
+                    <td><span class="punto-tabla" :style="'background: ' + colorReceta(productoVisual(fila.producto))"></span><span x-text="fila.producto"></span></td>
+                    <td class="num" x-text="fila.MAYORISTA != null ? soles(fila.MAYORISTA) : '—'"></td>
+                    <td class="num" x-text="fila.DIRECTO != null ? soles(fila.DIRECTO) : '—'"></td>
+                    <td class="num" x-text="fila.PLANTA != null ? soles(fila.PLANTA) : '—'"></td></tr></template>
             </table>
         </section>
         </template>
@@ -1500,39 +1536,49 @@
         {{-- ---------------------------------------------------- MOVIMIENTOS --}}
         <template x-if="dDe === 'movimientos'">
         <section x-show="seccion === 'movimientos' && !cargando && !error">
-            <h1>Ventas</h1>
-            <p class="sub">Toca el número para ver o imprimir la nota de venta, o mándala por correo. (Las entradas y salidas de cada producto están en Kardex.)</p>
-            <div class="fila" style="margin-bottom: 14px; gap: 8px">
-                <template x-if="d.periodo?.mes === 'todo'"><span style="display: contents">
+            <div class="cabecera"><div><h1>Ventas</h1>
+                <p class="sub" style="margin: 0">Toca <strong>Ver nota</strong> para verla o imprimirla, o mándala por correo. (Las entradas y salidas de cada producto están en Kardex.)</p></div></div>
+            <div class="barra-herramientas">
+                <template x-if="d.periodo?.mes === 'todo'"><div class="semana-nav">
                     <span class="chip ok">Viendo todo</span>
-                    <button class="btn chico gris" @click="cambiar('mesVentas', 'actual')">Ver por mes</button></span></template>
-                <template x-if="d.periodo && d.periodo.mes !== 'todo'"><span style="display: contents">
-                <button class="btn chico gris" @click="cambiar('mesVentas', d.periodo.anterior)" title="Mes anterior">◀</button>
-                <label class="btn chico gris" style="position: relative; cursor: pointer; min-width: 140px; text-align: center" title="Elegir otro mes">
-                    <span x-text="nombreMes(d.periodo?.mes)"></span>
-                    <input type="month" :max="hoy().slice(0, 7)" :value="d.periodo?.mes"
-                           @change="$event.target.value && cambiar('mesVentas', $event.target.value)" @click="$event.target.showPicker?.()"
-                           style="position: absolute; inset: 0; opacity: 0; cursor: pointer"></label>
-                <button class="btn chico gris" @click="cambiar('mesVentas', d.periodo.siguiente)" :disabled="!d.periodo?.siguiente" title="Mes siguiente">▶</button>
-                <button class="btn chico gris" @click="cambiar('mesVentas', 'todo')">Ver todo</button></span></template>
+                    <button class="btn chico gris" @click="cambiar('mesVentas', 'actual')">Ver por mes</button></div></template>
+                <template x-if="d.periodo && d.periodo.mes !== 'todo'"><div class="semana-nav">
+                    <button class="btn chico gris" @click="cambiar('mesVentas', d.periodo.anterior)" title="Mes anterior" aria-label="Mes anterior">◀</button>
+                    <label class="btn chico gris" style="position: relative; cursor: pointer; min-width: 140px; text-align: center; margin: 0" title="Elegir otro mes">
+                        <span x-text="nombreMes(d.periodo?.mes)"></span>
+                        <input type="month" :max="hoy().slice(0, 7)" :value="d.periodo?.mes"
+                               @change="$event.target.value && cambiar('mesVentas', $event.target.value)" @click="$event.target.showPicker?.()"
+                               style="position: absolute; inset: 0; opacity: 0; cursor: pointer"></label>
+                    <button class="btn chico gris" @click="cambiar('mesVentas', d.periodo.siguiente)" :disabled="!d.periodo?.siguiente" title="Mes siguiente" aria-label="Mes siguiente">▶</button>
+                    <button class="btn chico gris" @click="cambiar('mesVentas', 'todo')">Ver todo</button></div></template>
+                <div class="espacio"></div>
                 <button class="btn chico gris" @click="excel('/compras/excel/ventas?mes=' + (d.periodo?.mes || 'actual'))" title="Descargar en Excel">⬇ Excel</button>
             </div>
-            <div class="tarjetas" x-show="d.periodo">
-                <div class="tarjeta destacada"><div class="eti" x-text="d.periodo?.mes === 'todo' ? 'Vendido en total' : 'Vendido en ' + nombreMes(d.periodo?.mes).toLowerCase()"></div><div class="valor" x-text="soles(d.periodo?.vendido)"></div>
-                    <div class="apoyo" x-text="(d.periodo?.ventas || 0) + ' venta(s)'"></div></div>
+            <div class="kpis-fila" x-show="d.periodo">
+                <div class="kpi ok"><span class="kpi-ico" aria-hidden="true">🏷</span><div><b x-text="soles(d.periodo?.vendido)"></b>
+                    <span x-text="d.periodo?.mes === 'todo' ? 'Vendido en total' : 'Vendido en ' + nombreMes(d.periodo?.mes).toLowerCase()"></span>
+                    <small x-text="(d.periodo?.ventas || 0) + ' venta(s) · ' + notasVenta().length + ' notas'"></small></div></div>
+                <div class="kpi"><span class="kpi-ico" aria-hidden="true">🧾</span><div>
+                    <b x-text="notasVenta().length ? soles((d.periodo?.vendido || 0) / notasVenta().length) : '—'"></b><span>Promedio por nota</span><small>lo que lleva un cliente cada vez</small></div></div>
             </div>
-            <table class="lista ventas"><tr><th>Nota</th><th>Fecha</th><th>Cliente</th><th>Productos</th><th class="num">Total</th><th></th></tr>
-                <template x-for="n in notasVenta()" :key="n.nota"><tr>
-                    <td><strong x-text="n.numero"></strong></td>
-                    <td class="fecha"><span x-text="fechaCorta(n.fecha)"></span><small x-text="hora(n.fecha)"></small></td>
-                    <td x-text="n.cliente"></td>
-                    <td><template x-for="(p, k) in n.productos" :key="k"><div class="producto">
-                        <span x-text="p.que"></span><small x-text="num(p.cantidad) + ' ' + p.unidad"></small></div></template></td>
-                    <td class="num"><strong x-text="soles(n.total)"></strong></td>
-                    <td class="acciones"><button class="btn chico gris" @click="verNota(n.venta_id)" title="Ver o imprimir la nota">📄 Ver nota</button>
-                        <button class="btn chico gris" @click="abrirCorreo(n.venta_id, n.numero)" title="Mandar la nota por correo">✉ Correo</button></td></tr></template>
-                <tr x-show="!(d.movimientos || []).length"><td colspan="6" x-text="d.periodo?.mes === 'todo' ? 'Todavía no hay ventas.' : 'No hubo ventas en ' + nombreMes(d.periodo?.mes).toLowerCase() + '.'"></td></tr>
-            </table>
+            <div class="notas">
+                <template x-for="n in notasVenta()" :key="n.nota">
+                    <article class="nota">
+                        <div class="numero-nota"><span>Nota</span><b x-text="n.numero.replace(/^NV-0*/, '')"></b></div>
+                        <div class="que"><strong x-text="n.cliente"></strong><small x-text="fechaCorta(n.fecha) + ' · ' + hora(n.fecha) + ' · ' + n.numero"></small>
+                            <div class="etiquetas-rechazo">
+                                <template x-for="(p, k) in n.productos" :key="k"><span class="chip" :style="'--tono: ' + colorReceta(productoVisual(p.que))">
+                                    <i class="punto-chip"></i><span x-text="num(p.cantidad) + ' ' + p.unidad + ' · ' + p.que"></span></span></template>
+                            </div></div>
+                        <b class="monto" x-text="soles(n.total)"></b>
+                        <div class="acciones-fila">
+                            <button class="btn chico gris" @click="verNota(n.venta_id)" title="Ver o imprimir la nota">📄 Ver nota</button>
+                            <button class="btn chico gris" @click="abrirCorreo(n.venta_id, n.numero)" title="Mandar la nota por correo">✉ Correo</button></div>
+                    </article>
+                </template>
+                <div class="vacio-lista" x-show="!(d.movimientos || []).length"><span aria-hidden="true">·</span>
+                    <p x-text="d.periodo?.mes === 'todo' ? 'Todavía no hay ventas.' : 'No hubo ventas en ' + nombreMes(d.periodo?.mes).toLowerCase() + '.'"></p></div>
+            </div>
         </section>
         </template>
 
