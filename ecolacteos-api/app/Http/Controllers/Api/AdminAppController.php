@@ -34,10 +34,16 @@ class AdminAppController extends Controller
         };
     }
 
-    /** GET /api/v1/admin/totales?periodo=dia|semana|mes */
+    /** GET /api/v1/admin/totales?periodo=dia|semana|mes  ·  ?fecha=2026-10-14 (un día elegido en el calendario) */
     public function totales(Request $r)
     {
-        [$desde, $hasta] = $this->rango($r->query('periodo', 'semana'));
+        if ($r->filled('fecha')) {
+            $r->validate(['fecha' => ['date_format:Y-m-d']]);
+            $desde = Carbon::parse($r->query('fecha'));
+            $hasta = $desde->copy();
+        } else {
+            [$desde, $hasta] = $this->rango($r->query('periodo', 'semana'));
+        }
         $ents = DB::table('entregas')->whereBetween('fecha', [$desde->toDateString(), $hasta->toDateString()])
             ->where('ausente', false);
 
@@ -91,6 +97,43 @@ class AdminAppController extends Controller
             'por_dia' => (clone $ents)->groupBy('fecha')->orderBy('fecha')
                 ->selectRaw("fecha, SUM(litros) as litros, SUM(CASE WHEN estado_calidad = 'RECHAZADO' THEN 1 ELSE 0 END) as rechazadas, COUNT(*) as entregas")
                 ->get()->map(fn ($x) => ['fecha' => $x->fecha, 'litros' => (float) $x->litros, 'rechazadas' => (int) $x->rechazadas, 'entregas' => (int) $x->entregas]),
+        ]);
+    }
+
+    /**
+     * GET /api/v1/admin/acopio/calendario?mes=2026-10 — litros de cada día del mes para el calendario de Acopio.
+     * Sin ?mes, el mes del último día con entregas.
+     */
+    public function calendario(Request $r)
+    {
+        $hoy = $this->hoy();
+        if ($r->filled('mes')) {
+            $r->validate(['mes' => ['date_format:Y-m']]);
+            $inicio = Carbon::parse($r->query('mes') . '-01');
+        } else {
+            $ultimo = DB::table('entregas')->where('fecha', '<=', $hoy->toDateString())->max('fecha');
+            $inicio = ($ultimo ? Carbon::parse($ultimo) : $hoy->copy())->startOfMonth();
+        }
+        $fin = $inicio->copy()->endOfMonth();
+
+        $dias = DB::table('entregas')->where('ausente', false)
+            ->whereBetween('fecha', [$inicio->toDateString(), $fin->toDateString()])
+            ->groupBy('fecha')->orderBy('fecha')
+            ->selectRaw("fecha, SUM(litros) as litros, COUNT(*) as entregas,
+                SUM(CASE WHEN estado_calidad = 'RECHAZADO' THEN 1 ELSE 0 END) as rechazadas")
+            ->get()->map(fn ($x) => [
+                'fecha' => substr((string) $x->fecha, 0, 10), 'litros' => round((float) $x->litros, 1),
+                'entregas' => (int) $x->entregas, 'rechazadas' => (int) $x->rechazadas,
+            ]);
+
+        return response()->json([
+            'mes' => $inicio->format('Y-m'),
+            'anterior' => $inicio->copy()->subMonth()->format('Y-m'),
+            // no se puede pasar a un mes que todavía no empieza
+            'siguiente' => $inicio->copy()->addMonth()->lte($hoy) ? $inicio->copy()->addMonth()->format('Y-m') : null,
+            'hoy' => $hoy->toDateString(),
+            'litros' => round((float) $dias->sum('litros'), 1),
+            'dias' => $dias,
         ]);
     }
 

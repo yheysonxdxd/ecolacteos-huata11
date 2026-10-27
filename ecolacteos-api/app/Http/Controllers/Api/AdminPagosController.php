@@ -86,6 +86,48 @@ class AdminPagosController extends Controller
         ]);
     }
 
+    /**
+     * GET /api/v1/admin/pagos/deudas — todo lo que se le debe a cada proveedor, sin importar la semana:
+     * sus boletas pendientes de semanas ya cerradas (la deuda más antigua primero).
+     */
+    public function deudas()
+    {
+        $this->semanasConPendientes($this->semanasCerradas()[0]); // genera las boletas que falten
+        $ultima = $this->semanasCerradas()[0]->toDateString();
+
+        $boletas = DB::table('pagos_semanales as b')
+            ->join('proveedores as p', 'p.id', '=', 'b.proveedor_id')
+            ->join('comunidades as c', 'c.id', '=', 'p.comunidad_id')
+            ->join('vehiculos as v', 'v.id', '=', 'p.vehiculo_id')
+            ->where('b.estado', 'PENDIENTE')->where('b.monto', '>', 0)
+            ->whereDate('b.inicio', '<=', $ultima)
+            ->orderBy('b.inicio')
+            ->get(['b.id', 'b.inicio', 'b.fin', 'b.monto', 'b.litros_aceptados', 'p.id as proveedor_id', 'p.nombre',
+                'p.dni', 'c.nombre as comunidad', 'v.codigo as vehiculo']);
+
+        $proveedores = $boletas->groupBy('proveedor_id')->map(function ($filas) {
+            $p = $filas->first();
+            return [
+                'proveedor_id' => $p->proveedor_id, 'nombre' => $p->nombre, 'dni' => $p->dni,
+                'comunidad' => $p->comunidad, 'vehiculo' => $p->vehiculo,
+                'total' => round((float) $filas->sum('monto'), 2),
+                'litros' => round((float) $filas->sum('litros_aceptados'), 1),
+                'desde' => substr((string) $p->inicio, 0, 10), // su deuda más antigua
+                'semanas' => $filas->map(fn ($b) => [
+                    'id' => $b->id, 'inicio' => substr((string) $b->inicio, 0, 10), 'fin' => substr((string) $b->fin, 0, 10),
+                    'monto' => (float) $b->monto, 'litros' => (float) $b->litros_aceptados,
+                ])->values(),
+            ];
+        })->sortBy([['desde', 'asc'], ['nombre', 'asc']])->values();
+
+        return response()->json([
+            'total' => round((float) $boletas->sum('monto'), 2),
+            'cuantas' => $boletas->count(), // boletas sin pagar
+            'proveedores' => $proveedores,
+            'hasta' => Carbon::parse($ultima)->endOfWeek(Carbon::SUNDAY)->toDateString(),
+        ]);
+    }
+
     /** POST /api/v1/admin/pagos/pagar { ids: [..], metodo: EFECTIVO|YAPE } */
     public function pagar(Request $r)
     {

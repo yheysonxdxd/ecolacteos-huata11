@@ -94,11 +94,38 @@
                     <p class="sub" style="margin: 0" x-text="(d.desde === d.hasta ? fechaCorta(d.desde) : fechaCorta(d.desde) + ' – ' + fechaCorta(d.hasta)) + ' · ' + num(d.entregas, 0) + ' entregas'"></p></div>
                 <div class="espacio"></div>
                 <div class="pestanas" style="margin: 0">
-                    <template x-for="p in [['dia','Día'],['semana','Semana'],['mes','Mes']]">
+                    <template x-for="p in [['dia','Día'],['semana','Semana'],['mes','Mes'],['calendario','Calendario']]">
                         <button :class="{ activo: periodo === p[0] }" @click="cambiar('periodo', p[0])" x-text="p[1]"></button>
                     </template>
                 </div>
             </div>
+
+            {{-- calendario del mes: litros de cada día; al tocar un día, todo lo de abajo es de ese día --}}
+            <template x-if="periodo === 'calendario' && d.cal">
+                <div class="tarjeta calendario-acopio">
+                    <div class="fila cal-cabeza">
+                        <button class="btn chico gris" @click="mesAcopio(d.cal.anterior)" title="Mes anterior" aria-label="Mes anterior">◀</button>
+                        <strong x-text="nombreMes(d.cal.mes)"></strong>
+                        <button class="btn chico gris" @click="mesAcopio(d.cal.siguiente)" :disabled="!d.cal.siguiente" title="Mes siguiente" aria-label="Mes siguiente">▶</button>
+                        <div class="espacio"></div>
+                        <span class="apoyo" x-text="num(d.cal.litros, 0) + ' L en el mes · ' + d.cal.dias.length + ' días con acopio'"></span>
+                    </div>
+                    <div class="cal-semana" aria-hidden="true"><span>lu</span><span>ma</span><span>mi</span><span>ju</span><span>vi</span><span>sá</span><span>do</span></div>
+                    <div class="cal-dias">
+                        <template x-for="c in celdasCalendario(d.cal)" :key="c.clave">
+                            <button class="cal-dia" :disabled="!c.fecha || c.futuro" @click="cambiar('acopioFecha', c.fecha)"
+                                    :class="{ vacio: !c.fecha, sin: c.fecha && !c.litros, elegido: c.fecha && c.fecha === acopioFecha, hoy: c.fecha === d.cal.hoy }"
+                                    :style="c.litros ? '--nivel:' + c.nivel : ''"
+                                    :title="c.fecha ? fechaCorta(c.fecha) + (c.litros ? ': ' + num(c.litros, 0) + ' L, ' + c.entregas + ' entregas' + (c.rechazadas ? ', ' + c.rechazadas + ' rechazadas' : '') : ': sin acopio') : ''">
+                                <span class="n" x-text="c.dia || ''"></span>
+                                <b x-text="c.litros ? num(c.litros, 0) : ''"></b>
+                                <i class="rech" x-show="c.rechazadas" x-text="c.rechazadas + ' ✕'"></i>
+                            </button>
+                        </template>
+                    </div>
+                    <p class="apoyo cal-pie">Toca un día para ver sus totales abajo. El color más fuerte es el día con más leche.</p>
+                </div>
+            </template>
 
             {{-- arriba: los litros con su gráfico por día y la calidad en un anillo --}}
             <div class="resumen-acopio">
@@ -207,6 +234,7 @@
             <div class="pestanas">
                 <button :class="{ activo: dinero === 'ventas' }" @click="cambiar('dinero', 'ventas')">Ventas, producción e inventario</button>
                 <button :class="{ activo: dinero === 'pagos' }" @click="cambiar('dinero', 'pagos')">Pagos a proveedores</button>
+                <button :class="{ activo: dinero === 'deudas' }" @click="cambiar('dinero', 'deudas')">Lo que se debe</button>
             </div>
 
             {{-- ventas --}}
@@ -294,6 +322,52 @@
             </div>
 
             {{-- pagos --}}
+            {{-- todas las deudas, sin ir semana por semana: cada proveedor con sus semanas sin pagar --}}
+            <div x-show="dinero === 'deudas'">
+                <template x-if="dinero === 'deudas' && d.proveedores">
+                    <div>
+                        <div class="tarjeta destacada avance-pagos">
+                            <div class="fila" style="align-items: flex-end">
+                                <div><div class="eti">Se debe a proveedores</div>
+                                    <div class="valor enorme" :class="d.total ? '' : 'ok'" x-text="d.total ? soles(d.total) : '✓ No se debe nada'"></div>
+                                    <div class="apoyo" x-text="d.proveedores.length + (d.proveedores.length === 1 ? ' proveedor' : ' proveedores') + ' · ' + d.cuantas + ' boletas sin pagar · semanas cerradas hasta el ' + fechaCorta(d.hasta)"></div></div>
+                                <div class="espacio"></div>
+                                <button class="btn grande" x-show="d.cuantas > 1"
+                                        @click="pagar(d.proveedores.flatMap(p => p.semanas.map(s => s.id)), 'Pagar todo lo que se debe (' + soles(d.total) + ')')">Pagar todo</button>
+                            </div>
+                        </div>
+                        <input type="search" x-model="buscar" placeholder="Buscar por nombre, DNI, comunidad o vehículo" class="buscador" aria-label="Buscar proveedor" x-show="d.proveedores.length > 5">
+                        <div class="pagos">
+                            <template x-for="p in deudasFiltradas()" :key="p.proveedor_id">
+                                <div class="deuda" :class="{ abierta: deudaAbierta[p.proveedor_id] }">
+                                    <div class="pago" role="button" tabindex="0" :aria-expanded="!!deudaAbierta[p.proveedor_id]"
+                                         @click="deudaAbierta[p.proveedor_id] = !deudaAbierta[p.proveedor_id]" @keydown.enter="deudaAbierta[p.proveedor_id] = !deudaAbierta[p.proveedor_id]">
+                                        <span class="inicial" x-text="p.nombre.trim().charAt(0)"></span>
+                                        <div class="que"><strong x-text="p.nombre"></strong>
+                                            <small x-text="p.comunidad + ' · ' + p.vehiculo + ' · se le debe desde el ' + fechaCorta(p.desde)"></small></div>
+                                        <b class="monto" x-text="soles(p.total)"></b>
+                                        <span class="chip ojo" x-text="(p.semanas.length === 1 ? '1 semana' : p.semanas.length + ' semanas') + ' ' + (deudaAbierta[p.proveedor_id] ? '▴' : '▾')"></span>
+                                        <button class="btn chico" @click.stop="pagar(p.semanas.map(s => s.id), 'Pagar a ' + p.nombre + ' todo lo que se le debe (' + soles(p.total) + ')')">Pagar</button>
+                                    </div>
+                                    <div class="deuda-semanas" x-show="deudaAbierta[p.proveedor_id]">
+                                        <template x-for="s in p.semanas" :key="s.id">
+                                            <div class="deuda-semana">
+                                                <div><strong x-text="'Semana ' + fechaCorta(s.inicio) + ' – ' + fechaCorta(s.fin)"></strong><small x-text="num(s.litros) + ' L aceptados'"></small></div>
+                                                <b x-text="soles(s.monto)"></b>
+                                                <button class="btn chico gris" @click="abrirBoleta({ id: s.id, proveedor: p.nombre, dni: p.dni, comunidad: p.comunidad, litros: s.litros, monto: s.monto, estado: 'PENDIENTE' })">Ver días</button>
+                                                <button class="btn chico" x-show="p.semanas.length > 1" @click="pagar([s.id], 'Pagar a ' + p.nombre + ' la semana del ' + fechaCorta(s.inicio) + ' (' + soles(s.monto) + ')')">Pagar esta</button>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                            <div class="vacio-lista" x-show="!d.proveedores.length"><span aria-hidden="true">✓</span><p>No se le debe a nadie: todas las semanas cerradas están pagadas.</p></div>
+                            <div class="vacio-lista" x-show="d.proveedores.length && !deudasFiltradas().length"><span aria-hidden="true">·</span><p>Nadie coincide con la búsqueda.</p></div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+
             <div x-show="dinero === 'pagos'">
                 <template x-if="d.boletas">
                     <div>

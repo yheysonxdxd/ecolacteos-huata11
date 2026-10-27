@@ -40,9 +40,11 @@ Route::prefix('v1')->group(function () {
 
         // --- Tablero del administrador en la app ---
         Route::get('admin/totales',      [Api\AdminAppController::class, 'totales']);
+        Route::get('admin/acopio/calendario', [Api\AdminAppController::class, 'calendario']);
         Route::get('admin/negocio',      [Api\AdminNegocioController::class, 'resumen']);
         Route::get('admin/pagos',        [Api\AdminPagosController::class, 'semana']);
         Route::post('admin/pagos/pagar', [Api\AdminPagosController::class, 'pagar']);
+        Route::get('admin/pagos/deudas', [Api\AdminPagosController::class, 'deudas']);
         Route::get('admin/pagos/{id}',   [Api\AdminPagosController::class, 'detalle'])->whereNumber('id');
         Route::get('admin/padron',       [Api\AdminAppController::class, 'padron']);
         // descargas en Excel de la web de oficina (?mes=AAAA-MM o ?semana=AAAA-MM-DD)

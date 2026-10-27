@@ -56,7 +56,10 @@ function oficina() {
     fOrden: null,   // orden a medio llenar mientras se agrega un vendedor
 
     // filtros de secciones
-    periodo: 'semana',
+    periodo: 'semana', // dia | semana | mes | calendario
+    acopioMes: '',    // calendario de Acopio: mes a la vista (vacío = el del último día con entregas)
+    acopioFecha: '',  // y el día tocado (vacío = el último con entregas de ese mes)
+    deudaAbierta: {}, // Pagos > Lo que se debe: proveedor => sus semanas desplegadas
     semana: null,
     dinero: 'ventas',
     semanaRech: null, // rechazos de calidad: semana a la vista (null = esta semana)
@@ -336,10 +339,17 @@ function oficina() {
       if (this.dDe !== this.seccion) this.dDe = null; // se quita la pantalla anterior antes de que lleguen los datos nuevos
       try {
         switch (this.seccion) {
-          case 'totales': this.d = await this.api('/admin/totales?periodo=' + this.periodo); break;
+          case 'totales':
+            if (this.periodo === 'calendario') {
+              const cal = await this.api('/admin/acopio/calendario' + (this.acopioMes ? '?mes=' + this.acopioMes : ''));
+              this.acopioMes = cal.mes;
+              if (!this.acopioFecha.startsWith(cal.mes)) this.acopioFecha = cal.dias.at(-1)?.fecha || cal.mes + '-01';
+              this.d = { ...(await this.api('/admin/totales?fecha=' + this.acopioFecha)), cal };
+            } else this.d = await this.api('/admin/totales?periodo=' + this.periodo);
+            break;
           case 'dinero':
-            this.d = this.dinero === 'ventas'
-              ? await this.api('/admin/negocio?periodo=' + this.periodo)
+            this.d = this.dinero === 'ventas' ? await this.api('/admin/negocio?periodo=' + this.periodo)
+              : this.dinero === 'deudas' ? await this.api('/admin/pagos/deudas')
               : await this.api('/admin/pagos' + (this.semana ? '?semana=' + this.semana : ''));
             break;
           case 'padron': this.d = await this.api('/admin/padron'); break;
@@ -957,7 +967,34 @@ function oficina() {
       } catch (e) { this.aviso = { error: true, texto: e.message }; }
     },
 
+    // ---------------------------------------------------------------- acopio
+    /** Pasa el calendario a otro mes (el día elegido vuelve al último con entregas de ese mes). */
+    mesAcopio(mes) { this.acopioFecha = ''; this.cambiar('acopioMes', mes); },
+    /**
+     * Casillas del calendario de Acopio, de lunes a domingo: las de antes del día 1 van vacías.
+     * nivel (0–1) = litros del día frente al mejor día del mes, para el color.
+     */
+    celdasCalendario(cal) {
+      if (!cal) return [];
+      const [a, m] = cal.mes.split('-').map(Number);
+      const porDia = Object.fromEntries(cal.dias.map((x) => [x.fecha, x]));
+      const max = Math.max(...cal.dias.map((x) => x.litros), 1);
+      const antes = (new Date(a, m - 1, 1).getDay() + 6) % 7; // lunes = 0
+      const celdas = Array.from({ length: antes }, (_, k) => ({ clave: 'v' + k }));
+      for (let dia = 1; dia <= new Date(a, m, 0).getDate(); dia++) {
+        const fecha = `${cal.mes}-${String(dia).padStart(2, '0')}`, x = porDia[fecha];
+        celdas.push({ clave: fecha, fecha, dia, litros: x?.litros || 0, entregas: x?.entregas || 0, rechazadas: x?.rechazadas || 0,
+          nivel: x ? Math.max(0.15, x.litros / max) : 0, futuro: fecha > cal.hoy });
+      }
+      return celdas;
+    },
+
     // ---------------------------------------------------------------- pagos
+    /** Lo que se debe, filtrado por el buscador (nombre, DNI, comunidad o vehículo). */
+    deudasFiltradas() {
+      const q = this.buscar.trim().toLowerCase();
+      return (this.d.proveedores || []).filter((p) => !q || [p.nombre, p.dni, p.comunidad, p.vehiculo].join(' ').toLowerCase().includes(q));
+    },
     async abrirBoleta(b) {
       this.f = { boleta: b, dias: null, error: null };
       this.ventana = 'boleta';

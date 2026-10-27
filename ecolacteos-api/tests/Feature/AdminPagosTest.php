@@ -119,4 +119,36 @@ class AdminPagosTest extends TestCase
         Sanctum::actingAs($this->usuarios['COMPRAS']);
         $this->getJson('/api/v1/admin/pagos')->assertForbidden();
     }
+
+    public function test_deudas_junta_lo_pendiente_de_varias_semanas(): void
+    {
+        // otra semana sin pagar, dos semanas antes
+        $this->lunesPasado->subWeeks(2);
+        $this->entrega(0, 10, 'ACEPTADO', 18);
+        $this->lunesPasado->addWeeks(2);
+
+        $d = $this->getJson('/api/v1/admin/pagos/deudas')->assertOk();
+        $this->assertEquals(81, $d->json('total'));              // 63 + 18
+        $this->assertSame(2, $d->json('cuantas'));
+        $this->assertCount(1, $d->json('proveedores'));
+        $this->assertCount(2, $d->json('proveedores.0.semanas'));
+        $this->assertSame($this->lunesPasado->copy()->subWeeks(2)->toDateString(), $d->json('proveedores.0.desde'));
+
+        // pagar una semana desde la lista la quita de las deudas
+        $this->postJson('/api/v1/admin/pagos/pagar', ['ids' => [$d->json('proveedores.0.semanas.0.id')], 'metodo' => 'EFECTIVO'])->assertOk();
+        $this->assertEquals(63, $this->getJson('/api/v1/admin/pagos/deudas')->json('total'));
+    }
+
+    public function test_calendario_y_totales_de_un_dia(): void
+    {
+        $mes = $this->lunesPasado->format('Y-m');
+        $c = $this->getJson('/api/v1/admin/acopio/calendario?mes=' . $mes)->assertOk();
+        $c->assertJsonPath('mes', $mes);
+        $dia = collect($c->json('dias'))->firstWhere('fecha', $this->lunesPasado->toDateString());
+        $this->assertEquals(20, $dia['litros']);
+
+        $t = $this->getJson('/api/v1/admin/totales?fecha=' . $this->lunesPasado->toDateString())->assertOk();
+        $t->assertJsonPath('desde', $this->lunesPasado->toDateString())->assertJsonPath('hasta', $this->lunesPasado->toDateString());
+        $this->assertEquals(20, $t->json('litros'));
+    }
 }
