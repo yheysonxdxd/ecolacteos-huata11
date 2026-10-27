@@ -1386,20 +1386,76 @@
         {{-- ---------------------------------------------------- ÓRDENES --}}
         <template x-if="dDe === 'ordenes'">
         <section x-show="seccion === 'ordenes' && !cargando && !error">
-            <div class="fila"><h1>Compras de insumos</h1><div class="espacio"></div>
+            <div class="cabecera">
+                <div><h1>Compras de insumos</h1>
+                    <p class="sub" style="margin: 0">Si ya lo compraste, anotas lo que pagaste y la foto de la boleta y el stock sube al toque.
+                        Si lo pides y llega después, cuando llegue toca <strong>Llegó</strong>.</p></div>
+                <div class="espacio"></div>
                 <button class="btn gris" x-show="(d.inv?.por_comprar || []).length" @click="abrirCompra(true)"
                         x-text="'Comprar lo que falta (' + (d.inv?.por_comprar || []).length + ')'"></button>
-                <button class="btn" @click="abrirCompra()">+ Nueva compra</button></div>
-            <div class="aviso" x-show="(d.inv?.por_comprar || []).length" style="margin-bottom: 12px">
+                <button class="btn" @click="abrirCompra()">+ Nueva compra</button>
+            </div>
+            <div class="aviso" x-show="(d.inv?.por_comprar || []).length">
                 Falta: <span x-text="(d.inv?.por_comprar || []).map((p) => insumoDe(p.insumo_id)?.nombre).filter(Boolean).join(', ')"></span>.
                 Toca <strong>Comprar lo que falta</strong> y la compra se llena sola.</div>
-            <p class="sub">Toca <strong>+ Nueva compra</strong>: si ya lo compraste, anotas lo que pagaste y la foto de la boleta y el stock sube al toque.
-                Si lo pides y llega después, cuando llegue toca <strong>Llegó</strong>. Se ve mes por mes; lo que está <strong>por llegar</strong> sale siempre arriba.</p>
-            {{-- vendedores arriba y plegados: se ven al entrar y se abren con un clic --}}
-            <div style="background: var(--superficie); border: 1px solid var(--borde); border-radius: var(--radio); padding: 10px 14px; margin: 4px 0 18px"><div class="fila">
-                <h2 style="margin:0; font-size: 17px; cursor: pointer; user-select: none" @click="plegarVendedores(!vendedoresAbiertos)"
-                    x-text="(vendedoresAbiertos ? '▾ ' : '▸ ') + 'Vendedores (' + (d.todosVendedores || []).filter(v => v.activo).length + ')'"></h2>
-                <div class="espacio"></div><button class="btn chico gris" @click="abrirVendedor()">+ Nuevo vendedor</button></div>
+            <div class="barra-herramientas">
+                <template x-if="d.periodo?.mes === 'todo'"><div class="semana-nav">
+                    <span class="chip ok">Viendo todo</span>
+                    <button class="btn chico gris" @click="cambiar('mesCompras', 'actual')">Ver por mes</button></div></template>
+                <template x-if="d.periodo && d.periodo.mes !== 'todo'"><div class="semana-nav">
+                    <button class="btn chico gris" @click="cambiar('mesCompras', d.periodo.anterior)" title="Mes anterior" aria-label="Mes anterior">◀</button>
+                    <label class="btn chico gris" style="position: relative; cursor: pointer; min-width: 140px; text-align: center; margin: 0" title="Elegir otro mes">
+                        <span x-text="nombreMes(d.periodo?.mes)"></span>
+                        <input type="month" :max="hoy().slice(0, 7)" :value="d.periodo?.mes"
+                               @change="$event.target.value && cambiar('mesCompras', $event.target.value)" @click="$event.target.showPicker?.()"
+                               style="position: absolute; inset: 0; opacity: 0; cursor: pointer"></label>
+                    <button class="btn chico gris" @click="cambiar('mesCompras', d.periodo.siguiente)" :disabled="!d.periodo?.siguiente" title="Mes siguiente" aria-label="Mes siguiente">▶</button>
+                    <button class="btn chico gris" @click="cambiar('mesCompras', 'todo')">Ver todo</button></div></template>
+                <div class="espacio"></div>
+                <button class="btn chico gris" @click="excel('/compras/excel/compras?mes=' + (d.periodo?.mes || 'actual'))" title="Descargar en Excel">⬇ Excel</button>
+            </div>
+            <div class="kpis-fila" x-show="d.periodo">
+                <div class="kpi ok"><span class="kpi-ico" aria-hidden="true">🧾</span><div>
+                    <b x-text="soles(d.periodo?.gastado)"></b>
+                    <span x-text="d.periodo?.mes === 'todo' ? 'Gastado en total' : 'Gastado en ' + nombreMes(d.periodo?.mes).toLowerCase()"></span>
+                    <small x-text="(d.periodo?.compras || 0) + ' compra(s) recibidas'"></small></div></div>
+                <div class="kpi" :class="(d.ordenes || []).some(o => o.estado === 'EMITIDA') ? 'ojo' : 'ok'"><span class="kpi-ico" aria-hidden="true">🕒</span><div>
+                    <b x-text="(d.ordenes || []).filter(o => o.estado === 'EMITIDA').length"></b><span>Por llegar</span><small>pedidos que todavía no llegan</small></div></div>
+            </div>
+            <div class="ordenes">
+                <template x-for="o in d.ordenes || []" :key="o.id">
+                    <article class="orden" :class="o.estado === 'RECIBIDA' ? 'recibida' : (o.estado === 'EMITIDA' ? 'por-llegar' : 'anulada')">
+                        <span class="estado-orden" aria-hidden="true" x-text="o.estado === 'RECIBIDA' ? '✓' : (o.estado === 'EMITIDA' ? '🕒' : '×')"></span>
+                        <div class="que">
+                            <strong><span x-text="o.proveedor"></span> <span class="codigo-orden" x-text="o.codigo"></span></strong>
+                            <small x-text="fechaCorta(o.created_at) + ' · ' + (o.vendedor ? o.vendedor.tipo_documento + ' ' + o.vendedor.documento : 'sin DNI/RUC (orden antigua)')"></small>
+                            <span class="items-orden" x-text="resumenItems(o)"></span>
+                            <small x-show="o.comprobante" x-text="'Comprobante ' + o.comprobante + (o.comprobante_fecha ? ' del ' + fechaCorta(o.comprobante_fecha) : '')"></small>
+                            <small class="mal" x-show="o.anulada_motivo" x-text="'Anulada: ' + o.anulada_motivo"></small>
+                        </div>
+                        <div class="monto-orden"><b x-text="soles(o.total ?? o.costo_estimado)"></b>
+                            <small x-text="o.total === null ? 'estimado' : (o.igv !== null ? 'IGV ' + soles(o.igv) : 'pagado')"></small></div>
+                        <div class="acciones-fila">
+                            <span class="chip" :class="o.estado === 'RECIBIDA' ? 'ok' : (o.estado === 'EMITIDA' ? 'ojo' : 'mal')" x-text="o.estado === 'EMITIDA' ? 'por llegar' : o.estado.toLowerCase()"></span>
+                            <button class="btn chico" x-show="o.estado === 'EMITIDA'" @click="abrirRecibir(o)">Llegó</button>
+                            <button class="btn chico rojo" x-show="o.estado === 'EMITIDA'" @click="abrirAnularOrden(o)">Anular</button>
+                            <button class="btn chico gris" x-show="o.tiene_foto" @click="verFoto(o)">Ver foto</button>
+                            <label class="btn chico gris" x-show="o.estado === 'RECIBIDA' && !o.tiene_foto" style="cursor:pointer; margin: 0">+ Foto
+                                <input type="file" accept="image/*" style="display:none" @change="agregarFoto(o, $event)"></label>
+                        </div>
+                    </article>
+                </template>
+                <div class="vacio-lista" x-show="!(d.ordenes || []).length"><span aria-hidden="true">·</span>
+                    <p x-text="d.periodo?.mes === 'todo' ? 'Todavía no hay compras.' : 'No hubo compras en ' + nombreMes(d.periodo?.mes).toLowerCase() + '.'"></p></div>
+            </div>
+            {{-- vendedores plegados: se abren con un clic --}}
+            <div class="plegable" :class="{ abierto: vendedoresAbiertos }"><div class="fila">
+                <button class="cabeza-plegable" @click="plegarVendedores(!vendedoresAbiertos)" :aria-expanded="vendedoresAbiertos">
+                    <span class="ico-plegable" aria-hidden="true">🏪</span>
+                    <span><strong x-text="'Vendedores · ' + (d.todosVendedores || []).filter(v => v.activo).length"></strong>
+                        <small>A quién le compramos los insumos (DNI o RUC)</small></span>
+                    <span class="flecha" aria-hidden="true">▾</span></button>
+                <button class="btn chico gris" @click="abrirVendedor()">+ Nuevo vendedor</button></div>
             <div x-show="vendedoresAbiertos" style="margin-top: 10px">
             <p class="sub">Personas (DNI) y empresas (RUC) que nos venden insumos. No son los proveedores de leche: esos están en el Padrón.</p>
             <div class="fila" style="margin-bottom: 10px; gap: 12px">
@@ -1421,47 +1477,6 @@
             <p class="sub" x-show="!(d.todosVendedores || []).length">Todavía no hay vendedores. Agrega el primero con <strong>+ Nuevo vendedor</strong>.</p>
             </div>
             </div>
-            <div class="fila" style="margin-bottom: 14px; gap: 8px">
-                <template x-if="d.periodo?.mes === 'todo'"><span style="display: contents">
-                    <span class="chip ok">Viendo todo</span>
-                    <button class="btn chico gris" @click="cambiar('mesCompras', 'actual')">Ver por mes</button></span></template>
-                <template x-if="d.periodo && d.periodo.mes !== 'todo'"><span style="display: contents">
-                <button class="btn chico gris" @click="cambiar('mesCompras', d.periodo.anterior)" title="Mes anterior">◀</button>
-                <label class="btn chico gris" style="position: relative; cursor: pointer; min-width: 140px; text-align: center" title="Elegir otro mes">
-                    <span x-text="nombreMes(d.periodo?.mes)"></span>
-                    <input type="month" :max="hoy().slice(0, 7)" :value="d.periodo?.mes"
-                           @change="$event.target.value && cambiar('mesCompras', $event.target.value)" @click="$event.target.showPicker?.()"
-                           style="position: absolute; inset: 0; opacity: 0; cursor: pointer"></label>
-                <button class="btn chico gris" @click="cambiar('mesCompras', d.periodo.siguiente)" :disabled="!d.periodo?.siguiente" title="Mes siguiente">▶</button>
-                <button class="btn chico gris" @click="cambiar('mesCompras', 'todo')">Ver todo</button></span></template>
-                <button class="btn chico gris" @click="excel('/compras/excel/compras?mes=' + (d.periodo?.mes || 'actual'))" title="Descargar en Excel">⬇ Excel</button>
-            </div>
-            <div class="tarjetas" x-show="d.periodo">
-                <div class="tarjeta destacada"><div class="eti" x-text="d.periodo?.mes === 'todo' ? 'Gastado en total' : 'Gastado en ' + nombreMes(d.periodo?.mes).toLowerCase()"></div><div class="valor" x-text="soles(d.periodo?.gastado)"></div>
-                    <div class="apoyo" x-text="(d.periodo?.compras || 0) + ' compra(s) recibidas'"></div></div>
-                <div class="tarjeta"><div class="eti">Por llegar</div><div class="valor" x-text="(d.ordenes || []).filter(o => o.estado === 'EMITIDA').length"></div></div>
-            </div>
-            <table class="lista"><tr><th>Código</th><th>Vendedor</th><th>Insumos</th><th>Comprobante</th><th class="num">Monto</th><th>Estado</th><th></th></tr>
-                <template x-for="o in d.ordenes || []" :key="o.id"><tr>
-                    <td style="white-space: nowrap"><span x-text="o.codigo"></span><div class="sub" style="margin:0" x-text="fechaCorta(o.created_at)"></div></td>
-                    <td><span x-text="o.proveedor"></span>
-                        <div class="sub" style="margin:0" x-text="o.vendedor ? o.vendedor.tipo_documento + ' ' + o.vendedor.documento : 'sin DNI/RUC (orden antigua)'"></div></td>
-                    <td x-text="resumenItems(o)"></td>
-                    <td><span x-text="o.comprobante || '—'"></span>
-                        <div class="sub" style="margin:0" x-show="o.comprobante_fecha" x-text="'del ' + fechaCorta(o.comprobante_fecha)"></div>
-                        <div class="sub" style="margin:0" x-show="o.anulada_motivo" x-text="'Anulada: ' + o.anulada_motivo"></div></td>
-                    <td class="num"><span x-text="soles(o.total ?? o.costo_estimado)"></span>
-                        <div class="sub" style="margin:0" x-text="o.total === null ? 'estimado' : (o.igv !== null ? 'IGV ' + soles(o.igv) : 'pagado')"></div></td>
-                    <td><span class="chip" :class="o.estado === 'RECIBIDA' ? 'ok' : (o.estado === 'EMITIDA' ? 'ojo' : 'mal')" x-text="o.estado === 'EMITIDA' ? 'por llegar' : o.estado.toLowerCase()"></span></td>
-                    <td class="acciones">
-                        <button class="btn chico" x-show="o.estado === 'EMITIDA'" @click="abrirRecibir(o)">Llegó</button>
-                        <button class="btn chico rojo" x-show="o.estado === 'EMITIDA'" @click="abrirAnularOrden(o)">Anular</button>
-                        <button class="btn chico gris" x-show="o.tiene_foto" @click="verFoto(o)">Ver foto</button>
-                        <label class="btn chico gris" x-show="o.estado === 'RECIBIDA' && !o.tiene_foto" style="cursor:pointer">+ Foto
-                            <input type="file" accept="image/*" style="display:none" @change="agregarFoto(o, $event)"></label>
-                    </td></tr></template>
-                <tr x-show="!(d.ordenes || []).length"><td colspan="7" x-text="d.periodo?.mes === 'todo' ? 'Todavía no hay compras.' : 'No hubo compras en ' + nombreMes(d.periodo?.mes).toLowerCase() + '.'"></td></tr>
-            </table>
         </section>
         </template>
 
