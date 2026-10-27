@@ -32,9 +32,30 @@ object ComprasReal {
     var producto by mutableStateOf<Long?>(null) // el que se va a agregar
     var cuantos by mutableStateOf(1.0)
     var pestanaAlmacen by mutableStateOf(0) // Stock y avisos · Pérdidas
+    var metodoPago by mutableStateOf("EFECTIVO") // EFECTIVO · YAPE · TARJETA
+    var operacion by mutableStateOf("")           // N.° de operación del Yape o del voucher (opcional)
+    // "Solo vender": quien compra sin registrarlo como cliente (nombre, DNI/RUC); la nota sale a su nombre
+    var comprador by mutableStateOf<Pair<String, String>?>(null)
+
+    /** A quién va la nota: la persona de "Solo vender" o el cliente elegido. */
+    fun nombreVenta(c: JsonObject?) = comprador?.first ?: c?.txt("nombre").orEmpty()
+
+    fun limpiarVenta() {
+        cantidades.clear(); pasoVenta = 1; familia = null; producto = null
+        metodoPago = "EFECTIVO"; operacion = ""; comprador = null
+    }
 }
 
 private val NOMBRE_CANAL = mapOf("MAYORISTA" to "Mayorista", "DIRECTO" to "Cliente directo", "PLANTA" to "Proveedor de leche")
+private val METODO_PAGO = listOf("EFECTIVO" to "💵 Efectivo", "YAPE" to "📱 Yape", "TARJETA" to "💳 Tarjeta")
+/** De dónde salió el nombre de un DNI/RUC (ConsultaDocumento en el servidor). */
+private val FUENTE_DOC = mapOf("cliente" to "Ya es cliente", "proveedor" to "Es proveedor de leche", "trabajador" to "Trabaja en la planta",
+    "reniec" to "Según RENIEC", "sunat" to "Según SUNAT")
+private val DNI_O_RUC = Regex("^(\\d{8}|\\d{11})$")
+
+/** Nombre de un DNI (8) o RUC (11): de la planta o de RENIEC/SUNAT. Sin conexión, null. */
+private suspend fun consultarDocumento(numero: String): JsonObject? =
+    runCatching { Sesion.consultar("/api/v1/compras/documento/$numero") }.getOrNull()
 
 /**
  * Compras con la base, como en la web de oficina y en el orden del día de la planta:
@@ -148,10 +169,11 @@ private fun VentaReal(irA: (Int) -> Unit) {
             }
             when (paso) {
                 1 -> PasoCliente(clientes, inactivos, c)
-                2 -> PasoProductos(prods, c!!, lineas, total)
+                2 -> PasoProductos(prods, c!!, lineas, total, v.nombreVenta(c))
                 else -> {
                     Seccion("Revisa la nota")
-                    TarjetaDato("TOTAL", soles(total), apoyo = c!!.txt("nombre"), destacada = true) {
+                    TarjetaDato("TOTAL", soles(total), apoyo = v.nombreVenta(c) + (v.comprador?.let { (_, doc) ->
+                        (if (doc.isNotEmpty()) " · ${if (doc.length == 8) "DNI" else "RUC"} $doc" else "") + " · sin registrar como cliente" } ?: ""), destacada = true) {
                         lineas.forEach { (p, cant, precio) ->
                             Spacer(Modifier.height(6.dp))
                             FilaValor("${formatear(cant, 0)} × ${p.txt("nombre")} a ${soles(precio)}", soles(cant * precio))
@@ -162,7 +184,14 @@ private fun VentaReal(irA: (Int) -> Unit) {
                         AvisoCampo("${p.txt("nombre")}: hay ${formatear(p.num("stock").coerceAtLeast(0.0), 0)}, faltan ${formatear(faltaStock(p, cant), 0)}. Se puede vender igual: sale del próximo lote.")
                     }
                     sinPrecio.forEach { (p, _, _) -> AvisoCampo("${p.txt("nombre")} no tiene precio para este tipo de cliente: ponlo en Ajustes → Precios.", esAlerta = true) }
-                    CampoCorreoVenta(c)
+                    // cómo paga: efectivo, Yape o tarjeta (con Yape o tarjeta se puede anotar el N.° de operación)
+                    Seccion("¿Cómo paga?")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        METODO_PAGO.forEach { (clave, nombre) -> Chip(nombre, v.metodoPago == clave) { v.metodoPago = clave } }
+                    }
+                    if (v.metodoPago != "EFECTIVO") Campo(v.operacion, { v.operacion = it.trim().take(30) },
+                        "N.° de operación ${if (v.metodoPago == "YAPE") "del Yape" else "del voucher"} (opcional)", teclado = KeyboardType.Number)
+                    CampoCorreoVenta(c!!)
                     error?.let { AvisoCampo("No se pudo registrar: $it", esAlerta = true) }
                 }
             }
@@ -178,11 +207,17 @@ private fun VentaReal(irA: (Int) -> Unit) {
                             }
                             correoParaVenta()?.let { put("correo", it) } // opcional: mandar la nota
                             if (sinStock.isNotEmpty()) put("sin_stock", true)
+                            put("metodo_pago", v.metodoPago)
+                            if (v.metodoPago != "EFECTIVO" && v.operacion.isNotBlank()) put("pago_operacion", v.operacion)
+                            v.comprador?.let { (nombre, doc) ->
+                                putJsonObject("comprador") { put("nombre", nombre); if (doc.isNotEmpty()) put("documento", doc) }
+                            }
                         })
-                        v.cantidades.clear()
-                        v.pasoVenta = 1; v.familia = null; v.producto = null
-                        v.mensaje = "✓ Venta registrada: ${soles(r.num("total"))} a ${cli.txt("nombre")}" + textoCorreo(r)
-                        NotaVenta.ultima = UltimaNota(r.num("id").toLong(), r.txt("numero"), r.num("total"), cli.txt("nombre"), r.txt("correo"))
+                        val quien = v.nombreVenta(cli)
+                        val pago = METODO_PAGO.first { it.first == v.metodoPago }.second.substringAfter(' ')
+                        v.limpiarVenta()
+                        v.mensaje = "✓ Venta registrada: ${soles(r.num("total"))} a $quien · $pago" + textoCorreo(r)
+                        NotaVenta.ultima = UltimaNota(r.num("id").toLong(), r.txt("numero"), r.num("total"), quien, r.txt("correo"))
                         v.mesVentas = null // la venta recién hecha está en este mes
                         v.version++
                         irA(3)
@@ -224,7 +259,27 @@ private fun VentaReal(irA: (Int) -> Unit) {
 private fun PasoCliente(clientes: List<JsonObject>, inactivos: List<JsonObject>, c: JsonObject?) {
     val v = ComprasReal
     val q = v.buscarCliente.trim().lowercase()
-    val elegir = { x: JsonObject -> v.clienteId = x.num("id").toLong(); v.buscarCliente = ""; v.pasoVenta = 2 }
+    val elegir = { x: JsonObject -> v.clienteId = x.num("id").toLong(); v.comprador = null; v.buscarCliente = ""; v.pasoVenta = 2 }
+    // un DNI/RUC que no es de ningún cliente: se busca su nombre (RENIEC/SUNAT o de la planta)
+    val numero = q.takeIf { DNI_O_RUC.matches(it) && (clientes + inactivos).none { c -> c.txt("ruc") == it } }
+    var doc by remember { mutableStateOf<JsonObject?>(null) }
+    var buscando by remember { mutableStateOf(false) }
+    LaunchedEffect(numero) {
+        doc = null
+        if (numero != null) {
+            kotlinx.coroutines.delay(350) // si sigue escribiendo, no se consulta
+            buscando = true; doc = consultarDocumento(numero) ?: JsonObject(mapOf("error" to JsonPrimitive("Sin conexión: no se pudo buscar el nombre."))); buscando = false
+        }
+    }
+    /** "Solo vender": a un cliente general (vecino; si es proveedor, el de proveedor de leche) con la nota a su nombre. */
+    val soloVender = soloVender@{ nombre: String, documento: String, fuente: String ->
+        val tipo = if (fuente == "proveedor") "PLANTA" else "DIRECTO"
+        val genericos = clientes.filter { it.txt("tipo") == tipo && it.txt("ruc").isEmpty() }
+        val g = genericos.find { Regex("vecino|proveedor de leche", RegexOption.IGNORE_CASE).containsMatchIn(it.txt("nombre")) } ?: genericos.firstOrNull()
+        if (g == null) { v.mensaje = "Falta un cliente general «Vecino de Huata» para vender sin registrar."; return@soloVender }
+        elegir(g)
+        v.comprador = nombre to documento
+    }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.weight(1f)) { Seccion("¿A quién le vendes?") }
         TextButton(onClick = { v.editandoCliente = JsonObject(emptyMap()) }) { Text("+ Nuevo cliente", color = Altiplano.Exito) }
@@ -243,7 +298,33 @@ private fun PasoCliente(clientes: List<JsonObject>, inactivos: List<JsonObject>,
         val visibles = (clientes + inactivos).filter {
             it.txt("nombre").lowercase().contains(q) || it.txt("ruc").contains(q) || it.txt("telefono").contains(q)
         }.take(8)
-        if (visibles.isEmpty()) AvisoCampo("Nadie coincide con «${v.buscarCliente.trim()}». Agrégalo con + Nuevo cliente.")
+        if (numero != null) Tarjeta(borde = if (doc?.txt("nombre").isNullOrEmpty()) Altiplano.Borde else Altiplano.VerdeBorde) {
+            val nombre = doc?.txt("nombre").orEmpty()
+            Text("${if (numero.length == 8) "DNI" else "RUC"} $numero", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+            Text(
+                when {
+                    buscando || doc == null -> "Buscando el nombre…"
+                    nombre.isNotEmpty() -> nombre
+                    else -> "No se encontró"
+                },
+                style = Texto.Fila, color = Altiplano.Texto,
+            )
+            doc?.let { d ->
+                Text(
+                    if (nombre.isNotEmpty()) FUENTE_DOC[d.txt("fuente")].orEmpty()
+                    else d.txt("error").ifEmpty { if (d.txt("sin_token") == "true") "Falta el token de RENIEC en el servidor: escribe el nombre a mano." else "Escribe el nombre a mano." },
+                    style = Texto.Apoyo, color = Altiplano.TextoTerciario,
+                )
+                Spacer(Modifier.height(8.dp))
+                // dos caminos: guardarlo como cliente o venderle nada más (la nota sale a su nombre)
+                if (nombre.isNotEmpty()) BotonPrimario("Solo vender (sin registrar)") { soloVender(nombre, numero, d.txt("fuente")) }
+                TextButton(onClick = {
+                    v.editandoCliente = JsonObject(mapOf("nombre" to JsonPrimitive(nombre), "ruc" to JsonPrimitive(numero),
+                        "tipo" to JsonPrimitive(if (numero.length == 8) "DIRECTO" else "MAYORISTA")))
+                }) { Text(if (nombre.isNotEmpty()) "+ Agregar como cliente" else "+ Agregar a mano", color = Altiplano.Exito) }
+            }
+        }
+        if (visibles.isEmpty() && numero == null) AvisoCampo("Nadie coincide con «${v.buscarCliente.trim()}». Agrégalo con + Nuevo cliente.")
         visibles.forEach { x ->
             val activo = x.txt("activo") != "false" && x.txt("activo") != "0"
             Opcion(
@@ -256,7 +337,7 @@ private fun PasoCliente(clientes: List<JsonObject>, inactivos: List<JsonObject>,
     if (c != null) {
         // el de "Proveedor de leche" es del sistema y no se edita
         if (c.txt("tipo") != "PLANTA") TextButton(onClick = { v.editandoCliente = c }) { Text("Editar a ${c.txt("nombre")}", color = Altiplano.CelesteAcento) }
-        BotonPrimario("Seguir con ${c.txt("nombre")} →") { v.pasoVenta = 2 }
+        BotonPrimario("Seguir con ${v.nombreVenta(c)} →") { v.pasoVenta = 2 }
     }
 }
 
@@ -266,7 +347,7 @@ private fun PasoCliente(clientes: List<JsonObject>, inactivos: List<JsonObject>,
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PasoProductos(prods: List<JsonObject>, c: JsonObject, lineas: List<Triple<JsonObject, Double, Double>>, total: Double) {
+private fun PasoProductos(prods: List<JsonObject>, c: JsonObject, lineas: List<Triple<JsonObject, Double, Double>>, total: Double, quien: String) {
     val v = ComprasReal
     val id = { p: JsonObject -> p.num("id").toLong() }
     val precio = { p: JsonObject -> p.obj("precios")?.num(c.txt("tipo")) ?: 0.0 }
@@ -277,7 +358,8 @@ private fun PasoProductos(prods: List<JsonObject>, c: JsonObject, lineas: List<T
         .filter { it.second.isNotEmpty() }
     val elegir = { p: JsonObject -> v.producto = id(p); v.cuantos = 1.0 }
 
-    Seccion("¿Qué lleva ${c.txt("nombre")}?")
+    Seccion("¿Qué lleva $quien?")
+    if (v.comprador != null) Text("Sin registrarlo como cliente: la nota sale a su nombre.", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
     if (familias.isEmpty()) AvisoCampo("No hay productos. Agrégalos en la web: Configuración → Productos.")
     listOf("QUESO" to "🧀 Quesos", "YOGURT" to "🥛 Yogurt", "OTRO" to "Otros").forEach { (tipo, nombre) ->
         val delTipo = familias.filter { (b, _) -> b.txt("tipo").ifEmpty { "OTRO" } == tipo }
@@ -372,7 +454,7 @@ private fun vencePronto(p: JsonObject) = p.lista("lotes").any { it.num("dias") <
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun HojaCliente(x: JsonObject) {
-    val nuevo = x.isEmpty()
+    val nuevo = x.txt("id").isEmpty() // sin id: nuevo (puede venir con el nombre y DNI ya encontrados)
     val scope = rememberCoroutineScope()
     var nombre by remember { mutableStateOf(x.txt("nombre")) }
     var tipo by remember { mutableStateOf(x.txt("tipo").ifEmpty { "MAYORISTA" }) }
@@ -383,14 +465,31 @@ private fun HojaCliente(x: JsonObject) {
     var error by remember { mutableStateOf<String?>(null) }
     var enviando by remember { mutableStateOf(false) }
     val cerrar = { ComprasReal.editandoCliente = null }
+    // al completar el DNI/RUC se pone el nombre (si está vacío o lo puso la consulta anterior)
+    var nombrePuesto by remember { mutableStateOf(x.txt("nombre")) }
+    var estadoDoc by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(doc) {
+        if (!DNI_O_RUC.matches(doc) || doc == x.txt("ruc")) { estadoDoc = null; return@LaunchedEffect }
+        estadoDoc = "Buscando el nombre…"
+        val r = consultarDocumento(doc)
+        val encontrado = r?.txt("nombre").orEmpty()
+        estadoDoc = when {
+            r == null -> "Sin conexión: escribe el nombre a mano."
+            encontrado.isEmpty() -> r.txt("error").ifEmpty { if (r.txt("sin_token") == "true") "Falta el token de RENIEC: escribe el nombre a mano." else "No se encontró: escribe el nombre a mano." }
+            r.txt("fuente") == "cliente" && r.txt("cliente_id") != x.txt("id") -> "⚠ Ya hay un cliente con ese documento: $encontrado"
+            else -> "✓ " + FUENTE_DOC[r.txt("fuente")].orEmpty()
+        }
+        if (encontrado.isNotEmpty() && (nombre.isBlank() || nombre == nombrePuesto)) { nombre = encontrado; nombrePuesto = encontrado }
+    }
 
     Hoja(if (nuevo) "Nuevo cliente" else "Editar cliente", cerrar) {
+        Campo(doc, { doc = it.filter(Char::isDigit).take(11) }, "DNI o RUC (opcional): el nombre sale solo", teclado = KeyboardType.Number)
+        estadoDoc?.let { Text(it, style = Texto.Apoyo, color = if (it.startsWith("✓")) Altiplano.Exito else Altiplano.TextoTerciario) }
         Campo(nombre, { nombre = it.take(120) }, "Nombre del cliente o de su negocio", palabras = true)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Chip("Mayorista", tipo == "MAYORISTA") { tipo = "MAYORISTA" }
             Chip("Cliente directo", tipo == "DIRECTO") { tipo = "DIRECTO" }
         }
-        Campo(doc, { doc = it.filter(Char::isDigit).take(11) }, "DNI o RUC (opcional)", teclado = KeyboardType.Number)
         Campo(telefono, { telefono = it.filter { ch -> ch.isDigit() || ch == ' ' || ch == '+' }.take(20) }, "Teléfono (opcional)", teclado = KeyboardType.Phone)
         Campo(email, { email = it.trim().take(120) }, "Correo para la nota (opcional)", teclado = KeyboardType.Email)
         if (!nuevo) Row(verticalAlignment = Alignment.CenterVertically) {
@@ -418,7 +517,7 @@ private fun HojaCliente(x: JsonObject) {
                         if (!nuevo) put("activo", activo)
                     })
                     val id = r.num("id").toLong()
-                    if (nuevo || activo) ComprasReal.clienteId = id
+                    if (nuevo || activo) { ComprasReal.clienteId = id; ComprasReal.comprador = null }
                     else if (ComprasReal.clienteId == id) ComprasReal.clienteId = null // desactivado: ya no se puede elegir
                     ComprasReal.mensaje = "✓ Cliente ${r.txt("nombre")} " + when {
                         nuevo -> "agregado y elegido para esta venta"
@@ -458,11 +557,17 @@ private fun VentasDelMes() {
                 Text(if (todo) "Ver mes por mes" else "Ver todo", color = Altiplano.CelesteAcento)
             }
             val n = per?.num("ventas")?.toInt() ?: ventas.size
-            TarjetaDato("VENDIDO", soles(per?.num("vendido") ?: 0.0), apoyo = "$n ${if (n == 1) "venta" else "ventas"}", destacada = true)
+            TarjetaDato("VENDIDO", soles(per?.num("vendido") ?: 0.0), apoyo = "$n ${if (n == 1) "venta" else "ventas"}", destacada = true) {
+                // para cuadrar la caja: cuánto entró por cada forma de pago
+                per?.obj("por_metodo")?.let { pm ->
+                    METODO_PAGO.forEach { (clave, nombre) -> Spacer(Modifier.height(4.dp)); FilaValor(nombre, soles(pm.num(clave))) }
+                }
+            }
             if (ventas.isEmpty()) AvisoCampo(if (todo) "Todavía no hay ventas." else "No hubo ventas en este mes.")
             ventas.take(mostrar).forEach { m ->
                 val venta = m.txt("venta_id").toLongOrNull()
-                FilaLista(m.txt("que"), "${m.txt("ref")} · ${fechaCorta(m.txt("fecha"))} · ${m.txt("numero")} (tocar para ver)",
+                val pago = METODO_PAGO.find { it.first == m.txt("metodo_pago") }?.second?.let { " · $it" }.orEmpty()
+                FilaLista(m.txt("que"), "${m.txt("ref")}$pago · ${fechaCorta(m.txt("fecha"))} · ${m.txt("numero")} (tocar para ver)",
                     onClick = venta?.let { id -> { abrirNota(id) } }) {
                     Text(m.txt("delta"), style = Texto.Fila, color = Altiplano.TextoSecundario)
                 }
