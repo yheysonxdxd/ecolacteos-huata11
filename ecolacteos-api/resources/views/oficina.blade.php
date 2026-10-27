@@ -967,12 +967,23 @@
                             <div class="familia-producir" :class="{ activa: fa.items.some((x) => Number(varios[x.id]) > 0) }" :style="'--tono: ' + colorReceta(fa.base)">
                                 <div class="mini-dibujo" x-html="dibujoReceta(fa.base)"></div>
                                 <div class="items">
+                                    {{-- con sabores: cerrado con su flechita; al tocarlo se despliega la lista de sabores --}}
+                                    <button class="cabeza-familia" x-show="fa.items.length > 1" @click="familiaAbierta[fa.base.id] = !familiaAbierta[fa.base.id]"
+                                            :aria-expanded="!!familiaAbierta[fa.base.id]" :class="{ abierta: familiaAbierta[fa.base.id] }">
+                                        <div class="texto">
+                                            <strong x-text="fa.base.nombre.replace(/\s+natural$/i, '')"></strong>
+                                            <small x-text="resumenFamilia(fa)"></small>
+                                        </div>
+                                        <span class="puntos"><template x-for="x in fa.items" :key="x.id"><i :style="'background: ' + colorReceta(x)" :class="{ lleno: Number(varios[x.id]) > 0 }"></i></template></span>
+                                        <span class="flecha" aria-hidden="true">▾</span>
+                                    </button>
+                                    <div class="desplegable" :class="{ abierto: fa.items.length === 1 || familiaAbierta[fa.base.id] }"><div class="dentro">
                                     <template x-for="x in fa.items" :key="x.id">
                                         <div class="item-producir" :class="{ elegido: Number(varios[x.id]) > 0, sabor: !!x.base_id }" :style="'--tono: ' + colorReceta(x)">
                                             <div class="nombre">
                                                 <i x-show="fa.items.length > 1"></i>
                                                 <div>
-                                                    <strong x-text="x.base_id ? x.variante : (fa.items.length > 1 && !/natural/i.test(x.nombre) ? x.nombre + ' (natural)' : x.nombre)"></strong>
+                                                    <strong x-text="x.base_id ? x.variante : (fa.items.length > 1 ? 'Natural' : x.nombre)"></strong>
                                                     <template x-for="k in [litrosDe(x)]" :key="k"><small class="brinca" x-text="Number(varios[x.id]) > 0 ? 'usa ' + num(k, 0) + ' L de leche' : 'rinde ' + num(x.rendimiento_min * 100, 1) + ' ' + unidadProducto(x) + ' por 100 L'"></small></template>
                                                 </div>
                                             </div>
@@ -986,6 +997,7 @@
                                                     :title="'Con la leche que queda alcanza para ' + maximoDe(x) + ' ' + unidadProducto(x)" x-text="'máx. ' + num(maximoDe(x), 0)"></button>
                                         </div>
                                     </template>
+                                    </div></div>
                                 </div>
                             </div>
                         </template>

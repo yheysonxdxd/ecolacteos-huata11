@@ -68,6 +68,7 @@ function oficina() {
     recetaFiltro: 'TODOS', // TODOS · QUESO · YOGURT · OTRO
     recetaLitros: 100, // la ficha recalcula los insumos para estos litros
     varios: {},     // producir varios a la vez: producto => cuánto (vacío o 0 = no se hace)
+    familiaAbierta: {}, // Producir: base => true si su lista de sabores está desplegada
     usoAnimado: 0,  // litros que muestra el tanque: van contando hasta lo que se usa de verdad
     mapaFecha: '',  // vacío = hoy
     mesCompras: '', // vacío = mes actual (2026-10)
@@ -1645,6 +1646,14 @@ function oficina() {
       return [['QUESO', '🧀 Quesos'], ['YOGURT', '🥛 Yogurt'], ['OTRO', 'Otros']]
         .map(([tipo, nombre]) => ({ tipo, nombre, familias: familias.filter((fa) => (fa.base.tipo || 'OTRO') === tipo) }))
         .filter((g) => g.familias.length);
+    },
+    /** Lo que dice la familia cerrada: lo elegido ("60 litros natural · 40 fresa") o cuántos sabores tiene. */
+    resumenFamilia(fa) {
+      const u = /litro/i.test(fa.base.unidad) ? 'L' : this.unidadProducto(fa.base);
+      const elegidos = fa.items.filter((x) => Number(this.varios[x.id]) > 0)
+        .map((x) => num(Number(this.varios[x.id]), 0) + ' ' + u + ' ' + (x.base_id ? x.variante.toLowerCase() : 'natural'));
+      if (elegidos.length) return elegidos.join(' · ');
+      return fa.items.length + (fa.base.tipo === 'YOGURT' ? ' sabores' : ' variedades') + ' · toca para elegir';
     },
     /** Litros de leche que usa lo elegido de [p] (0 si no se hace). */
     litrosDe(p) { return this.planVarios().elegidos.find((e) => e.p.id === p.id)?.litros || 0; },

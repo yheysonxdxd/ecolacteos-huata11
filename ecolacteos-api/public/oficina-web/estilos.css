@@ -597,3 +597,28 @@ ol.historial li.futuro::before { background: var(--aviso); }
   .producir-resumen .veredicto, .producir-resumen .ingredientes li.falta, .item-producir .brinca, .item-producir.elegido,
   .btn.grande-producir { animation: none !important; transition: none !important; }
 }
+
+/* --- producir: cada producto con sabores se abre con su flechita (como un combo) --- */
+.cabeza-familia { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 12px; border-radius: 12px; cursor: pointer;
+  font: inherit; color: var(--texto); text-align: left; background: var(--superficie-2); border: 1px solid var(--borde);
+  transition: border-color .15s ease, background .15s ease; }
+.cabeza-familia:hover, .cabeza-familia:focus-visible { border-color: color-mix(in srgb, var(--tono) 60%, var(--borde)); outline: none; }
+.cabeza-familia.abierta { border-color: var(--tono); background: color-mix(in srgb, var(--tono) 10%, var(--superficie-2)); }
+.cabeza-familia .texto { flex: 1; min-width: 0; }
+.cabeza-familia strong { display: block; font-size: 16px; }
+.cabeza-familia small { display: block; font-size: 12.5px; color: var(--texto-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.familia-producir.activa .cabeza-familia small { color: var(--texto-2); }
+.cabeza-familia .puntos { display: flex; gap: 3px; }
+.cabeza-familia .puntos i { width: 10px; height: 10px; border-radius: 50%; opacity: .35; transition: opacity .2s ease, transform .2s ease; }
+.cabeza-familia .puntos i.lleno { opacity: 1; transform: scale(1.2); }
+.cabeza-familia .flecha { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: 14px;
+  background: var(--superficie); border: 1px solid var(--borde); color: var(--texto-2); transition: transform .25s ease; }
+.cabeza-familia.abierta .flecha { transform: rotate(180deg); color: var(--texto); border-color: var(--tono); }
+/* la lista se despliega suave (de 0 a su alto) */
+.desplegable { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .3s ease; }
+.desplegable.abierto { grid-template-rows: 1fr; }
+.desplegable > .dentro { overflow: hidden; min-height: 0; display: grid; gap: 4px; }
+.cabeza-familia + .desplegable.abierto > .dentro { padding-top: 6px; }
+.desplegable:not(.abierto) .item-producir { visibility: hidden; }
+@media (max-width: 560px) { .cabeza-familia .puntos { display: none; } }
+@media (prefers-reduced-motion: reduce) { .desplegable, .cabeza-familia .flecha, .cabeza-familia .puntos i { transition: none; } }
