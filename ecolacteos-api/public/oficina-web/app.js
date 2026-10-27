@@ -116,6 +116,27 @@ function oficina() {
       precios.forEach((p) => { (filas[p.producto] ??= { producto: p.producto })[p.tipo_cliente] = p.precio; });
       return Object.values(filas);
     },
+    /** Ícono de cada insumo según su nombre (sal, cuajo, cultivo, azúcar, saborizante, envase…). */
+    iconoInsumo(i) {
+      const n = String(i?.nombre || '').toLowerCase();
+      // los saborizantes con su fruta; los demás por lo que son
+      const T = [['fresa', '🍓'], ['plátano', '🍌'], ['platano', '🍌'], ['lúcuma', '🥭'], ['lucuma', '🥭'], ['maracuy', '🍋'], ['durazno', '🍑'],
+        ['piña', '🍍'], ['coco', '🥥'], ['arándano', '🫐'], ['mora', '🫐'], ['mango', '🥭'], ['vainilla', '🍦'], ['sabor', '🍧'], ['sal', '🧂'], ['cuajo', '🧪'], ['cultivo', '🦠'], ['fermento', '🦠'], ['cloruro', '⚗️'], ['calcio', '⚗️'],
+        ['azúcar', '🍬'], ['azucar', '🍬'], ['sorbato', '🧴'], ['envase', '🍶'], ['botella', '🍶'], ['film', '🎞️'], ['bolsa', '🛍️'],
+        ['etiqueta', '🏷️'], ['leche en polvo', '🥛'], ['fruta', '🍑'], ['orégano', '🌿'], ['hierba', '🌿']];
+      return (T.find(([k]) => n.includes(k)) || [null, '📦'])[1];
+    },
+    /** Color de la tarjeta del insumo: el de la fruta en los saborizantes; si no, el verde de siempre. */
+    colorInsumo(i) { return /sabor/i.test(i?.nombre) ? this.colorReceta({ nombre: i.nombre }) : 'var(--exito)'; },
+    /** Anillo de nivel (viewBox 0 0 64 64): parte = 0..1 (1 = el doble del mínimo); la rayita de abajo (la mitad) marca el mínimo. */
+    svgNivel(parte, bajo) {
+      const R = 26, C = 2 * Math.PI * R, p = Math.max(0, Math.min(1, parte || 0));
+      return `<svg viewBox="0 0 64 64" role="img" aria-label="${Math.round(p * 100)} % del nivel">
+        <circle cx="32" cy="32" r="${R}" fill="none" stroke="var(--fondo)" stroke-width="8"/>
+        <circle cx="32" cy="32" r="${R}" fill="none" stroke="${bajo ? 'var(--alerta)' : 'var(--exito)'}" stroke-width="8" stroke-linecap="round"
+          stroke-dasharray="${Math.max(0.1, p * C)} ${C}" transform="rotate(-90 32 32)"/>
+        <line x1="32" y1="53" x2="32" y2="63" stroke="var(--texto)" stroke-width="2.5" stroke-linecap="round"/></svg>`;
+    },
     /** Color de la ruta de un vehículo (el mismo del mapa de Huata). */
     colorRuta(codigo) { return COLOR_RUTA[codigo] || '#8394a4'; },
     // ------------------------------------------------- gráficos chicos (SVG)

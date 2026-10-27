@@ -1015,23 +1015,24 @@
             </div>
 
             <h2>Insumos</h2>
-            <div class="insumos-almacen">
+            {{-- una tarjeta por insumo: su ícono, cuánto queda y un anillo que se llena (lleno = el doble del mínimo) --}}
+            <div class="insumos-tarjetas">
                 <template x-for="i in [...(d.insumos || [])].sort((a, b) => (a.stock >= a.minimo) - (b.stock >= b.minimo) || a.nombre.localeCompare(b.nombre))" :key="i.id">
-                    <div class="insumo-fila" :class="{ bajo: i.stock < i.minimo }">
-                        <div class="que"><strong x-text="i.nombre"></strong>
-                            <small x-text="'Costo ' + soles(i.costo) + ' por ' + i.unidad"></small></div>
-                        {{-- nivel: la barra llena es el doble del mínimo; la rayita marca el mínimo --}}
-                        <div class="nivel" :title="'Mínimo ' + num(i.minimo, 3) + ' ' + i.unidad">
-                            <div class="barra-nivel"><span :style="'width:' + Math.min(100, i.minimo > 0 ? i.stock / (i.minimo * 2) * 100 : 100) + '%'"></span><i style="left: 50%"></i></div>
-                            <small x-text="'mínimo ' + num(i.minimo, 3) + ' ' + i.unidad"></small>
+                    <article class="insumo-tarjeta" :class="{ bajo: i.stock < i.minimo }" :style="'--tono: ' + colorInsumo(i)">
+                        {{-- el anillo lleno es el doble del mínimo; la rayita de abajo marca el mínimo --}}
+                        <div class="anillo" :title="'Mínimo ' + num(i.minimo, 3) + ' ' + i.unidad">
+                            <div x-html="svgNivel(i.minimo > 0 ? i.stock / (i.minimo * 2) : 1, i.stock < i.minimo)"></div>
+                            <span class="icono-insumo" aria-hidden="true" x-text="iconoInsumo(i)"></span>
                         </div>
-                        <div class="cantidad" :class="{ mal: i.stock < i.minimo }"><b x-text="num(i.stock, 3)"></b> <span x-text="i.unidad"></span></div>
-                        <div class="acciones-fila">
-                            <span class="chip mal" x-show="i.stock < i.minimo">Bajo el mínimo</span>
+                        <strong x-text="i.nombre"></strong>
+                        <div class="queda-insumo"><b x-text="num(i.stock, 3)"></b> <span x-text="i.unidad"></span></div>
+                        <small x-text="'mínimo ' + num(i.minimo, 3) + ' ' + i.unidad + ' · ' + soles(i.costo) + ' por ' + i.unidad"></small>
+                        <span class="chip mal" x-show="i.stock < i.minimo">⚠ Hay que comprar</span>
+                        <div class="botones">
                             <button class="btn chico" @click="abrirAjuste(i)">Corregir</button>
                             <button class="btn chico gris" @click="verKardex(i.id)">Kardex</button>
                         </div>
-                    </div>
+                    </article>
                 </template>
             </div>
         </section>

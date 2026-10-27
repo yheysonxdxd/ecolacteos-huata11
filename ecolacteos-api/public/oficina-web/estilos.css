@@ -1252,3 +1252,23 @@ input.buscador { padding-left: 38px; background-image: url("data:image/svg+xml,%
 .kardex-claro td.num { font-weight: 700; white-space: nowrap; }
 .kardex-claro td.queda b { font-size: 15.5px; } .kardex-claro td.queda small { color: var(--texto-3); font-weight: 400; }
 @media (max-width: 640px) { .cifras-kardex { grid-template-columns: 1fr; } .cifras-kardex > div + div { border-left: 0; border-top: 1px solid var(--borde); } }
+
+/* --- Almacén: insumos como tarjetas con ícono y anillo de nivel --- */
+.insumos-tarjetas { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.insumo-tarjeta { --tono: var(--exito); display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; padding: 18px 14px 14px;
+  border-radius: 18px; background: radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--tono) 13%, transparent), transparent 62%), var(--superficie);
+  border: 1px solid var(--borde); box-shadow: var(--sombra); transition: transform .15s ease, border-color .15s ease; }
+.insumo-tarjeta:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--tono) 50%, var(--borde)); }
+.insumo-tarjeta.bajo { border-color: var(--alerta-borde); background: radial-gradient(circle at 50% 0%, rgba(239,107,107,.14), transparent 62%), var(--superficie); }
+.insumo-tarjeta .anillo { position: relative; width: 84px; height: 84px; margin-bottom: 6px; }
+.insumo-tarjeta .anillo svg { width: 84px; height: 84px; display: block; }
+.insumo-tarjeta .icono-insumo { position: absolute; inset: 0; display: grid; place-items: center; font-size: 30px; }
+.insumo-tarjeta strong { font: 700 15px var(--letra-titulo); line-height: 1.25; }
+.queda-insumo { color: var(--texto-3); font-size: 13px; }
+.queda-insumo b { font: 800 26px var(--letra-titulo); color: var(--texto); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.insumo-tarjeta.bajo .queda-insumo b { color: var(--alerta); }
+.insumo-tarjeta small { font-size: 12px; color: var(--texto-3); }
+.insumo-tarjeta .chip { margin-top: 4px; }
+.insumo-tarjeta .botones { display: flex; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--borde); width: 100%; justify-content: center; }
+@media (max-width: 460px) { .insumos-tarjetas { grid-template-columns: 1fr 1fr; } .insumo-tarjeta .anillo, .insumo-tarjeta .anillo svg { width: 70px; height: 70px; } }
+@media (prefers-reduced-motion: reduce) { .insumo-tarjeta { transition: none; } }
