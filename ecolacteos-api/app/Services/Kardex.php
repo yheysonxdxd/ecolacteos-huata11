@@ -21,11 +21,12 @@ class Kardex
 {
     public const TIPOS = ['orden_compra' => 'COMPRA', 'lote' => 'PRODUCCION', 'ajuste' => 'AJUSTE'];
 
-    public static function de(string $tipo, ?int $id, ?string $desde = null, ?string $hasta = null): array
+    /** $solo: de un producto, solo ese (Queso Paria) y no toda su familia (todos los quesos). */
+    public static function de(string $tipo, ?int $id, ?string $desde = null, ?string $hasta = null, bool $solo = false): array
     {
         [$item, $movs, $cppInicial] = match ($tipo) {
             'insumo' => self::insumo($id),
-            'producto' => self::producto($id),
+            'producto' => self::producto($id, $solo),
             'leche' => self::leche(),
             default => abort(422, 'Tipo de kardex no válido'),
         };
@@ -88,14 +89,15 @@ class Kardex
     /** Un solo kardex para todos los quesos y otro para todos los yogures (con la misma unidad, para poder sumarlos). */
     public const NOMBRE_FAMILIA = ['YOGURT' => 'Yogurt', 'QUESO' => 'Queso'];
 
-    private static function producto(?int $id): array
+    private static function producto(?int $id, bool $solo = false): array
     {
         $p = DB::table('productos')->find($id);
         abort_if(! $p, 404, 'Producto no encontrado');
         // Queso Paria y andino juntos; Yogurt natural, de fresa, de maracuyá… juntos. Lo demás, con sus sabores.
-        $familia = (isset(self::NOMBRE_FAMILIA[$p->tipo])
+        // Con $solo, únicamente el producto elegido.
+        $familia = ($solo ? DB::table('productos')->where('id', $p->id) : (isset(self::NOMBRE_FAMILIA[$p->tipo])
             ? DB::table('productos')->where('tipo', $p->tipo)->where('unidad', $p->unidad)
-            : DB::table('productos')->where('id', $p->base_id ?? $p->id)->orWhere('base_id', $p->base_id ?? $p->id))
+            : DB::table('productos')->where('id', $p->base_id ?? $p->id)->orWhere('base_id', $p->base_id ?? $p->id)))
             ->orderBy('id')->pluck('nombre', 'id');
         $base = DB::table('productos')->find($familia->keys()->first());
         $ids = $familia->keys()->all();

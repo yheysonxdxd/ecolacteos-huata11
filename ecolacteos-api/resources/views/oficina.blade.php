@@ -1056,6 +1056,12 @@
                     <select x-model.number="kardex.id" @change="cargar()">
                         <template x-for="o in opcionesKardex()" :key="kardex.tipo + o.id"><option :value="o.id" :selected="o.id === kardex.id" x-text="o.nombre"></option></template>
                     </select></div>
+                {{-- queso o yogurt: todos juntos o uno solo (solo Queso Paria, solo Yogurt de fresa) --}}
+                <div style="flex: 2; min-width: 200px" x-show="kardex.tipo === 'producto' && productosDelKardex().length > 1"><label for="kardex-producto">Producto</label>
+                    <select id="kardex-producto" @change="elegirProductoKardex($event.target.value)">
+                        <option value="todos" :selected="!kardex.solo" x-text="'Todos · ' + (gruposKardex().find((g) => g.ids.includes(kardex.id))?.nombre || '').toLowerCase()"></option>
+                        <template x-for="p in productosDelKardex()" :key="p.id"><option :value="p.id" :selected="kardex.solo && p.id === kardex.id" x-text="p.nombre"></option></template>
+                    </select></div>
                 <div style="flex: 1; min-width: 140px"><label>Desde</label><input type="date" x-model="kardex.desde" @change="cargar()"></div>
                 <div style="flex: 1; min-width: 140px"><label>Hasta</label><input type="date" x-model="kardex.hasta" @change="cargar()"></div>
                 <button class="btn gris" x-show="kardex.desde || kardex.hasta" @click="kardex.desde = ''; kardex.hasta = ''; cargar()">Todo</button>

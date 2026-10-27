@@ -119,4 +119,30 @@ class VentaPorVencerTest extends TestCase
         $p = collect($this->getJson('/api/v1/compras/ventas-datos')->json('productos'))->firstWhere('id', $this->queso);
         $this->assertEquals(8, $p['stock']);
     }
+
+    public function test_kardex_de_un_solo_producto_o_de_toda_su_familia(): void
+    {
+        DB::table('productos')->where('id', $this->queso)->update(['tipo' => 'QUESO']);
+        $andino = DB::table('productos')->insertGetId([
+            'nombre' => 'Queso andino', 'tipo' => 'QUESO', 'unidad' => 'quesos de 1 kg', 'rendimiento_min' => 0.1, 'rendimiento_max' => 0.1, 'vida_util_dias' => 30,
+        ]);
+        $this->lote('L-1', 10, 20, 5);
+        DB::table('lotes')->insert([
+            'uuid' => (string) Str::uuid(), 'codigo' => 'L-2', 'producto_id' => $andino, 'litros_leche' => 100,
+            'esperado_min' => 7, 'esperado_max' => 7, 'obtenido' => 7, 'estado' => 'TERMINADO',
+            'vence_el' => now()->addDays(20)->toDateString(), 'operario_id' => $this->usuarios['ADMIN']->id,
+            'iniciado_en' => now()->subDays(2), 'cerrado_en' => now()->subDays(2),
+        ]);
+
+        // todos los quesos juntos (como antes)
+        $todos = $this->getJson("/api/v1/compras/kardex?tipo=producto&id={$this->queso}")->assertOk()->json();
+        $this->assertSame('Queso', $todos['item']['nombre']);
+        $this->assertEquals(17, $todos['totales']['saldo']['cantidad']);
+
+        // solo el Queso Paria
+        $solo = $this->getJson("/api/v1/compras/kardex?tipo=producto&id={$this->queso}&solo=1")->assertOk()->json();
+        $this->assertSame('Queso Paria', $solo['item']['nombre']);
+        $this->assertEquals(10, $solo['totales']['saldo']['cantidad']);
+        $this->assertCount(1, $solo['filas']);
+    }
 }

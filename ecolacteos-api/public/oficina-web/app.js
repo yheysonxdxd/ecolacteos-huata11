@@ -63,7 +63,7 @@ function oficina() {
     padron: 'proveedores',
     adulteracion: 'todos',
     buscar: '',
-    kardex: { tipo: 'insumo', id: null, desde: '', hasta: '' }, // tipo: insumo | producto | leche
+    kardex: { tipo: 'insumo', id: null, desde: '', hasta: '', solo: false }, // tipo: insumo | producto | leche · solo: un producto y no toda su familia
     recetaAbierta: null, // receta abierta en el recetario (Producir > Recetario)
     recetaFiltro: 'TODOS', // TODOS · QUESO · YOGURT · OTRO
     recetaLitros: 100, // la ficha recalcula los insumos para estos litros
@@ -350,6 +350,7 @@ function oficina() {
             if (k.tipo !== 'leche' && !lista.some((i) => i.id === k.id)) k.id = lista[0]?.id ?? null;
             const q = new URLSearchParams({ tipo: k.tipo });
             if (k.tipo !== 'leche') q.set('id', k.id ?? '');
+            if (k.tipo === 'producto' && k.solo) q.set('solo', '1');
             if (k.desde) q.set('desde', k.desde);
             if (k.hasta) q.set('hasta', k.hasta);
             this.d = { inv, ...(k.tipo === 'leche' || k.id ? await this.api('/compras/kardex?' + q) : {}) };            break;
@@ -1425,8 +1426,20 @@ function oficina() {
     },
 
     // ---------------------------------------------------------------- kardex
-    verKardex(id, tipo = 'insumo') { this.kardex.tipo = tipo; this.kardex.id = id; this.ir('kardex'); },
-    tipoKardex(tipo, id = null) { this.kardex.tipo = tipo; this.kardex.id = id; this.cargar(); },
+    // desde Almacén: el kardex de ese producto solo
+    verKardex(id, tipo = 'insumo') { this.kardex.tipo = tipo; this.kardex.id = id; this.kardex.solo = tipo === 'producto'; this.ir('kardex'); },
+    tipoKardex(tipo, id = null) { this.kardex.tipo = tipo; this.kardex.id = id; this.kardex.solo = false; this.cargar(); },
+    /** Los productos de la pestaña elegida (todos los quesos, o el yogurt y sus sabores). */
+    productosDelKardex() {
+      const g = this.gruposKardex().find((x) => x.ids.includes(this.kardex.id));
+      return (this.d.inv?.productos || []).filter((p) => g?.ids.includes(p.id));
+    },
+    /** "todos" = toda la familia; un id = solo ese producto. */
+    elegirProductoKardex(valor) {
+      const g = this.gruposKardex().find((x) => x.ids.includes(this.kardex.id));
+      if (valor === 'todos') { this.kardex.solo = false; this.kardex.id = g?.id ?? this.kardex.id; } else { this.kardex.solo = true; this.kardex.id = Number(valor); }
+      this.cargar();
+    },
     /** Productos que van en un mismo kardex: todos los quesos, todos los yogures (igual que Kardex::producto). */
     gruposKardex() {
       const nombres = { YOGURT: 'Yogurt', QUESO: 'Queso' };

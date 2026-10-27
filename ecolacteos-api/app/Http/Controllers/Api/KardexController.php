@@ -23,12 +23,13 @@ class KardexController extends Controller
             'insumo_id' => ['nullable', 'integer'],
             'desde' => ['nullable', 'date_format:Y-m-d'],
             'hasta' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:desde'],
+            'solo' => ['nullable', 'boolean'], // producto: solo ese y no toda su familia
         ]);
         $tipo = $data['tipo'] ?? 'insumo';
         $id = $data['id'] ?? $data['insumo_id'] ?? null;
         abort_if($tipo !== 'leche' && ! $id, 422, 'Elige qué insumo o producto quieres ver.');
 
-        return response()->json(Kardex::de($tipo, $id ? (int) $id : null, $data['desde'] ?? null, $data['hasta'] ?? null));
+        return response()->json(Kardex::de($tipo, $id ? (int) $id : null, $data['desde'] ?? null, $data['hasta'] ?? null, $r->boolean('solo')));
     }
 
     /**
