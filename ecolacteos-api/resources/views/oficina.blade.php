@@ -1072,68 +1072,85 @@
         {{-- ---------------------------------------------------- PÉRDIDAS --}}
         <template x-if="dDe === 'mermas'">
         <section x-show="seccion === 'mermas' && !cargando && !error">
-            <div class="fila"><h1>Pérdidas</h1><div class="espacio"></div>
+            <div class="cabecera">
+                <div><h1>Pérdidas</h1>
+                    <p class="sub" style="margin: 0">La leche que se corta o se derrama, el queso que se pasa, el yogurt que se malogra. Se descuenta del stock y sale en el kardex.
+                        Un insumo malogrado o vencido se corrige en <strong>Stock y avisos</strong> con <strong>Corregir</strong>.</p></div>
+                <div class="espacio"></div>
                 <button class="btn rojo" @click="abrirMerma('LECHE')">+ Leche perdida</button>
-                <button class="btn rojo" @click="abrirMerma('PRODUCTO')">+ Queso o yogurt perdido</button></div>
-            <p class="sub">La leche que se corta o se derrama, el queso que se pasa, el yogurt que se malogra. Se descuenta del stock y sale en el kardex.
-                Un insumo malogrado o vencido se corrige en <strong>Stock y avisos</strong> con <strong>Corregir</strong>.</p>
-            <div class="tarjetas">
-                <div class="tarjeta"><div class="eti">Leche sin procesar</div><div class="valor" x-text="num(d.leche?.sin_usar) + ' L'"></div>
-                    <div class="apoyo" x-text="num(d.leche?.tanque) + ' L de los últimos 3 días (se puede producir)'"></div></div>
+                <button class="btn rojo" @click="abrirMerma('PRODUCTO')">+ Queso o yogurt perdido</button>
+            </div>
+            <div class="kpis-fila">
+                <div class="kpi"><span class="kpi-ico" aria-hidden="true">🥛</span><div><b x-text="num(d.leche?.sin_usar) + ' L'"></b><span>Leche sin procesar</span>
+                    <small x-text="num(d.leche?.tanque) + ' L de los últimos 3 días (se puede producir)'"></small></div></div>
+                <div class="kpi" :class="(d.mermas || []).length ? 'mal' : 'ok'"><span class="kpi-ico" aria-hidden="true">⚠</span><div><b x-text="(d.mermas || []).length"></b><span>Pérdidas registradas</span>
+                    <small>las últimas, abajo</small></div></div>
+            </div>
+            <div class="stock-grilla">
                 <template x-for="p in d.productos || []" :key="p.id">
-                    <div class="tarjeta"><div class="eti" x-text="p.nombre"></div><div class="valor" x-text="num(p.stock, 2) + ' ' + p.unidad"></div><div class="apoyo">en almacén</div></div>
+                    <div class="stock-item" :class="{ cero: !(p.stock > 0) }" :style="'--tono: ' + colorReceta(productoVisual(p.nombre))">
+                        <i class="punto"></i><div><strong x-text="p.nombre"></strong><b x-text="num(p.stock, 2) + ' ' + p.unidad"></b></div></div>
                 </template>
             </div>
             <h2>Últimas pérdidas</h2>
-            <table class="lista"><tr><th>Fecha</th><th>Qué</th><th class="num">Cantidad</th><th>Motivo</th><th>Registró</th></tr>
-                <template x-for="m in d.mermas || []" :key="m.id"><tr>
-                    <td x-text="fechaCorta(m.fecha) + ' ' + hora(m.fecha)"></td>
-                    <td x-text="m.que + (m.lote ? ' · lote ' + m.lote : '')"></td>
-                    <td class="num mal"><strong x-text="'− ' + num(m.cantidad, 3) + ' ' + m.unidad_corta"></strong></td>
-                    <td x-text="m.motivo_texto + (m.detalle ? ' · ' + m.detalle : '')"></td>
-                    <td x-text="m.usuario || ''"></td></tr></template>
-                <tr x-show="!(d.mermas || []).length"><td colspan="5">Todavía no se registró ninguna pérdida.</td></tr>
-            </table>
+            <div class="movimientos">
+                <template x-for="m in d.mermas || []" :key="m.id"><div class="movimiento perdida">
+                    <span class="estado-orden" aria-hidden="true" x-text="/leche/i.test(m.que) ? '🥛' : (/yogurt/i.test(m.que) ? '🥤' : '🧀')"></span>
+                    <div class="que"><strong x-text="m.que + (m.lote ? ' · lote ' + m.lote : '')"></strong>
+                        <small x-text="m.motivo_texto + (m.detalle ? ' · ' + m.detalle : '') + ' · ' + fechaCorta(m.fecha) + ' ' + hora(m.fecha) + (m.usuario ? ' · ' + m.usuario : '')"></small></div>
+                    <b class="monto mal" x-text="'− ' + num(m.cantidad, 3) + ' ' + m.unidad_corta"></b>
+                </div></template>
+                <div class="vacio-lista" x-show="!(d.mermas || []).length"><span aria-hidden="true">✓</span><p>Todavía no se registró ninguna pérdida.</p></div>
+            </div>
         </section>
         </template>
 
         {{-- ---------------------------------------------------- LOTES EN PRODUCCIÓN --}}
         <template x-if="dDe === 'lotes'">
         <section x-show="seccion === 'lotes' && !cargando && !error">
-            <div class="fila"><h1>Lotes en producción</h1><div class="espacio"></div>
-                <button class="btn" @click="ir('formulas')">+ Hacer otro lote</button></div>
-            <p class="sub">Un lote "en proceso" ya descontó la leche y los insumos. Cuando termines, escribe cuántos salieron y ciérralo: recién ahí entran al stock para vender y al kardex.</p>
-            <template x-for="l in (d.lotes || []).filter((l) => l.estado === 'EN_PROCESO')" :key="l.id">
-                <div class="tarjeta" style="margin-bottom: 12px; border-color: var(--verde-borde)">
-                    <div class="fila">
-                        <div style="flex: 1; min-width: 220px">
-                            <strong style="font-size: 18px" x-text="l.codigo + ' · ' + l.producto"></strong>
-                            <div class="sub" style="margin: 2px 0 0" x-text="'Iniciado el ' + fechaCorta(l.iniciado_en) + ' ' + hora(l.iniciado_en) + ' con ' + num(l.litros_leche, 0) + ' L de leche · vence el ' + fechaCorta(l.vence_el)"></div>
-                            <div style="margin-top: 6px"><span x-text="'Se espera que salgan ' + esperadoLote(l)"></span>
-                                <span class="sub" style="margin: 0" x-text="' · se acepta de ' + aceptadoLote(l)"></span></div>
-                            <div class="sub" style="margin: 4px 0 0" x-show="(l.insumos || []).length"
-                                 x-text="'Se usó: ' + l.insumos.map((i) => i.nombre.toLowerCase() + ' ' + num(i.cantidad, 3) + ' ' + i.unidad).join(', ')"></div>
+            <div class="cabecera">
+                <div><h1>Lotes en producción</h1>
+                    <p class="sub" style="margin: 0">Un lote "en proceso" ya descontó la leche y los insumos. Cuando termines, escribe cuántos salieron y ciérralo: recién ahí entran al stock para vender y al kardex.</p></div>
+                <div class="espacio"></div>
+                <button class="btn" @click="ir('formulas')">+ Hacer otro lote</button>
+            </div>
+            <div class="lotes-proceso">
+                <template x-for="l in (d.lotes || []).filter((l) => l.estado === 'EN_PROCESO')" :key="l.id">
+                    <article class="lote-proceso" :style="'--tono: ' + colorReceta(productoVisual(l.producto))">
+                        <div class="mini-dibujo" x-html="dibujoReceta(productoVisual(l.producto))"></div>
+                        <div class="que">
+                            <span class="en-proceso"><i></i>En proceso · <span x-text="haceCuanto(l.iniciado_en)"></span></span>
+                            <strong x-text="l.producto"></strong>
+                            <small x-text="l.codigo + ' · ' + num(l.litros_leche, 0) + ' L de leche · vence el ' + fechaCorta(l.vence_el)"></small>
+                            <div class="espera" x-text="'Se espera ' + esperadoLote(l) + ' · se acepta de ' + aceptadoLote(l)"></div>
+                            <small x-show="(l.insumos || []).length" x-text="'Se usó: ' + l.insumos.map((i) => i.nombre.toLowerCase() + ' ' + num(i.cantidad, 3) + ' ' + i.unidad).join(', ')"></small>
                         </div>
-                        <div style="min-width: 260px">
-                            <label style="margin-top: 0" x-text="'¿Cuántos ' + l.unidad.split(' ')[0] + ' salieron?'"></label>
-                            <div class="fila">
-                                <input type="number" min="0" step="1" style="width: 120px" x-model="cierre[l.id]" :placeholder="num(l.esperado_min, 2)">
+                        <div class="cerrar-lote">
+                            <label :for="'cierre-' + l.id" style="margin-top: 0" x-text="'¿Cuántos ' + l.unidad.split(' ')[0] + ' salieron?'"></label>
+                            <div class="fila" style="flex-wrap: nowrap">
+                                <input :id="'cierre-' + l.id" type="number" min="0" step="1" style="width: 110px" x-model="cierre[l.id]" :placeholder="num(l.esperado_min, 2)">
                                 <button class="btn" @click="cerrarLote(l)">Cerrar lote</button>
                             </div>
                         </div>
-                    </div>
-                </div>
-            </template>
-            <div class="aviso bien" x-show="!(d.lotes || []).some((l) => l.estado === 'EN_PROCESO')">No hay lotes en proceso. Para hacer uno, ve a Fórmulas y acepta la cantidad.</div>
+                    </article>
+                </template>
+                <div class="aviso bien" x-show="!(d.lotes || []).some((l) => l.estado === 'EN_PROCESO')">No hay lotes en proceso. Para hacer uno, ve a Fórmulas y acepta la cantidad.</div>
+            </div>
             <h2>Últimos lotes terminados</h2>
-            <table class="lista"><tr><th>Lote</th><th>Producto</th><th class="num">Leche</th><th class="num">Esperado</th><th class="num">Salió</th><th class="num">Desvío</th></tr>
-                <template x-for="l in (d.lotes || []).filter((l) => l.estado !== 'EN_PROCESO')" :key="l.id"><tr>
-                    <td x-text="l.codigo + ' · ' + fechaCorta(l.iniciado_en)"></td><td x-text="l.producto"></td>
-                    <td class="num" x-text="num(l.litros_leche, 0) + ' L'"></td>
-                    <td class="num" x-text="esperadoLote(l)"></td>
-                    <td class="num"><strong x-text="num(l.obtenido, 2) + ' ' + l.unidad.split(' ')[0]"></strong></td>
-                    <td class="num" :class="l.fuera_referencia == 1 ? 'mal' : 'ok'" x-text="(l.desvio_pct > 0 ? '+' : '') + num(l.desvio_pct, 1) + ' %'"></td></tr></template>
-            </table>
+            <div class="lotes-hechos">
+                <template x-for="l in (d.lotes || []).filter((l) => l.estado !== 'EN_PROCESO')" :key="l.id">
+                    <article class="lote-hecho" :class="l.fuera_referencia == 1 ? 'fuera' : ''" :style="'--tono: ' + colorReceta(productoVisual(l.producto))">
+                        <header><i class="punto"></i><strong x-text="l.producto"></strong><span class="codigo-orden" x-text="l.codigo"></span></header>
+                        <div class="salio"><b x-text="num(l.obtenido, 2)"></b> <span x-text="l.unidad.split(' ')[0]"></span>
+                            <small x-text="'de ' + num(l.litros_leche, 0) + ' L · ' + fechaCorta(l.iniciado_en)"></small></div>
+                        {{-- desvío: el centro es lo esperado; la zona verde va de −3 % a +3 % --}}
+                        <div class="medidor" :title="'Se esperaba ' + esperadoLote(l)">
+                            <div class="pista"><span class="zona"></span><i :style="'left:' + Math.max(0, Math.min(100, 50 + (Number(l.desvio_pct) || 0) * 5)) + '%'"></i></div>
+                            <div class="fila" style="justify-content: space-between"><small>−10 %</small><b :class="l.fuera_referencia == 1 ? 'mal' : 'ok'" x-text="(l.desvio_pct > 0 ? '+' : '') + num(l.desvio_pct, 1) + ' %'"></b><small>+10 %</small></div>
+                        </div>
+                    </article>
+                </template>
+            </div>
         </section>
         </template>
 

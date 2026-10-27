@@ -1132,3 +1132,42 @@ input.buscador { padding-left: 38px; background-image: url("data:image/svg+xml,%
   .orden .acciones-fila { grid-column: 2 / -1; justify-content: flex-start; }
 }
 @media (prefers-reduced-motion: reduce) { .cabeza-plegable .flecha { transition: none; } }
+
+/* --- Lotes y pérdidas --- */
+.lotes-proceso { display: grid; gap: 10px; }
+.lote-proceso { --tono: #f1cf6b; display: grid; grid-template-columns: 84px minmax(0, 1fr) auto; gap: 18px; align-items: center; padding: 16px;
+  border-radius: var(--radio); background: linear-gradient(120deg, color-mix(in srgb, var(--tono) 10%, var(--superficie)), var(--superficie) 60%);
+  border: 1px solid var(--verde-borde); box-shadow: var(--sombra); }
+.lote-proceso .mini-dibujo { height: 70px; border-radius: 14px; display: grid; place-items: center;
+  background: radial-gradient(circle at 50% 70%, color-mix(in srgb, var(--tono) 32%, transparent), transparent 75%), var(--superficie-2); }
+.lote-proceso .mini-dibujo svg { width: 78px; height: 58px; }
+.lote-proceso .que strong { display: block; font: 800 19px var(--letra-titulo); }
+.lote-proceso .que small { display: block; font-size: 12.5px; color: var(--texto-3); }
+.lote-proceso .espera { font-size: 14.5px; color: var(--texto-2); margin: 4px 0 2px; }
+.en-proceso { display: inline-flex; align-items: center; gap: 6px; font: 700 11.5px var(--letra-titulo); letter-spacing: .06em; text-transform: uppercase; color: var(--aviso); }
+.en-proceso i { width: 8px; height: 8px; border-radius: 50%; background: var(--aviso); animation: latir 1.6s ease-in-out infinite; }
+@keyframes latir { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+.cerrar-lote { padding: 12px; border-radius: 12px; background: var(--fondo); border: 1px solid var(--borde); }
+.lotes-hechos { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.lote-hecho { --tono: #f1cf6b; display: grid; gap: 10px; padding: 14px 16px; border-radius: var(--radio); background: var(--superficie); border: 1px solid var(--borde); box-shadow: var(--sombra); }
+.lote-hecho.fuera { border-color: var(--alerta-borde); }
+.lote-hecho header { display: flex; align-items: center; gap: 8px; }
+.lote-hecho header .punto { width: 11px; height: 11px; border-radius: 50%; background: var(--tono); flex: none; }
+.lote-hecho header strong { font-size: 14.5px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lote-hecho .salio { color: var(--texto-3); font-size: 13px; }
+.lote-hecho .salio b { font: 800 26px var(--letra-titulo); color: var(--texto); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.lote-hecho .salio small { display: block; font-size: 12px; }
+.medidor .pista { position: relative; height: 10px; border-radius: 99px; background: var(--fondo); border: 1px solid var(--borde); }
+.medidor .zona { position: absolute; left: 35%; right: 35%; top: 0; bottom: 0; background: var(--verde-suave); border-left: 1px solid var(--verde-borde); border-right: 1px solid var(--verde-borde); }
+.medidor .pista i { position: absolute; top: -4px; width: 4px; height: 16px; margin-left: -2px; border-radius: 2px; background: var(--exito); box-shadow: 0 0 0 2px var(--superficie); }
+.lote-hecho.fuera .medidor .pista i { background: var(--alerta); }
+.medidor small { font-size: 10.5px; color: var(--texto-3); }
+.medidor b { font: 800 13px var(--letra-titulo); }
+.movimiento.perdida { grid-template-columns: 42px minmax(0, 1fr) auto; }
+.monto.mal { color: var(--alerta); }
+@media (max-width: 800px) {
+  .lote-proceso { grid-template-columns: 64px minmax(0, 1fr); }
+  .lote-proceso .mini-dibujo { height: 56px; }
+  .lote-proceso .cerrar-lote { grid-column: 1 / -1; }
+}
+@media (prefers-reduced-motion: reduce) { .en-proceso i { animation: none; } }

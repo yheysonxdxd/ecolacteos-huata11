@@ -98,6 +98,18 @@ function oficina() {
       if (this.usuario) this.ir(this.menu()[0].pestanas[0].id);
     },
 
+    /** Para dibujar un producto del que solo se tiene el nombre (lotes, pérdidas): adivina si es queso o yogurt. */
+    productoVisual(nombre) {
+      const n = String(nombre || '');
+      return { nombre: n, tipo: /queso/i.test(n) ? 'QUESO' : /yogurt/i.test(n) ? 'YOGURT' : 'OTRO', base_id: /yogurt de /i.test(n) ? 1 : null };
+    },
+    /** "hace 3 h", "hace 2 días" desde una fecha y hora. */
+    haceCuanto(iso) {
+      const min = Math.max(0, (Date.now() - new Date(String(iso).replace(' ', 'T')).getTime()) / 60000);
+      if (min < 60) return 'hace ' + Math.round(min) + ' min';
+      if (min < 60 * 24) return 'hace ' + Math.round(min / 60) + ' h';
+      return 'hace ' + Math.round(min / 1440) + (Math.round(min / 1440) === 1 ? ' día' : ' días');
+    },
     /** Color de la ruta de un vehículo (el mismo del mapa de Huata). */
     colorRuta(codigo) { return COLOR_RUTA[codigo] || '#8394a4'; },
     // ------------------------------------------------- gráficos chicos (SVG)
