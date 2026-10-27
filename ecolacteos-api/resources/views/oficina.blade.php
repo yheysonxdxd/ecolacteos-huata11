@@ -46,15 +46,17 @@
 {{-- ============================================================ APP --}}
 <div class="app" x-show="usuario" x-cloak>
     <nav class="menu">
-        <div class="marca">Ecolácteos <em>Huata</em></div>
-        <div class="rol" x-text="(usuario?.nombre || '') + ' · ' + (ROLES[usuario?.rol] || '')"></div>
+        <div class="marca"><span class="sello" aria-hidden="true"></span><span>Ecolácteos <em>Huata</em></span></div>
+        <div class="rol"><span class="avatar" aria-hidden="true" x-text="(usuario?.nombre || '?').trim().charAt(0).toUpperCase()"></span>
+            <span><strong x-text="usuario?.nombre || ''"></strong><small x-text="ROLES[usuario?.rol] || ''"></small></span></div>
         <template x-for="(m, i) in menu()" :key="m.id">
             <div>
                 <div class="grupo" x-show="i === 0 || menu()[i - 1].grupo !== m.grupo" x-text="m.grupo"></div>
-                <button :class="{ activo: m.pestanas.some((p) => p.id === seccion) }" @click="ir(m.pestanas[0].id)" x-text="m.nombre"></button>
+                <button :class="{ activo: m.pestanas.some((p) => p.id === seccion) }" @click="ir(m.pestanas[0].id)">
+                    <span class="ico" aria-hidden="true" x-html="iconoMenu(m.id)"></span><span x-text="m.nombre"></span></button>
             </div>
         </template>
-        <button class="salir" @click="salir()">Cerrar sesión</button>
+        <button class="salir" @click="salir()"><span class="ico" aria-hidden="true" x-html="iconoMenu('salir')"></span><span>Cerrar sesión</span></button>
     </nav>
 
     <main>

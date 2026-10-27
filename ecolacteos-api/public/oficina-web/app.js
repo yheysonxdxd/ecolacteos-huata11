@@ -102,6 +102,24 @@ function oficina() {
      * Menú: cada opción agrupa una o más pantallas que se muestran como
      * pestañas arriba (ej. Calidad → Por vehículo | Adulteraciones).
      */
+    /** Ícono de línea de cada opción del menú (SVG 24×24, toma el color del texto). */
+    iconoMenu(id) {
+      const T = {
+        acopio: '<path d="M3 16V8h11v8"/><path d="M14 11h4l3 3v2h-7"/><circle cx="7" cy="17.5" r="2"/><circle cx="17" cy="17.5" r="2"/>',
+        laboratorio: '<path d="M9 3h6"/><path d="M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3"/><path d="M7.5 15h9"/>',
+        'calidad-grupo': '<path d="M9 3h6"/><path d="M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3"/><path d="M7.5 15h9"/>',
+        'dinero-grupo': '<rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6.5 9.5h.01M17.5 14.5h.01"/>',
+        'padron-grupo': '<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 4.5a3 3 0 0 1 0 6M18 14a5 5 0 0 1 3 6"/>',
+        'config-grupo': '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/>',
+        'ordenes-grupo': '<path d="M3 4h2l2.4 11h11l2-8H6.2"/><circle cx="9" cy="19.5" r="1.5"/><circle cx="17" cy="19.5" r="1.5"/>',
+        almacen: '<path d="M3 9l9-5 9 5v11H3z"/><path d="M8 20v-7h8v7"/><path d="M8 16h8"/>',
+        'formulas-grupo': '<path d="M5 11h14v3a7 7 0 0 1-14 0z"/><path d="M9 7c0-1.5 1-2 1-3.5M13 7c0-1.5 1-2 1-3.5"/><path d="M3 11h18"/>',
+        vender: '<path d="M20 12.6 12.6 20a2 2 0 0 1-2.8 0L3 13.2V3h10.2L20 9.8a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
+        kardex: '<path d="M4 4h16v16H4z"/><path d="M4 9h16M4 14h16M10 9v11"/>',
+        salir: '<path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"/><path d="M10 16l-4-4 4-4M6 12h10"/>',
+      };
+      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${T[id] || '<circle cx="12" cy="12" r="4"/>'}</svg>`;
+    },
     menu() {
       // el analista registra los análisis con su propio usuario (el administrador solo los supervisa)
       if (this.usuario?.rol === 'CALIDAD') {
