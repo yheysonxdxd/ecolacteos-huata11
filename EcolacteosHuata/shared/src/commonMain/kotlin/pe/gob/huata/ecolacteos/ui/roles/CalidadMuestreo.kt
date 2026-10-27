@@ -7,6 +7,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import pe.gob.huata.ecolacteos.datos.Rol
+import pe.gob.huata.ecolacteos.indiceDe
 import pe.gob.huata.ecolacteos.datos.AnalisisPendientes
 import pe.gob.huata.ecolacteos.tema.*
 import pe.gob.huata.ecolacteos.ui.componentes.*
@@ -76,7 +78,7 @@ fun MuestreoReal(irA: (Int) -> Unit) {
                         x.txt("proveedor"),
                         "${x.txt("comunidad")} · ${x.txt("vehiculo")} · ${x.txt("hora")}" +
                             if (abs(desvio) >= 20) " · ${if (desvio > 0) "+" else ""}${formatear(desvio, 0)} % vs. promedio" else "",
-                        onClick = { CalidadReal.limpiar(); CalidadReal.seleccion = x; CalidadReal.mensaje = null; irA(0) }, // se abre el diagnóstico aquí mismo
+                        onClick = { CalidadReal.limpiar(); CalidadReal.seleccion = x; CalidadReal.mensaje = null; irA(indiceDe(Rol.CALIDAD, "calidad/cola")) }, // se abre el diagnóstico aquí mismo
                         // un desvío grande no obliga, pero ayuda a decidir a quién muestrear
                         borde = if (abs(desvio) >= 20) Altiplano.AvisoBorde else Altiplano.Borde,
                     ) {

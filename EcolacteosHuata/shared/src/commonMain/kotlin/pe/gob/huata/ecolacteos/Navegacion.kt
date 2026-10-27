@@ -38,21 +38,24 @@ data class Destino(val ruta: String, val etiqueta: String, val subtitulo: String
  * opciones abajo y pestañas arriba. El modo demo sigue con su menú de siempre.
  */
 fun destinosDe(rol: Rol, real: Boolean = Sesion.desdeServidor): List<Destino> = if (!real) destinosDemo(rol) else when (rol) {
+    // todos empiezan en Inicio: lo de hoy y botones grandes para lo que hace cada uno
     Rol.OPERARIO -> listOf(
-        Destino("operario/recetas", "Recetas", "Queso y yogurt", Icons.Outlined.MenuBook),
-        Destino("operario/nueva", "Nueva orden", "Cuántos hacer, insumos y pasos", Icons.Outlined.AddCircleOutline),
+        Destino("inicio", "Inicio", "Lo de hoy en la producción", Icons.Outlined.Home),
+        Destino("operario/nueva", "Producir", "Cuántos hacer, insumos y pasos", Icons.Outlined.AddCircleOutline),
         Destino("operario/lotes", "Lotes", "Esperado vs. real", Icons.Outlined.Layers),
+        Destino("operario/recetas", "Recetas", "Queso y yogurt", Icons.Outlined.MenuBook),
         Destino("operario/perdidas", "Pérdidas", "Leche cortada, queso vencido…", Icons.Outlined.ReportProblem),
     )
     Rol.COMPRAS -> listOf(
-        // en el orden del día de la planta: comprar → guardar → producir → vender; el kardex (para revisar) al final
+        Destino("inicio", "Inicio", "Lo de hoy en compras y ventas", Icons.Outlined.Home),
         Destino("compras/orden", "Compras", "Órdenes, comprobantes y vendedores", Icons.Outlined.ShoppingCart),
         Destino("compras/almacen", "Almacén", "Stock, avisos y pérdidas", Icons.Outlined.Inventory2),
-        Destino("compras/formulas", "Fórmulas", "Cuánto hacer y qué falta", Icons.Outlined.MenuBook),
         Destino("compras/ventas", "Ventas", "Vender, clientes y notas de venta", Icons.Outlined.Sell),
-        Destino("compras/kardex", "Kardex", "Entradas y salidas", Icons.Outlined.SwapHoriz),
+        // fórmulas y kardex se revisan de vez en cuando: en tarjetas dentro de "Más"
+        Destino("compras/mas", "Más", "Fórmulas y kardex", Icons.Outlined.GridView),
     )
     Rol.CALIDAD -> listOf(
+        Destino("inicio", "Inicio", "Lo de hoy en calidad", Icons.Outlined.Home),
         // elegir a quién y analizarlo es un solo paso: tocar en la lista abre el diagnóstico
         Destino("calidad/cola", "Muestreo", "Toca a un proveedor para analizar su leche", Icons.Outlined.Science),
         Destino("calidad/infractores", "Infractores", "Adulteración y leche significada", Icons.Outlined.ReportProblem),
@@ -68,6 +71,9 @@ fun destinosDe(rol: Rol, real: Boolean = Sesion.desdeServidor): List<Destino> = 
     )
     else -> destinosDemo(rol)
 }
+
+/** Posición de una opción del menú de abajo por su ruta (0 si no está). */
+fun indiceDe(rol: Rol, ruta: String): Int = destinosDe(rol).indexOfFirst { it.ruta == ruta }.coerceAtLeast(0)
 
 private fun destinosDemo(rol: Rol): List<Destino> = when (rol) {
     Rol.ACOPIADOR -> listOf(
@@ -158,7 +164,11 @@ fun AppEcolacteos(rolInicial: Rol = Rol.ACOPIADOR, pendientes: Int = 0, hayRed: 
                         NavigationBarItem(
                             selected = activo == i,
                             // tocar otra vez la misma opción vuelve a su menú de tarjetas
-                            onClick = { if (activo == i && r == Rol.ADMIN) AdminPestanas.volverAlMenu(d.ruta); activo = i },
+                            onClick = {
+                                if (activo == i && r == Rol.ADMIN) AdminPestanas.volverAlMenu(d.ruta)
+                                if (activo == i && d.ruta == "compras/mas") ComprasMas.abierta = -1
+                                activo = i
+                            },
                             icon = { Icon(d.icono, contentDescription = d.etiqueta) },
                             label = { Text(d.etiqueta.take(11), style = Texto.Apoyo.copy(fontSize = 11.sp)) },
                             colors = NavigationBarItemDefaults.colors(
@@ -186,18 +196,22 @@ fun AppEcolacteos(rolInicial: Rol = Rol.ACOPIADOR, pendientes: Int = 0, hayRed: 
                 )
                 if (r == Rol.ACOPIADOR) AvisoSync()
                 HorizontalDivider(color = Altiplano.BordeSuave)
-                when (r) {
-                    Rol.ACOPIADOR -> ContenidoAcopiador(destinos[activo].ruta, acopio) { activo = it }
-                    Rol.CALIDAD -> if (Sesion.desdeServidor) ContenidoCalidadReal(destinos[activo].ruta) { activo = it } else ContenidoCalidad(destinos[activo].ruta, calidad) { activo = it }
-                    Rol.PRODUCTOR -> if (Sesion.desdeServidor) ContenidoProductorReal(destinos[activo].ruta, productor) else ContenidoProductor(destinos[activo].ruta, productor)
-                    Rol.OPERARIO -> if (Sesion.desdeServidor) ContenidoOperarioReal(destinos[activo].ruta) { activo = it } else ContenidoOperario(destinos[activo].ruta, operario) { activo = it }
-                    Rol.COMPRAS -> if (Sesion.desdeServidor) ContenidoComprasReal(destinos[activo].ruta) { activo = it } else ContenidoCompras(destinos[activo].ruta, compras) { activo = it }
-                    Rol.ADMIN -> if (Sesion.desdeServidor) {
-                        // al cambiar de opción, la pantalla nueva entra suave
-                        AnimatedContent(activo, transitionSpec = { fadeIn(tween(240)) + slideInVertically(tween(260)) { it / 24 } togetherWith fadeOut(tween(140)) }, label = "admin") { i ->
-                            ContenidoAdminReal(destinos[i].ruta, admin) { ruta -> destinos.indexOfFirst { it.ruta == ruta }.takeIf { it >= 0 }?.let { activo = it } }
-                        }
-                    } else ContenidoAdmin(destinos[activo].ruta, admin)
+                // al cambiar de opción, la pantalla nueva entra suave (todos los roles)
+                AnimatedContent(activo, transitionSpec = { fadeIn(tween(240)) + slideInVertically(tween(260)) { it / 24 } togetherWith fadeOut(tween(140)) }, label = "pantalla") { i ->
+                    val ruta = destinos[i].ruta
+                    val ir = { n: Int -> activo = n }
+                    when {
+                        // Inicio de operario, compras y calidad (el admin tiene el suyo)
+                        ruta == "inicio" && Sesion.desdeServidor -> InicioRol(r, ir)
+                        r == Rol.ACOPIADOR -> ContenidoAcopiador(ruta, acopio, ir)
+                        r == Rol.CALIDAD -> if (Sesion.desdeServidor) ContenidoCalidadReal(ruta, ir) else ContenidoCalidad(ruta, calidad, ir)
+                        r == Rol.PRODUCTOR -> if (Sesion.desdeServidor) ContenidoProductorReal(ruta, productor) else ContenidoProductor(ruta, productor)
+                        r == Rol.OPERARIO -> if (Sesion.desdeServidor) ContenidoOperarioReal(ruta, ir) else ContenidoOperario(ruta, operario, ir)
+                        r == Rol.COMPRAS -> if (Sesion.desdeServidor) ContenidoComprasReal(ruta, ir) else ContenidoCompras(ruta, compras, ir)
+                        else -> if (Sesion.desdeServidor) {
+                            ContenidoAdminReal(ruta, admin) { destino -> destinos.indexOfFirst { it.ruta == destino }.takeIf { it >= 0 }?.let { activo = it } }
+                        } else ContenidoAdmin(ruta, admin)
+                    }
                 }
             }
         }

@@ -9,6 +9,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.*
+import pe.gob.huata.ecolacteos.indiceDe
 import pe.gob.huata.ecolacteos.datos.Rol
 import pe.gob.huata.ecolacteos.datos.Sesion
 import pe.gob.huata.ecolacteos.destinosDe
@@ -72,11 +73,13 @@ fun ContenidoComprasReal(ruta: String, irA: (Int) -> Unit) {
             if (c.pestanaVentas == 0) VentaReal { c.pestanaVentas = 1 } else VentasDelMes()
         }
         "compras/almacen" -> ConPestanas(listOf("Stock y avisos", "Pérdidas"), c.pestanaAlmacen, { c.pestanaAlmacen = it }) {
-            if (c.pestanaAlmacen == 0) InventarioReal { irA(destinosDe(Rol.COMPRAS).indexOfFirst { it.ruta == "compras/kardex" }) }
+            // tocar un insumo abre su kardex, que está en Más
+            if (c.pestanaAlmacen == 0) InventarioReal { ComprasMas.abierta = 1; irA(indiceDe(Rol.COMPRAS, "compras/mas")) }
             else PerdidasReal("compras")
         }
         "compras/ventas-mes" -> VentasDelMes()
         "compras/kardex" -> KardexCompleto()
+        "compras/mas" -> ComprasMasMenu()
         "compras/ventas-nueva" -> VentaReal { irA(0) }
         "compras/inventario" -> InventarioReal { irA(0) }
         "compras/orden" -> ComprasInsumosReal()

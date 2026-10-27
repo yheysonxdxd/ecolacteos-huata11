@@ -12,6 +12,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.*
+import pe.gob.huata.ecolacteos.datos.Rol
+import pe.gob.huata.ecolacteos.indiceDe
 import pe.gob.huata.ecolacteos.datos.*
 import pe.gob.huata.ecolacteos.tema.*
 import pe.gob.huata.ecolacteos.ui.componentes.*
@@ -82,7 +84,7 @@ private fun ColaReal(irA: (Int) -> Unit) {
                     x.txt("proveedor"),
                     "${x.txt("comunidad")} · ${x.txt("vehiculo")} · ${fechaCorta(x.txt("fecha"))} ${x.txt("hora")}" +
                         if (kotlin.math.abs(desvio) >= 20) " · ${if (desvio > 0) "+" else ""}${formatear(desvio, 0)} % vs. promedio" else "",
-                    onClick = { CalidadReal.limpiar(); CalidadReal.seleccion = x; CalidadReal.mensaje = null; irA(0) },
+                    onClick = { CalidadReal.limpiar(); CalidadReal.seleccion = x; CalidadReal.mensaje = null; irA(indiceDe(Rol.CALIDAD, "calidad/cola")) },
                     borde = if (kotlin.math.abs(desvio) >= 20) Altiplano.AvisoBorde else Altiplano.VerdeBorde,
                 ) {
                     Text("${formatear(x.num("litros"))} L", style = Texto.Fila, color = Altiplano.Texto)
@@ -163,7 +165,7 @@ private fun DiagnosticoReal(irA: (Int) -> Unit) {
                 CalidadReal.mensaje = textoResultado(e.txt("proveedor"), r, v.resultado)
                 CalidadReal.limpiar()
                 CalidadReal.version++
-                irA(0)
+                irA(indiceDe(Rol.CALIDAD, "calidad/cola"))
             } catch (t: Throwable) {
                 if (esFaltaDeConexion(t)) {
                     // sin conexión: queda en el teléfono y se envía solo al volver
@@ -175,7 +177,7 @@ private fun DiagnosticoReal(irA: (Int) -> Unit) {
                         "(veredicto en vivo: ${v.resultado}). Se envía solo cuando vuelva la conexión."
                     CalidadReal.limpiar()
                     CalidadReal.version++
-                    irA(0)
+                    irA(indiceDe(Rol.CALIDAD, "calidad/cola"))
                 } else error = t.message
             } finally {
                 CalidadReal.enviando = false

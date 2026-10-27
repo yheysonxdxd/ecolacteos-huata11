@@ -23,6 +23,7 @@ Route::prefix('v1')->group(function () {
 
         Route::post('logout', [Api\AuthController::class, 'logout']);
         Route::get('yo',      [Api\AuthController::class, 'yo']);
+        Route::get('inicio',  [Api\InicioController::class, 'inicio']); // cifras de Inicio en la app (operario, compras, calidad)
 
         // --- Sincronización offline (el corazón de la app de campo) ---
         Route::post('sync/push', [Api\SyncController::class, 'push']);

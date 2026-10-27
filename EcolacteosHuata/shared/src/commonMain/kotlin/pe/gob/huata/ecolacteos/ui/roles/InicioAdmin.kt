@@ -29,14 +29,14 @@ import kotlin.time.Clock
  */
 
 /** Una acción grande de Inicio / Planta / Más: emoji, nombre, para qué sirve y su color. */
-private data class Accion(val emoji: String, val titulo: String, val detalle: String, val color: Color, val ir: () -> Unit)
+internal data class Accion(val emoji: String, val titulo: String, val detalle: String, val color: Color, val ir: () -> Unit)
 
-private val VERDE = Color(0xFF4FC47A)
-private val AMBAR = Color(0xFFE8B44C)
-private val CELESTE = Color(0xFF6FC3E8)
-private val LILA = Color(0xFFB79CF2)
-private val ROSA = Color(0xFFEF8F8B)
-private val ARENA = Color(0xFFD9C6A0)
+internal val VERDE = Color(0xFF4FC47A)
+internal val AMBAR = Color(0xFFE8B44C)
+internal val CELESTE = Color(0xFF6FC3E8)
+internal val LILA = Color(0xFFB79CF2)
+internal val ROSA = Color(0xFFEF8F8B)
+internal val ARENA = Color(0xFFD9C6A0)
 
 /** [irA] cambia de opción del menú de abajo por su ruta (admin/dinero, admin/planta…). */
 @Composable
@@ -167,7 +167,7 @@ fun MasMenu() {
 // ------------------------------------------------------------------ piezas
 
 /** Entrar a una opción: se desliza desde la derecha; volver al menú, desde la izquierda. */
-private fun transicionMenu(entrando: Boolean): ContentTransform {
+internal fun transicionMenu(entrando: Boolean): ContentTransform {
     val lado = if (entrando) 1 else -1
     return (slideInHorizontally(tween(260)) { it / 4 * lado } + fadeIn(tween(220))) togetherWith
         (slideOutHorizontally(tween(200)) { -it / 6 * lado } + fadeOut(tween(160)))
@@ -175,7 +175,7 @@ private fun transicionMenu(entrando: Boolean): ContentTransform {
 
 /** Barra "← Planta · Vender" encima de la pantalla elegida. */
 @Composable
-private fun DentroDe(menu: String, titulo: String, volver: () -> Unit, contenido: @Composable () -> Unit) {
+internal fun DentroDe(menu: String, titulo: String, volver: () -> Unit, contenido: @Composable () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = volver) { Text("← $menu", style = Texto.Fila, color = Altiplano.CelesteAcento) }
@@ -187,7 +187,7 @@ private fun DentroDe(menu: String, titulo: String, volver: () -> Unit, contenido
 
 /** Aparece suave y desde abajo, uno detrás de otro según su [orden]. */
 @Composable
-private fun Aparece(orden: Int, contenido: @Composable () -> Unit) {
+internal fun Aparece(orden: Int, contenido: @Composable () -> Unit) {
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { delay(orden * 55L); visible = true }
     AnimatedVisibility(
@@ -198,7 +198,7 @@ private fun Aparece(orden: Int, contenido: @Composable () -> Unit) {
 
 /** Se achica un poco al tocarlo (responde al dedo). */
 @Composable
-private fun Tocable(color: Color, modifier: Modifier = Modifier, onClick: () -> Unit, contenido: @Composable ColumnScope.() -> Unit) {
+internal fun Tocable(color: Color, modifier: Modifier = Modifier, onClick: () -> Unit, contenido: @Composable ColumnScope.() -> Unit) {
     val toque = remember { MutableInteractionSource() }
     val apretado by toque.collectIsPressedAsState()
     val escala by animateFloatAsState(if (apretado) 0.95f else 1f, spring(dampingRatio = 0.5f, stiffness = 600f), label = "toque")
@@ -211,7 +211,7 @@ private fun Tocable(color: Color, modifier: Modifier = Modifier, onClick: () -> 
 
 /** Cifra grande que cuenta desde 0 hasta su valor. */
 @Composable
-private fun Cifra(orden: Int, emoji: String, titulo: String, valor: Double, unidad: String, apoyo: String, color: Color,
+internal fun Cifra(orden: Int, emoji: String, titulo: String, valor: Double, unidad: String, apoyo: String, color: Color,
                   modifier: Modifier, dinero: Boolean = false, onClick: () -> Unit) {
     var meta by remember { mutableStateOf(0.0) }
     LaunchedEffect(valor) { delay(orden * 55L + 120); meta = valor }
@@ -231,7 +231,7 @@ private fun Cifra(orden: Int, emoji: String, titulo: String, valor: Double, unid
 
 /** Aviso que se toca para ir a resolverlo; el ícono late suave para que se note. */
 @Composable
-private fun Aviso(emoji: String, texto: String, accion: String, color: Color, onClick: () -> Unit) {
+internal fun Aviso(emoji: String, texto: String, accion: String, color: Color, onClick: () -> Unit) {
     val latido = rememberInfiniteTransition(label = "latido")
     val escala by latido.animateFloat(1f, 1.18f, infiniteRepeatable(tween(700), RepeatMode.Reverse), label = "latido")
     Tocable(color, Modifier.fillMaxWidth(), onClick) {
@@ -247,13 +247,13 @@ private fun Aviso(emoji: String, texto: String, accion: String, color: Color, on
 }
 
 @Composable
-private fun Paso(orden: Int, texto: String) {
+internal fun Paso(orden: Int, texto: String) {
     Aparece(orden) { Text(texto, style = Texto.Eyebrow, color = Altiplano.TextoTerciario, modifier = Modifier.padding(top = 4.dp)) }
 }
 
 /** Botones grandes de colores en 2 columnas (o 1), cada uno aparece un poco después del anterior. */
 @Composable
-private fun Botonera(desde: Int, acciones: List<Accion>, columnas: Int = 2) {
+internal fun Botonera(desde: Int, acciones: List<Accion>, columnas: Int = 2) {
     acciones.chunked(columnas).forEachIndexed { fila, par ->
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             par.forEachIndexed { k, ac ->
@@ -283,7 +283,7 @@ private fun Botonera(desde: Int, acciones: List<Accion>, columnas: Int = 2) {
 }
 
 /** Buenos días / tardes / noches según la hora de Puno (UTC−5). */
-private fun saludo(): String {
+internal fun saludo(): String {
     val hora = ((Clock.System.now().epochSeconds / 3600 - 5) % 24 + 24) % 24
     return when (hora) { in 5..11 -> "Buenos días"; in 12..18 -> "Buenas tardes"; else -> "Buenas noches" }
 }

@@ -11,6 +11,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.*
+import pe.gob.huata.ecolacteos.datos.Rol
+import pe.gob.huata.ecolacteos.indiceDe
 import pe.gob.huata.ecolacteos.datos.Sesion
 import pe.gob.huata.ecolacteos.tema.*
 import pe.gob.huata.ecolacteos.ui.componentes.*
@@ -70,7 +72,7 @@ private fun NuevaOrdenReal(irA: (Int) -> Unit) {
             Notificacion(Produccion.noti)
             d.lista("avisos").filter { it.txt("nivel") == "FALTA" }.forEach { AvisoCampo(it.txt("texto"), esAlerta = true) }
             if (recetas.isEmpty()) AvisoCampo("No hay productos que se estén produciendo.")
-            else ProducirVarios(recetas, d.num("tanque"), puedeIniciar = true) { n -> Produccion.noti = n; OperarioReal.version++; irA(2) }
+            else ProducirVarios(recetas, d.num("tanque"), puedeIniciar = true) { n -> Produccion.noti = n; OperarioReal.version++; irA(indiceDe(Rol.OPERARIO, "operario/lotes")) }
         }
     }
 }
