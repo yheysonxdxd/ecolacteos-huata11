@@ -1,5 +1,7 @@
 package pe.gob.huata.ecolacteos
 
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -57,15 +59,12 @@ fun destinosDe(rol: Rol, real: Boolean = Sesion.desdeServidor): List<Destino> = 
         Destino("calidad/historial", "Historial", "Por proveedor y acopiador", Icons.Outlined.History),
     )
     Rol.ADMIN -> listOf(
-        // llega la leche → se analiza → se paga; el padrón (se toca poco) y la planta después
-        Destino("admin/acopio", "Acopio", "Totales y conciliación", Icons.Outlined.PieChart),
-        // la calidad de cada vehículo se ve en Acopio > Totales, junto a sus litros
-        Destino("admin/calidad", "Calidad", "Adulteraciones, rechazos y capacitación", Icons.Outlined.Science),
+        // pocas opciones para no confundirse: lo de todos los días a la mano y lo demás en "Más"
+        Destino("admin/inicio", "Inicio", "Lo de hoy y lo que más se hace", Icons.Outlined.Home),
+        Destino("admin/acopio", "Acopio", "Leche por día y por carro", Icons.Outlined.LocalShipping),
         Destino("admin/dinero", "Dinero", "Ventas, pagos y costos", Icons.Outlined.Savings),
-        Destino("admin/padron", "Padrón", "Proveedores, trabajadores y cambios", Icons.Outlined.People),
-        Destino("admin/planta", "Planta", "Compras, almacén, producción, ventas y kardex", Icons.Outlined.Inventory2),
-        // como Administración > Configuración en la web
-        Destino("admin/config", "Ajustes", "Precios, calidad, almacén, vehículos y rutas", Icons.Outlined.Settings),
+        Destino("admin/planta", "Planta", "Comprar, guardar, producir y vender", Icons.Outlined.Factory),
+        Destino("admin/mas", "Más", "Calidad, padrón y ajustes", Icons.Outlined.GridView),
     )
     else -> destinosDemo(rol)
 }
@@ -158,7 +157,8 @@ fun AppEcolacteos(rolInicial: Rol = Rol.ACOPIADOR, pendientes: Int = 0, hayRed: 
                     destinos.forEachIndexed { i, d ->
                         NavigationBarItem(
                             selected = activo == i,
-                            onClick = { activo = i },
+                            // tocar otra vez la misma opción vuelve a su menú de tarjetas
+                            onClick = { if (activo == i && r == Rol.ADMIN) AdminPestanas.volverAlMenu(d.ruta); activo = i },
                             icon = { Icon(d.icono, contentDescription = d.etiqueta) },
                             label = { Text(d.etiqueta.take(11), style = Texto.Apoyo.copy(fontSize = 11.sp)) },
                             colors = NavigationBarItemDefaults.colors(
@@ -192,7 +192,12 @@ fun AppEcolacteos(rolInicial: Rol = Rol.ACOPIADOR, pendientes: Int = 0, hayRed: 
                     Rol.PRODUCTOR -> if (Sesion.desdeServidor) ContenidoProductorReal(destinos[activo].ruta, productor) else ContenidoProductor(destinos[activo].ruta, productor)
                     Rol.OPERARIO -> if (Sesion.desdeServidor) ContenidoOperarioReal(destinos[activo].ruta) { activo = it } else ContenidoOperario(destinos[activo].ruta, operario) { activo = it }
                     Rol.COMPRAS -> if (Sesion.desdeServidor) ContenidoComprasReal(destinos[activo].ruta) { activo = it } else ContenidoCompras(destinos[activo].ruta, compras) { activo = it }
-                    Rol.ADMIN -> if (Sesion.desdeServidor) ContenidoAdminReal(destinos[activo].ruta, admin) else ContenidoAdmin(destinos[activo].ruta, admin)
+                    Rol.ADMIN -> if (Sesion.desdeServidor) {
+                        // al cambiar de opción, la pantalla nueva entra suave
+                        AnimatedContent(activo, transitionSpec = { fadeIn(tween(240)) + slideInVertically(tween(260)) { it / 24 } togetherWith fadeOut(tween(140)) }, label = "admin") { i ->
+                            ContenidoAdminReal(destinos[i].ruta, admin) { ruta -> destinos.indexOfFirst { it.ruta == ruta }.takeIf { it >= 0 }?.let { activo = it } }
+                        }
+                    } else ContenidoAdmin(destinos[activo].ruta, admin)
                 }
             }
         }

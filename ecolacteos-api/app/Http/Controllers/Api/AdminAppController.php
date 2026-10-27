@@ -101,6 +101,35 @@ class AdminAppController extends Controller
     }
 
     /**
+     * GET /api/v1/admin/inicio — las cifras de la pantalla de Inicio de la app (todo en una consulta):
+     * la leche del último día con acopio, lo que se debe a proveedores, insumos bajo su mínimo,
+     * lotes en proceso y lo vendido hoy.
+     */
+    public function inicio(Request $r)
+    {
+        $hoy = $this->hoy()->toDateString();
+        $ultimo = DB::table('entregas')->where('fecha', '<=', $hoy)->max('fecha');
+        $leche = $ultimo ? DB::table('entregas')->where('fecha', $ultimo)->where('ausente', false)
+            ->selectRaw('SUM(litros) as litros, COUNT(*) as entregas')->first() : null;
+        // lo que se debe: boletas sin pagar de semanas ya cerradas (las mismas de Dinero → Lo que se debe)
+        $lunes = $this->hoy()->startOfWeek(Carbon::MONDAY)->toDateString();
+        $deuda = DB::table('pagos_semanales')->where('estado', 'PENDIENTE')->where('monto', '>', 0)->whereDate('inicio', '<', $lunes)
+            ->selectRaw('SUM(monto) as total, COUNT(DISTINCT proveedor_id) as proveedores')->first();
+        $ventas = DB::table('ventas')->whereDate('vendida_en', $hoy)->selectRaw('SUM(total) as total, COUNT(DISTINCT COALESCE(nota_id, id)) as notas')->first();
+
+        return response()->json([
+            'nombre' => $r->user()->name,
+            'leche' => ['fecha' => $ultimo ? substr((string) $ultimo, 0, 10) : null, 'litros' => round((float) ($leche->litros ?? 0), 1),
+                'entregas' => (int) ($leche->entregas ?? 0)],
+            'se_debe' => ['total' => round((float) ($deuda->total ?? 0), 2), 'proveedores' => (int) ($deuda->proveedores ?? 0)],
+            'insumos_bajos' => DB::table('insumos')->whereColumn('stock', '<', 'stock_minimo')->count(),
+            'lotes_en_proceso' => DB::table('lotes')->where('estado', 'EN_PROCESO')->count(),
+            'vendido_hoy' => ['total' => round((float) ($ventas->total ?? 0), 2), 'notas' => (int) ($ventas->notas ?? 0)],
+            'sin_analizar' => DB::table('entregas')->where('estado_calidad', 'PENDIENTE')->where('ausente', false)->where('fecha', '>=', $this->hoy()->subDays(6)->toDateString())->count(),
+        ]);
+    }
+
+    /**
      * GET /api/v1/admin/acopio/calendario?mes=2026-10 — litros de cada día del mes para el calendario de Acopio.
      * Sin ?mes, el mes del último día con entregas.
      */

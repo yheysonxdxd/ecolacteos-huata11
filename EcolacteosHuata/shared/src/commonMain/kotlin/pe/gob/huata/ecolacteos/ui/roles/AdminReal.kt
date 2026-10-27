@@ -24,8 +24,12 @@ object AdminPestanas {
     var acopio by mutableStateOf(0)
     var dinero by mutableStateOf(0)
     var padron by mutableStateOf(0)
-    var planta by mutableStateOf(0)
+    var planta by mutableStateOf(-1) // -1 = el menú de tarjetas (PlantaMenu)
+    var mas by mutableStateOf(-1)    // -1 = el menú de tarjetas (MasMenu)
     var calidad by mutableStateOf(0)
+
+    /** Tocar otra vez la opción de abajo vuelve a su menú de tarjetas. */
+    fun volverAlMenu(ruta: String) { if (ruta == "admin/planta") planta = -1; if (ruta == "admin/mas") mas = -1 }
 }
 
 /** Acopio → Totales → Calendario: el mes a la vista y el día tocado (vacíos = el último con entregas). */
@@ -36,15 +40,17 @@ object AcopioCalendario {
 }
 
 /**
- * Admin con datos de la base. Pocas opciones abajo y pestañas arriba:
- * Acopio (Totales · Conciliación), Dinero (Ventas y pagos · Costos),
- * Padrón (Proveedores · Trabajadores · Cambios de comunidad), Calidad y
- * Planta (Fórmulas · Lotes · Almacén · Pérdidas · Kardex · Órdenes · Vender · Últimas ventas).
+ * Admin con datos de la base. Cinco opciones abajo: Inicio (lo de hoy y botones grandes para
+ * lo que más se hace), Acopio (Totales · Conciliación), Dinero (Ventas y pagos · Costos),
+ * Planta (tarjetas en el orden del día) y Más (Calidad, Padrón y Ajustes en tarjetas).
+ * [irA] cambia de opción de abajo por su ruta.
  */
 @Composable
-fun ContenidoAdminReal(ruta: String, e: EstadoAdmin) {
+fun ContenidoAdminReal(ruta: String, e: EstadoAdmin, irA: (String) -> Unit = {}) {
     val a = AdminPestanas
     when (ruta) {
+        "admin/inicio" -> InicioAdmin(irA)
+        "admin/mas" -> MasMenu()
         "admin/acopio" -> ConPestanas(listOf("Totales", "Conciliación"), a.acopio, { a.acopio = it }) {
             if (a.acopio == 0) TotalesReal(e) else ConciliacionReal()
         }
@@ -59,20 +65,7 @@ fun ContenidoAdminReal(ruta: String, e: EstadoAdmin) {
             if (a.padron == 2) SolicitudesReal() else PadronReal(a.padron == 1)
         }
         // en el orden del día de la planta: comprar → guardar → producir → vender; el kardex al final
-        "admin/planta" -> ConPestanas(
-            listOf("Compras", "Almacén", "Pérdidas", "Fórmulas", "Lotes", "Vender", "Ventas y notas", "Kardex"), a.planta, { a.planta = it },
-        ) {
-            when (a.planta) {
-                0 -> ContenidoComprasReal("compras/orden") {}
-                1 -> ContenidoComprasReal("compras/inventario") { a.planta = 7 } // tocar un insumo: su kardex
-                2 -> PerdidasReal("compras")
-                3 -> FormulasReal(puedeAceptar = true) { a.planta = 4 } // al iniciar un lote, a Lotes
-                4 -> LotesReal()
-                5 -> ContenidoComprasReal("compras/ventas-nueva") { a.planta = 6 } // después de vender: la nota
-                6 -> ContenidoComprasReal("compras/ventas-mes") {}
-                else -> KardexCompleto()
-            }
-        }
+        "admin/planta" -> PlantaMenu()
         "admin/config" -> ConfiguracionReal()
         // rutas anteriores (por si alguna pantalla las usa todavía)
         "admin/totales" -> TotalesReal(e)
@@ -222,7 +215,7 @@ private fun TotalesReal(e: EstadoAdmin) {
 }
 
 @Composable
-private fun PadronReal(verTrabajadores: Boolean) {
+internal fun PadronReal(verTrabajadores: Boolean) {
     CargaServidor("/api/v1/admin/padron", clave = PadronUi.version) { d, recargar ->
         val provs = d.lista("proveedores")
         val trab = d.lista("trabajadores")
@@ -245,7 +238,7 @@ private fun PadronReal(verTrabajadores: Boolean) {
 
 
 @Composable
-private fun SolicitudesReal() {
+internal fun SolicitudesReal() {
     var version by remember { mutableStateOf(0) }
     var mensaje by remember { mutableStateOf<String?>(null) }
     var enviando by remember { mutableStateOf<String?>(null) }

@@ -164,4 +164,15 @@ class AdminPagosTest extends TestCase
         $this->postJson('/api/v1/admin/pagos/pagar', ['ids' => [$semana['boleta_id']], 'metodo' => 'YAPE'])->assertOk();
         $this->assertCount(0, $this->getJson("/api/v1/admin/proveedores/{$this->proveedorId}/ficha")->json('pagos.pendientes'));
     }
+
+    public function test_inicio_de_la_app_junta_las_cifras_del_dia(): void
+    {
+        $this->getJson('/api/v1/admin/pagos')->assertOk(); // genera la boleta de la semana pasada
+        $d = $this->getJson('/api/v1/admin/inicio')->assertOk();
+        $this->assertSame($this->lunesPasado->copy()->addDays(2)->toDateString(), $d->json('leche.fecha')); // último día con acopio
+        $this->assertEquals(15, $d->json('leche.litros'));
+        $this->assertEquals(63, $d->json('se_debe.total'));
+        $this->assertSame(1, $d->json('se_debe.proveedores'));
+        $this->assertSame(0, $d->json('lotes_en_proceso'));
+    }
 }

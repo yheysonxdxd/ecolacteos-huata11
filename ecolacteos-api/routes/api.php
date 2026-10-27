@@ -41,6 +41,7 @@ Route::prefix('v1')->group(function () {
         // --- Tablero del administrador en la app ---
         Route::get('admin/totales',      [Api\AdminAppController::class, 'totales']);
         Route::get('admin/acopio/calendario', [Api\AdminAppController::class, 'calendario']);
+        Route::get('admin/inicio',       [Api\AdminAppController::class, 'inicio']);
         Route::get('admin/negocio',      [Api\AdminNegocioController::class, 'resumen']);
         Route::get('admin/pagos',        [Api\AdminPagosController::class, 'semana']);
         Route::post('admin/pagos/pagar', [Api\AdminPagosController::class, 'pagar']);
