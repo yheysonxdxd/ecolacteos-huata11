@@ -1379,3 +1379,5 @@ table.semanas td .btn.chico { margin-left: 6px; }
 .doc-estado.ok { color: var(--exito); }
 .doc-estado.mal { color: var(--aviso); }
 @media (max-width: 640px) { .doc-encontrado { flex-direction: column; align-items: stretch; } }
+.doc-acciones { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+@media (max-width: 640px) { .doc-acciones { justify-content: stretch; } .doc-acciones .btn { flex: 1; } }

@@ -961,8 +961,12 @@
                                 <small x-show="docVenta.nombre" x-text="FUENTE_DOC[docVenta.fuente] || ''"></small>
                                 <small x-show="!docVenta.cargando && !docVenta.nombre" x-text="docVenta.error || (docVenta.sin_token ? 'Para traer el nombre de RENIEC falta poner el token (DECOLECTA_TOKEN). Puedes escribirlo a mano.' : '')"></small>
                             </div>
-                            <button class="btn" x-show="!docVenta.cargando" @click="abrirCliente(null, { nombre: docVenta.nombre || '', documento: docVenta.numero, fuente: docVenta.fuente })"
-                                    x-text="docVenta.nombre ? '+ Agregar y vender' : '+ Agregar a mano'"></button>
+                            {{-- dos caminos: guardarlo como cliente o venderle nada más (la nota sale a su nombre) --}}
+                            <div class="doc-acciones" x-show="!docVenta.cargando">
+                                <button class="btn gris" x-show="docVenta.nombre" @click="soloVender(docVenta)" title="No se guarda como cliente: la nota sale a su nombre">Solo vender</button>
+                                <button class="btn" @click="abrirCliente(null, { nombre: docVenta.nombre || '', documento: docVenta.numero, fuente: docVenta.fuente })"
+                                        x-text="docVenta.nombre ? '+ Agregar como cliente' : '+ Agregar a mano'"></button>
+                            </div>
                         </div>
                     </template>
                     <div class="apoyo" x-show="!clientesVisibles().filter((c) => Number(c.activo)).length && !docVenta">Nadie se llama así. Agrégalo con <strong>+ Nuevo cliente</strong>.</div>
@@ -971,13 +975,14 @@
                     <button class="btn gris" @click="abrirCliente()">+ Nuevo cliente</button>
                     <button class="btn chico gris" x-show="clienteVenta() && clienteVenta().tipo !== 'PLANTA'" @click="abrirCliente(clienteVenta())">Editar cliente</button>
                     <div class="espacio"></div>
-                    <button class="btn" x-show="clienteVenta()" @click="pasoVenta(2)" x-text="'Seguir con ' + (clienteVenta()?.nombre || '') + ' →'"></button>
+                    <button class="btn" x-show="clienteVenta()" @click="pasoVenta(2)" x-text="'Seguir con ' + nombreComprador() + ' →'"></button>
                 </div>
             </div>
 
             {{-- 2 · productos (solo los que hay) --}}
             <div class="tarjeta paso-venta" x-show="f.paso === 2">
-                <h2>¿Qué lleva <span x-text="clienteVenta()?.nombre"></span>?</h2>
+                <h2>¿Qué lleva <span x-text="nombreComprador()"></span>?</h2>
+                <p class="sub" style="margin-top: 0" x-show="f.comprador">Sin registrarlo como cliente: la nota sale a su nombre<span x-text="f.comprador?.documento ? ' (' + (f.comprador.documento.length === 8 ? 'DNI ' : 'RUC ') + f.comprador.documento + ')' : ''"></span>.</p>
                 <p class="sub" style="margin-top: 0">Elige el producto; si tiene sabores, elige el sabor. Pon cuántos y dale a <strong>Agregar</strong>. El precio es el de <span x-text="(TIPO_CLIENTE[clienteVenta()?.tipo] || '').toLowerCase()"></span>.</p>
                 {{-- a) el producto (bases), separado en Quesos / Yogurt --}}
                 <template x-for="g in gruposVenta()" :key="g.tipo"><div class="grupo-venta">
@@ -1041,7 +1046,8 @@
             {{-- 3 · confirmar --}}
             <div class="tarjeta paso-venta resumen-venta" x-show="f.paso === 3">
                 <div class="eti">Nota de venta</div>
-                <div class="cliente" x-text="clienteVenta()?.nombre"></div>
+                <div class="cliente" x-text="nombreComprador()"></div>
+                <small class="apoyo" x-show="f.comprador" x-text="(f.comprador?.documento ? (f.comprador.documento.length === 8 ? 'DNI ' : 'RUC ') + f.comprador.documento + ' · ' : '') + 'sin registrar como cliente'"></small>
                 <template x-for="l in lineasVenta()" :key="l.p.id"><div class="renglon">
                     <span><span x-text="num(l.cantidad, 2) + ' × ' + l.p.nombre + ' (' + soles(l.precio) + ')'"></span>
                         <small class="apoyo" style="display: block" x-text="textoLotes(l.p, l.cantidad)"></small></span>

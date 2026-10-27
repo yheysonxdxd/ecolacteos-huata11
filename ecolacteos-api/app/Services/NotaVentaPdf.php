@@ -65,9 +65,9 @@ class NotaVentaPdf
                 'direccion' => Parametro::valor('empresa.direccion', 'Huata, Puno'),
                 'telefono'  => Parametro::valor('empresa.telefono', ''),
             ],
-            'cliente'  => $v->cliente,
+            'cliente'  => $v->comprador_nombre ?: $v->cliente, // "Solo vender": quien compró sin registrarse
             'tipo'     => ['MAYORISTA' => 'Mayorista', 'DIRECTO' => 'Vecino de Huata', 'PLANTA' => 'Proveedor de leche'][$v->tipo_cliente] ?? $v->tipo_cliente,
-            'ruc'      => $v->ruc,
+            'ruc'      => $v->comprador_nombre ? $v->comprador_documento : $v->ruc,
             // los del primer producto (lo que ya usaban el correo y las pruebas)
             'producto' => $v->producto,
             'unidad'   => $unidad($v->unidad),

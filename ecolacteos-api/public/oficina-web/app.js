@@ -1106,6 +1106,24 @@ function oficina() {
     /** Cuánto de [cantidad] no hay en stock (0 si alcanza). */
     faltaStock(p, cantidad) { return Math.max(0, Math.round((Number(cantidad) - Math.max(0, Number(p?.stock) || 0)) * 100) / 100); },
     clienteVenta() { return (this.d.clientes || []).find((c) => c.id === this.f.cliente); },
+    /** A quién va la nota: la persona de "Solo vender" o el cliente elegido. */
+    nombreComprador() { return this.f.comprador?.nombre || this.clienteVenta()?.nombre || ''; },
+    /**
+     * "Solo vender" (sin registrarlo como cliente): la venta va a un cliente genérico del tipo que toca
+     * — un proveedor de leche paga precio de proveedor; los demás, el de vecino — y la nota lleva su nombre.
+     */
+    soloVender(doc) {
+      const tipo = doc.fuente === 'proveedor' ? 'PLANTA' : 'DIRECTO';
+      const genericos = (this.d.clientes || []).filter((c) => c.tipo === tipo && !c.ruc);
+      const g = genericos.find((c) => /vecino|proveedor de leche/i.test(c.nombre)) || genericos[0];
+      if (!g) return (this.f.error = 'Falta un cliente general «Vecino de Huata» para vender sin registrar: agrégalo como Cliente directo.');
+      const nombre = (doc.nombre || '').trim();
+      if (nombre.length < 3) return (this.f.error = 'No salió el nombre: escribe a quién le vendes o agrégalo como cliente.');
+      this.elegirCliente(g);
+      this.f.comprador = { nombre, documento: doc.numero };
+      this.buscarCliente = ''; this.docVenta = null;
+      this.pasoVenta(2);
+    },
     /** Lo que lleva el cliente: [{ p, cantidad, precio, importe }] (precio según su tipo, 0 si aún no se eligió). */
     lineasVenta() {
       const c = this.clienteVenta();
@@ -1121,7 +1139,7 @@ function oficina() {
       this.f.cantidades[p.id] = n ? String(n) : '';
     },
     elegirCliente(c, avanzar = false) {
-      this.f.cliente = c.id; this.f.correo = c.email || '';
+      this.f.cliente = c.id; this.f.correo = c.email || ''; this.f.comprador = null;
       if (avanzar) { this.buscarCliente = ''; this.pasoVenta(2); }
     },
     /** Clientes que coinciden con lo buscado (nombre, DNI/RUC o teléfono); los desactivados solo si se piden. */
@@ -1205,10 +1223,10 @@ function oficina() {
       try {
         const r = await this.api('/compras/ventas', {
           cliente_id: c.id, items: lineas.map((l) => ({ producto_id: l.p.id, cantidad: l.cantidad })), correo: f.correo ? f.correo.trim() : null,
-          sin_stock: faltan.length > 0, metodo_pago: f.metodo, pago_operacion: f.metodo !== 'EFECTIVO' && f.operacion.trim() ? f.operacion.trim() : null,
+          sin_stock: faltan.length > 0, comprador: f.comprador || null, metodo_pago: f.metodo, pago_operacion: f.metodo !== 'EFECTIVO' && f.operacion.trim() ? f.operacion.trim() : null,
         });
         this.aviso = {
-          texto: `✓ Venta registrada: ${soles(r.total)} a ${c.nombre} · ${METODO_PAGO[f.metodo].nombre} · ${r.numero}` +
+          texto: `✓ Venta registrada: ${soles(r.total)} a ${this.nombreComprador()} · ${METODO_PAGO[f.metodo].nombre} · ${r.numero}` +
             (r.correo_enviado ? ` · nota enviada a ${r.correo}` : '') + (r.correo_error ? ` · ${r.correo_error}` : ''),
           nota: { id: r.id, numero: r.numero },
         };

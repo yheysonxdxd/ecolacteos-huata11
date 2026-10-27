@@ -151,7 +151,13 @@ class ComprasAppController extends Controller
             // las apps de antes no lo mandan: queda en efectivo
             'metodo_pago' => ['nullable', 'in:EFECTIVO,YAPE,TARJETA'],
             'pago_operacion' => ['nullable', 'string', 'max:30'],
+            // "Solo vender": quién compra sin registrarlo como cliente (sale en la nota)
+            'comprador' => ['nullable', 'array'],
+            'comprador.nombre' => ['required_with:comprador', 'string', 'min:3', 'max:150'],
+            'comprador.documento' => ['nullable', 'regex:/^(\d{8}|\d{11})$/'],
         ], [
+            'comprador.nombre.required_with' => 'Escribe el nombre de quien compra.',
+            'comprador.documento.regex' => 'El DNI lleva 8 dígitos y el RUC 11.',
             'metodo_pago.in' => 'Elige efectivo, Yape o tarjeta.',
             'correo.email' => 'Ese correo no es válido.',
             'items.required' => 'Elige al menos un producto y cuánto vender.',
@@ -174,7 +180,9 @@ class ComprasAppController extends Controller
         });
 
         $pago = ['metodo_pago' => $data['metodo_pago'] ?? 'EFECTIVO',
-            'pago_operacion' => ($data['metodo_pago'] ?? 'EFECTIVO') !== 'EFECTIVO' ? (trim($data['pago_operacion'] ?? '') ?: null) : null];
+            'pago_operacion' => ($data['metodo_pago'] ?? 'EFECTIVO') !== 'EFECTIVO' ? (trim($data['pago_operacion'] ?? '') ?: null) : null,
+            'comprador_nombre' => isset($data['comprador']) ? trim($data['comprador']['nombre']) : null,
+            'comprador_documento' => $data['comprador']['documento'] ?? null];
         $ids = DB::transaction(function () use ($lineas, $cliente, $r, $sinStock, $pago) {
             $ids = [];
             foreach ($lineas as $l) {
@@ -262,7 +270,7 @@ class ComprasAppController extends Controller
     {
         return DB::table('ventas as v')->join('productos as p', 'p.id', '=', 'v.producto_id')
             ->join('clientes as c', 'c.id', '=', 'v.cliente_id')->orderByDesc('v.vendida_en')
-            ->select(['v.id', DB::raw('COALESCE(v.nota_id, v.id) as nota'), 'p.nombre as que', 'p.unidad', 'c.nombre as cliente', 'v.total', 'v.cantidad', 'v.vendida_en as fecha', 'v.metodo_pago', 'v.pago_operacion']);
+            ->select(['v.id', DB::raw('COALESCE(v.nota_id, v.id) as nota'), 'p.nombre as que', 'p.unidad', DB::raw('COALESCE(v.comprador_nombre, c.nombre) as cliente'), 'v.total', 'v.cantidad', 'v.vendida_en as fecha', 'v.metodo_pago', 'v.pago_operacion']);
     }
 
     private function filaVenta(object $v): array

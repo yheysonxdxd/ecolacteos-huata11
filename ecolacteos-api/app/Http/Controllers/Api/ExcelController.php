@@ -116,13 +116,14 @@ class ExcelController extends Controller
             ->leftJoin('users as u', 'u.id', '=', 's.registrada_por')
             ->when($desde, fn ($q) => $q->whereBetween('s.vendida_en', [$desde . ' 00:00:00', $hasta . ' 23:59:59']))
             ->orderBy('s.vendida_en')->orderBy('s.id')
-            ->get(['s.id', 's.nota_id', 's.vendida_en', 'c.nombre as cliente', 'c.ruc', 'p.nombre as producto',
+            ->get(['s.id', 's.nota_id', 's.vendida_en', DB::raw('COALESCE(s.comprador_nombre, c.nombre) as cliente'),
+                DB::raw('CASE WHEN s.comprador_nombre IS NULL THEN c.ruc ELSE s.comprador_documento END as ruc'), 'p.nombre as producto',
                 's.cantidad', 'p.unidad', 's.precio_unitario', 's.total', 's.metodo_pago', 's.pago_operacion', 'u.name as vendedor']);
 
         return Excel::descargar(
             'ventas_' . $mes['mes'] . '.xlsx',
             'Ventas · ' . self::nombreMes($mes['mes']),
-            ['Fecha' => 'fecha', 'Hora' => 'texto', 'Nota de venta' => 'texto', 'Cliente' => 'texto', 'RUC' => 'texto',
+            ['Fecha' => 'fecha', 'Hora' => 'texto', 'Nota de venta' => 'texto', 'Cliente' => 'texto', 'DNI / RUC' => 'texto',
                 'Producto' => 'texto', 'Cantidad' => 'numero', 'Unidad' => 'texto', 'Precio unitario' => 'soles',
                 'Total' => 'soles', 'Pagó con' => 'texto', 'N.° operación' => 'texto', 'Registrada por' => 'texto'],
             $filas->map(fn ($s) => [$s->vendida_en, Carbon::parse($s->vendida_en)->format('H:i'),

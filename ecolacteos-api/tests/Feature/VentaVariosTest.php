@@ -114,4 +114,23 @@ class VentaVariosTest extends TestCase
         $this->postJson('/api/v1/compras/ventas', ['cliente_id' => $this->cliente, 'metodo_pago' => 'FIADO',
             'items' => [['producto_id' => $this->queso, 'cantidad' => 1]]])->assertStatus(422);
     }
+
+    public function test_solo_vender_sin_registrar_el_cliente_la_nota_sale_a_su_nombre(): void
+    {
+        $antes = DB::table('clientes')->count();
+        $r = $this->postJson('/api/v1/compras/ventas', ['cliente_id' => $this->cliente,
+            'comprador' => ['nombre' => 'Eracleo Juan Huamani Mendoza', 'documento' => '46027897'],
+            'items' => [['producto_id' => $this->queso, 'cantidad' => 1], ['producto_id' => $this->yogurt, 'cantidad' => 2]]])->assertCreated();
+
+        $this->assertSame($antes, DB::table('clientes')->count()); // no se crea cliente
+        $this->assertSame(['Eracleo Juan Huamani Mendoza'], DB::table('ventas')->distinct()->pluck('comprador_nombre')->all());
+        $nota = app(NotaVentaPdf::class)->datos($r->json('id'));
+        $this->assertSame('Eracleo Juan Huamani Mendoza', $nota['cliente']);
+        $this->assertSame('46027897', $nota['ruc']);
+        $m = $this->getJson('/api/v1/compras/movimientos?mes=actual')->json('movimientos.0');
+        $this->assertSame('Eracleo Juan Huamani Mendoza', $m['cliente']);
+
+        $this->postJson('/api/v1/compras/ventas', ['cliente_id' => $this->cliente, 'comprador' => ['nombre' => '', 'documento' => '123'],
+            'items' => [['producto_id' => $this->queso, 'cantidad' => 1]]])->assertStatus(422);
+    }
 }
