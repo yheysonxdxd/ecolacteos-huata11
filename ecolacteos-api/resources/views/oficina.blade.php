@@ -356,71 +356,105 @@
         {{-- ---------------------------------------------------- ADULTERACIONES --}}
         <template x-if="dDe === 'adulteraciones'">
         <section x-show="seccion === 'adulteraciones' && !cargando && !error">
-            <h1>Adulteraciones</h1>
-            <p class="sub">Proveedores a quienes Calidad les detectó agua añadida. La 1.ª vez se paga esa entrega a precio reducido; la 2.ª vez se les da de baja.</p>
-            <div class="tarjetas" style="margin-bottom: 14px">
-                <div class="tarjeta"><div class="eti">Dados de baja</div><div class="valor" x-text="d.de_baja ?? 0"></div><div class="apoyo">2.ª adulteración</div></div>
-                <div class="tarjeta"><div class="eti">Con advertencia</div><div class="valor" x-text="d.advertidos ?? 0"></div><div class="apoyo">1.ª adulteración, siguen entregando</div></div>
+            <div class="cabecera"><div><h1>Adulteraciones</h1>
+                <p class="sub" style="margin: 0">Proveedores a quienes Calidad les detectó agua añadida. La 1.ª vez se paga esa entrega a precio reducido; la 2.ª vez se les da de baja.</p></div></div>
+            <div class="kpis-fila">
+                <div class="kpi mal"><span class="kpi-ico" aria-hidden="true">⛔</span><div><b x-text="d.de_baja ?? 0"></b><span>Dados de baja</span><small>2.ª adulteración</small></div></div>
+                <div class="kpi ojo"><span class="kpi-ico" aria-hidden="true">⚠</span><div><b x-text="d.advertidos ?? 0"></b><span>Con advertencia</span><small>1.ª vez, siguen entregando</small></div></div>
             </div>
-            <div class="pestanas">
-                <button :class="{ activo: adulteracion === 'todos' }" @click="adulteracion = 'todos'">Todos</button>
-                <button :class="{ activo: adulteracion === 'baja' }" @click="adulteracion = 'baja'">Dados de baja</button>
-                <button :class="{ activo: adulteracion === 'advertidos' }" @click="adulteracion = 'advertidos'">Con advertencia</button>
+            <div class="barra-herramientas">
+                <div class="pestanas" style="margin: 0">
+                    <button :class="{ activo: adulteracion === 'todos' }" @click="adulteracion = 'todos'">Todos</button>
+                    <button :class="{ activo: adulteracion === 'baja' }" @click="adulteracion = 'baja'">Dados de baja</button>
+                    <button :class="{ activo: adulteracion === 'advertidos' }" @click="adulteracion = 'advertidos'">Con advertencia</button>
+                </div>
+                <input type="search" x-model="buscar" placeholder="Buscar por nombre, DNI, comunidad o vehículo" class="buscador" aria-label="Buscar">
             </div>
-            <input x-model="buscar" placeholder="Buscar por nombre, DNI, comunidad o vehículo" style="margin-bottom: 12px">
-            <table class="lista"><tr><th>Nombre</th><th>DNI</th><th>Comunidad</th><th class="num">Veces</th><th>Última</th><th>Estado</th></tr>
-                <template x-for="p in adulteradosFiltrados()" :key="p.id"><tr class="clic" @click="verAdulterado(p)">
-                    <td x-text="p.nombre"></td><td x-text="p.dni"></td><td x-text="p.comunidad + ' · ' + p.vehiculo"></td>
-                    <td class="num" x-text="p.veces.length"></td><td x-text="fechaCorta(p.ultima)"></td>
-                    <td><span class="chip" :class="p.de_baja ? 'mal' : 'ojo'" x-text="p.de_baja ? 'Dado de baja' : 'Advertencia'"></span></td></tr></template>
-                <tr x-show="!adulteradosFiltrados().length"><td colspan="6" x-text="(d.proveedores || []).length ? 'Nadie coincide con la búsqueda.' : 'No hay proveedores sancionados por adulteración.'"></td></tr>
-            </table>
+            <div class="personas">
+                <template x-for="p in adulteradosFiltrados()" :key="p.id">
+                    <button class="persona" :class="p.de_baja ? 'mal' : 'ojo'" @click="verAdulterado(p)">
+                        <span class="inicial" x-text="p.nombre.trim().charAt(0)"></span>
+                        <span class="datos"><strong x-text="p.nombre"></strong>
+                            <small x-text="'DNI ' + p.dni + ' · ' + p.comunidad + ' · ' + p.vehiculo"></small></span>
+                        <span class="veces" :title="p.veces.length + (p.veces.length === 1 ? ' vez' : ' veces')">
+                            <template x-for="k in p.veces.length"><i></i></template>
+                            <em x-text="'última ' + fechaCorta(p.ultima)"></em></span>
+                        <span class="chip" :class="p.de_baja ? 'mal' : 'ojo'" x-text="p.de_baja ? 'Dado de baja' : 'Advertencia'"></span>
+                    </button>
+                </template>
+                <div class="vacio-lista" x-show="!adulteradosFiltrados().length">
+                    <span aria-hidden="true">✓</span>
+                    <p x-text="(d.proveedores || []).length ? 'Nadie coincide con la búsqueda.' : 'No hay proveedores sancionados por adulteración.'"></p></div>
+            </div>
         </section>
         </template>
 
         {{-- ---------------------------------------------------- RECHAZOS Y CAPACITACIÓN --}}
         <template x-if="dDe === 'rechazos'">
         <section x-show="seccion === 'rechazos' && !cargando && !error">
-            <h1>Rechazos y capacitación</h1>
-            <p class="sub">Entregas que Calidad rechazó por grasa, proteína, densidad, temperatura, pH o leche significada (la adulteración va aparte).
-                Se pagan S/ 0 y la medida es <strong>capacitar al productor</strong>: cuando ya se habló con él, anótalo con “Ya se le capacitó”.</p>
-            <div class="fila" style="margin-bottom: 14px; gap: 8px; flex-wrap: wrap">
-                <button class="btn chico gris" @click="cambiar('semanaRech', d.anterior)" title="Semana anterior">◀</button>
-                <label class="btn chico gris" style="position: relative; cursor: pointer" title="Elegir otra semana">
-                    <span x-text="'Semana ' + fechaCorta(d.inicio) + ' – ' + fechaCorta(d.fin)"></span>
-                    <input type="date" :max="d.hasta" :value="d.inicio"
-                           @change="$event.target.value && cambiar('semanaRech', $event.target.value)"
-                           @click="$event.target.showPicker?.()"
-                           style="position: absolute; inset: 0; opacity: 0; cursor: pointer">
-                </label>
-                <button class="btn chico gris" @click="cambiar('semanaRech', d.siguiente)" :disabled="!d.siguiente" title="Semana siguiente">▶</button>
-                <button class="btn chico gris" @click="excel('/calidad/excel/analisis?mes=' + d.inicio.slice(0, 7))" title="Descargar en Excel">⬇ Análisis del mes en Excel</button>
+            <div class="cabecera">
+                <div><h1>Rechazos y capacitación</h1>
+                    <p class="sub" style="margin: 0">Entregas que Calidad rechazó por grasa, proteína, densidad, temperatura, pH o leche significada (la adulteración va aparte).
+                        Se pagan S/ 0 y la medida es <strong>capacitar al productor</strong>: cuando ya se habló con él, anótalo con “Ya se le capacitó”.</p></div>
+            </div>
+            <div class="barra-herramientas">
+                <div class="semana-nav">
+                    <button class="btn chico gris" @click="cambiar('semanaRech', d.anterior)" title="Semana anterior" aria-label="Semana anterior">◀</button>
+                    <label class="btn chico gris" style="position: relative; cursor: pointer; margin: 0" title="Elegir otra semana">
+                        <span x-text="'Semana ' + fechaCorta(d.inicio) + ' – ' + fechaCorta(d.fin)"></span>
+                        <input type="date" :max="d.hasta" :value="d.inicio"
+                               @change="$event.target.value && cambiar('semanaRech', $event.target.value)"
+                               @click="$event.target.showPicker?.()"
+                               style="position: absolute; inset: 0; opacity: 0; cursor: pointer">
+                    </label>
+                    <button class="btn chico gris" @click="cambiar('semanaRech', d.siguiente)" :disabled="!d.siguiente" title="Semana siguiente" aria-label="Semana siguiente">▶</button>
+                </div>
                 <div class="espacio"></div>
-                <span class="chip ojo" x-show="d.por_capacitar" x-text="'⚠ ' + d.por_capacitar + (d.por_capacitar === 1 ? ' productor espera' : ' productores esperan') + ' su capacitación'"></span>
+                <button class="btn chico gris" @click="excel('/calidad/excel/analisis?mes=' + d.inicio.slice(0, 7))" title="Descargar en Excel">⬇ Análisis del mes en Excel</button>
             </div>
-            <div class="tarjetas" style="margin-bottom: 14px">
-                <div class="tarjeta destacada"><div class="eti">Rechazos</div><div class="valor" x-text="d.resumen?.rechazos ?? 0"></div>
-                    <div class="apoyo" x-text="(d.resumen?.proveedores ?? 0) + ' productores · ' + num(d.resumen?.litros_rechazados ?? 0) + ' L sin pagar'"></div></div>
-                <div class="tarjeta" style="min-width: 260px"><div class="eti">Por causa</div>
-                    <template x-for="c in d.resumen?.por_causa || []" :key="c.causa"><div>
-                        <div class="fila" style="justify-content: space-between; margin-top: 6px"><span x-text="c.causa"></span><strong x-text="c.veces"></strong></div>
-                        <div class="barra"><span :style="'width:' + (c.veces / maximo(d.resumen.por_causa, 'veces') * 100) + '%'"></span></div></div></template>
-                    <div class="apoyo" x-show="!(d.resumen?.por_causa || []).length">Sin rechazos esta semana.</div></div>
+            <div class="aviso" x-show="d.por_capacitar" x-text="d.por_capacitar + (d.por_capacitar === 1 ? ' productor espera' : ' productores esperan') + ' su capacitación. Cuando ya se habló con ellos, toca «Ya se le capacitó».'"></div>
+            <div class="resumen-rechazos">
+                <div class="tarjeta destacada">
+                    <div class="eti">Rechazos de la semana</div>
+                    <div class="valor enorme" x-text="d.resumen?.rechazos ?? 0"></div>
+                    <div class="apoyo" x-text="(d.resumen?.proveedores ?? 0) + ' productores · ' + num(d.resumen?.litros_rechazados ?? 0) + ' L sin pagar'"></div>
+                </div>
+                <div class="tarjeta">
+                    <div class="eti">Por causa</div>
+                    <div class="causas">
+                        <template x-for="c in d.resumen?.por_causa || []" :key="c.causa"><div class="causa">
+                            <span x-text="c.causa"></span>
+                            <div class="barra"><span :style="'width:' + (c.veces / maximo(d.resumen.por_causa, 'veces') * 100) + '%'"></span></div>
+                            <b x-text="c.veces"></b></div></template>
+                    </div>
+                    <div class="apoyo" x-show="!(d.resumen?.por_causa || []).length">Sin rechazos esta semana.</div>
+                </div>
             </div>
-            <table class="lista"><tr><th>Día</th><th>Productor</th><th>Causa</th><th class="num">Litros</th><th>Capacitación</th></tr>
-                <template x-for="r in d.filas || []" :key="r.id"><tr>
-                    <td style="white-space: nowrap" x-text="fechaCorta(r.fecha)"></td>
-                    <td><span x-text="r.proveedor"></span>
-                        <div class="sub" style="margin:0" x-text="r.comunidad + ' · ' + r.vehiculo + (r.analista ? ' · analizó ' + r.analista : '')"></div>
-                        <span class="chip mal" x-show="r.repite" style="margin-top: 4px" x-text="r.veces_30_dias + ' rechazos en 30 días'"></span></td>
-                    <td><template x-for="c in r.causas"><div x-text="c"></div></template>
-                        <span class="chip ojo" x-show="!r.rechazada" style="margin-top: 4px">se recibió igual</span></td>
-                    <td class="num" :class="r.rechazada ? 'mal' : ''" x-text="num(r.litros) + ' L'"></td>
-                    <td><template x-if="r.capacitado_en"><div><span class="chip ok" x-text="'✓ ' + fechaCorta(r.capacitado_en)"></span>
-                            <div class="sub" style="margin: 3px 0 0" x-text="(r.capacitado_por || '') + (r.nota ? ' · “' + r.nota + '”' : '')"></div></div></template>
-                        <button class="btn chico" x-show="!r.capacitado_en" @click="abrirCapacitar(r)">Ya se le capacitó</button></td></tr></template>
-                <tr x-show="!(d.filas || []).length"><td colspan="5">Calidad no rechazó ninguna entrega esta semana.</td></tr>
-            </table>
+            <h2>Cada rechazo</h2>
+            <div class="rechazos">
+                <template x-for="r in d.filas || []" :key="r.id">
+                    <article class="rechazo" :class="{ hecho: r.capacitado_en }">
+                        <div class="fecha-bloque"><b x-text="Number(String(r.fecha).slice(8, 10))"></b>
+                            <span x-text="fechaCorta(r.fecha).split(' ')[1]"></span></div>
+                        <div class="cuerpo-rechazo">
+                            <strong x-text="r.proveedor"></strong>
+                            <small x-text="r.comunidad + ' · ' + r.vehiculo + (r.analista ? ' · analizó ' + r.analista : '')"></small>
+                            <div class="etiquetas-rechazo">
+                                <template x-for="c in r.causas"><span class="chip mal" x-text="c"></span></template>
+                                <span class="chip ojo" x-show="!r.rechazada">se recibió igual</span>
+                                <span class="chip mal fuerte" x-show="r.repite" x-text="r.veces_30_dias + ' rechazos en 30 días'"></span>
+                            </div>
+                        </div>
+                        <div class="litros-rechazo" :class="r.rechazada ? 'mal' : ''"><b x-text="num(r.litros)"></b> L</div>
+                        <div class="capacitacion">
+                            <template x-if="r.capacitado_en"><div><span class="chip ok" x-text="'✓ Capacitado el ' + fechaCorta(r.capacitado_en)"></span>
+                                <small x-text="(r.capacitado_por || '') + (r.nota ? ' · “' + r.nota + '”' : '')"></small></div></template>
+                            <button class="btn chico" x-show="!r.capacitado_en" @click="abrirCapacitar(r)">Ya se le capacitó</button>
+                        </div>
+                    </article>
+                </template>
+                <div class="vacio-lista" x-show="!(d.filas || []).length"><span aria-hidden="true">✓</span><p>Calidad no rechazó ninguna entrega esta semana.</p></div>
+            </div>
         </section>
         </template>
 

@@ -826,3 +826,77 @@ input::placeholder, textarea::placeholder { color: #5d6e7e; }
 .mini-datos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--borde); }
 .mini-datos span { display: block; font: 700 10.5px var(--letra-titulo); letter-spacing: .08em; text-transform: uppercase; color: var(--texto-3); }
 .mini-datos b { font: 800 17px var(--letra-titulo); font-variant-numeric: tabular-nums; }
+
+/* --- piezas compartidas de la parte 3 --- */
+.barra-herramientas { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 16px; }
+.barra-herramientas .buscador { flex: 1; min-width: 220px; width: auto; }
+input.buscador { padding-left: 38px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238394a4' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: 12px center; background-size: 17px; }
+.semana-nav { display: flex; gap: 6px; align-items: center; }
+.kpis-fila { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 18px; }
+.kpi { display: flex; align-items: center; gap: 14px; padding: 16px 18px; border-radius: var(--radio); background: var(--superficie);
+  border: 1px solid var(--borde); box-shadow: var(--sombra); }
+.kpi .kpi-ico { width: 46px; height: 46px; flex: none; border-radius: 13px; display: grid; place-items: center; font-size: 21px;
+  background: var(--superficie-2); border: 1px solid var(--borde); }
+.kpi.mal .kpi-ico { background: var(--alerta-fondo); border-color: var(--alerta-borde); }
+.kpi.ojo .kpi-ico { background: var(--aviso-fondo); border-color: var(--aviso-borde); }
+.kpi.ok .kpi-ico { background: var(--verde-suave); border-color: var(--verde-borde); }
+.kpi b { display: block; font: 800 30px/1 var(--letra-titulo); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.kpi span { display: block; font: 700 13px var(--letra-titulo); color: var(--texto); margin-top: 4px; }
+.kpi small { display: block; font-size: 12.5px; color: var(--texto-3); }
+.vacio-lista { text-align: center; padding: 34px 16px; border: 1px dashed var(--borde); border-radius: var(--radio); color: var(--texto-3);
+  background: rgba(22,34,46,.6); grid-column: 1 / -1; }
+.vacio-lista span { width: 44px; height: 44px; margin: 0 auto 8px; border-radius: 50%; display: grid; place-items: center; font: 800 20px var(--letra-titulo);
+  background: var(--verde-suave); color: var(--exito); border: 1px solid var(--verde-borde); }
+.vacio-lista p { margin: 0; }
+
+/* --- Adulteraciones: una tarjeta por persona --- */
+.personas { display: grid; gap: 8px; }
+.persona { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto auto; align-items: center; gap: 14px; width: 100%; text-align: left;
+  padding: 12px 16px; border-radius: var(--radio); background: var(--superficie); border: 1px solid var(--borde); color: var(--texto);
+  font: inherit; cursor: pointer; box-shadow: var(--sombra); transition: border-color .15s ease, transform .15s ease; }
+.persona:hover { border-color: var(--verde-borde); transform: translateX(2px); }
+.persona.mal { box-shadow: var(--sombra), inset 3px 0 0 var(--alerta); }
+.persona.ojo { box-shadow: var(--sombra), inset 3px 0 0 var(--aviso); }
+.persona .inicial { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; font: 800 17px var(--letra-titulo);
+  background: var(--superficie-2); border: 1px solid var(--borde); }
+.persona.mal .inicial { background: var(--alerta-fondo); border-color: var(--alerta-borde); color: var(--alerta); }
+.persona.ojo .inicial { background: var(--aviso-fondo); border-color: var(--aviso-borde); color: var(--aviso); }
+.persona .datos strong { display: block; font-size: 15.5px; }
+.persona .datos small { display: block; font-size: 13px; color: var(--texto-3); }
+.persona .veces { display: flex; align-items: center; gap: 4px; }
+.persona .veces i { width: 10px; height: 10px; border-radius: 50%; background: var(--alerta); }
+.persona.ojo .veces i { background: var(--aviso); }
+.persona .veces em { font-style: normal; font-size: 12.5px; color: var(--texto-3); margin-left: 8px; white-space: nowrap; }
+
+/* --- Rechazos: resumen y una tarjeta por rechazo --- */
+.resumen-rechazos { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr); gap: 14px; }
+.causas { display: grid; gap: 10px; margin-top: 10px; }
+.causa { display: grid; grid-template-columns: minmax(110px, 1.2fr) 2fr 34px; align-items: center; gap: 12px; font-size: 14px; }
+.causa .barra { margin: 0; height: 9px; }
+.causa .barra span { background: var(--alerta); }
+.causa b { font: 800 15px var(--letra-titulo); text-align: right; font-variant-numeric: tabular-nums; }
+.rechazos { display: grid; gap: 8px; }
+.rechazo { display: grid; grid-template-columns: 58px minmax(0, 1fr) auto minmax(150px, auto); align-items: center; gap: 16px;
+  padding: 12px 16px; border-radius: var(--radio); background: var(--superficie); border: 1px solid var(--borde); box-shadow: var(--sombra); }
+.rechazo.hecho { opacity: .78; }
+.fecha-bloque { width: 58px; text-align: center; border-radius: 12px; padding: 6px 0 5px; background: var(--fondo); border: 1px solid var(--borde); }
+.fecha-bloque b { display: block; font: 800 22px/1 var(--letra-titulo); }
+.fecha-bloque span { display: block; font: 700 11px var(--letra-titulo); letter-spacing: .1em; text-transform: uppercase; color: var(--texto-3); margin-top: 3px; }
+.cuerpo-rechazo strong { display: block; font-size: 15.5px; }
+.cuerpo-rechazo small { display: block; font-size: 13px; color: var(--texto-3); }
+.etiquetas-rechazo { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.chip.mal.fuerte { background: var(--alerta); color: #2a0b0e; border-color: var(--alerta); }
+.litros-rechazo { font: 600 14px var(--letra-titulo); color: var(--texto-2); white-space: nowrap; }
+.litros-rechazo b { font-size: 22px; font-weight: 800; color: var(--texto); font-variant-numeric: tabular-nums; }
+.litros-rechazo.mal b { color: var(--alerta); }
+.capacitacion { justify-self: end; text-align: right; }
+.capacitacion small { display: block; font-size: 12.5px; color: var(--texto-3); margin-top: 4px; }
+@media (max-width: 800px) {
+  .persona { grid-template-columns: 40px minmax(0, 1fr); }
+  .persona .veces, .persona .chip { grid-column: 2; justify-self: start; }
+  .resumen-rechazos { grid-template-columns: 1fr; }
+  .rechazo { grid-template-columns: 52px minmax(0, 1fr); }
+  .rechazo .litros-rechazo, .rechazo .capacitacion { grid-column: 2; justify-self: start; text-align: left; }
+}
+@media (prefers-reduced-motion: reduce) { .persona { transition: none; } }
