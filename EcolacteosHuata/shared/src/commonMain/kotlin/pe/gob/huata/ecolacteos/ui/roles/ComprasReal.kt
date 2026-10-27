@@ -116,6 +116,7 @@ private fun VentaReal(irA: (Int) -> Unit) {
     val scope = rememberCoroutineScope()
     var enviando by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var preguntarSinStock by remember { mutableStateOf(false) }
     val v = ComprasReal
 
     CargaServidor("/api/v1/compras/ventas-datos", clave = v.version) { d, _ ->
@@ -130,7 +131,8 @@ private fun VentaReal(irA: (Int) -> Unit) {
             if (cant <= 0) null else Triple(p, cant, c?.let { p.obj("precios")?.num(it.txt("tipo")) } ?: 0.0)
         }
         val total = lineas.sumOf { (_, cant, precio) -> cant * precio }
-        val sinStock = lineas.filter { (p, cant, _) -> cant > p.num("stock") }
+        // el cliente lo pide y no hay: se puede vender igual, preguntando antes
+        val sinStock = lineas.filter { (p, cant, _) -> faltaStock(p, cant) > 0 }
         val sinPrecio = if (c == null) emptyList() else lineas.filter { it.third <= 0 }
         // sin cliente no se pasa a productos; sin productos no se pasa a confirmar
         val paso = when {
@@ -156,20 +158,16 @@ private fun VentaReal(irA: (Int) -> Unit) {
                             Text(textoLotes(p, cant), style = Texto.Apoyo, color = Altiplano.TextoTerciario)
                         }
                     }
-                    sinStock.forEach { (p, _, _) -> AvisoCampo("Solo hay ${formatear(p.num("stock"), 0)} de ${p.txt("nombre")} en stock.", esAlerta = true) }
+                    sinStock.forEach { (p, cant, _) ->
+                        AvisoCampo("${p.txt("nombre")}: hay ${formatear(p.num("stock").coerceAtLeast(0.0), 0)}, faltan ${formatear(faltaStock(p, cant), 0)}. Se puede vender igual: sale del próximo lote.")
+                    }
                     sinPrecio.forEach { (p, _, _) -> AvisoCampo("${p.txt("nombre")} no tiene precio para este tipo de cliente: ponlo en Ajustes → Precios.", esAlerta = true) }
                     CampoCorreoVenta(c)
                     error?.let { AvisoCampo("No se pudo registrar: $it", esAlerta = true) }
                 }
             }
-            if (paso == 3) BotonPrimario(
-                when {
-                    enviando -> "Registrando…"
-                    lineas.size > 1 -> "✓ Registrar venta (${lineas.size} productos, una nota)"; else -> "✓ Registrar venta"
-                },
-                c != null && lineas.isNotEmpty() && sinStock.isEmpty() && sinPrecio.isEmpty() && !enviando,
-            ) {
-                val cli = c ?: return@BotonPrimario
+            val registrar = registrar@{
+                val cli = c ?: return@registrar
                 scope.launch {
                     enviando = true; error = null
                     try {
@@ -179,6 +177,7 @@ private fun VentaReal(irA: (Int) -> Unit) {
                                 lineas.forEach { (p, cant, _) -> addJsonObject { put("producto_id", p.num("id").toLong()); put("cantidad", cant) } }
                             }
                             correoParaVenta()?.let { put("correo", it) } // opcional: mandar la nota
+                            if (sinStock.isNotEmpty()) put("sin_stock", true)
                         })
                         v.cantidades.clear()
                         v.pasoVenta = 1; v.familia = null; v.producto = null
@@ -190,7 +189,29 @@ private fun VentaReal(irA: (Int) -> Unit) {
                     } catch (t: Throwable) { error = t.message }
                     enviando = false
                 }
+                Unit
             }
+            if (paso == 3) BotonPrimario(
+                when {
+                    enviando -> "Registrando…"
+                    lineas.size > 1 -> "✓ Registrar venta (${lineas.size} productos, una nota)"; else -> "✓ Registrar venta"
+                },
+                c != null && lineas.isNotEmpty() && sinPrecio.isEmpty() && !enviando,
+            ) {
+                if (sinStock.isNotEmpty()) preguntarSinStock = true else registrar()
+            }
+            if (preguntarSinStock) AlertDialog(
+                onDismissRequest = { preguntarSinStock = false },
+                containerColor = Altiplano.Fondo,
+                title = { Text("¿Vender sin stock?", color = Altiplano.Texto) },
+                text = {
+                    Text("No hay suficiente de " + sinStock.joinToString(", ") { it.first.txt("nombre") } +
+                        ". Lo que falta queda vendido sin lote y se descuenta del próximo lote que cierres (el stock queda en negativo).",
+                        color = Altiplano.TextoTerciario)
+                },
+                confirmButton = { TextButton(onClick = { preguntarSinStock = false; registrar() }) { Text("Sí, vender igual", color = Altiplano.Aviso) } },
+                dismissButton = { TextButton(onClick = { preguntarSinStock = false }) { Text("No, corregir", color = Altiplano.TextoTerciario) } },
+            )
             if (paso == 3) TextButton(onClick = { v.pasoVenta = 2 }) { Text("← Productos", color = Altiplano.CelesteAcento) }
         }
         v.editandoCliente?.let { HojaCliente(it) }
@@ -251,12 +272,13 @@ private fun PasoProductos(prods: List<JsonObject>, c: JsonObject, lineas: List<T
     val precio = { p: JsonObject -> p.obj("precios")?.num(c.txt("tipo")) ?: 0.0 }
     val bases = prods.filter { p -> p.txt("base_id").isEmpty() || prods.none { it.txt("id") == p.txt("base_id") } }
     // base → sus sabores con stock (la base primero)
-    val familias = bases.map { b -> b to (listOf(b) + prods.filter { it.txt("base_id") == b.txt("id") }).filter { it.num("stock") > 0 } }
+    // sin stock también: se puede vender si el cliente lo pide
+    val familias = bases.map { b -> b to (listOf(b) + prods.filter { it.txt("base_id") == b.txt("id") }).filter { it.num("stock") > 0 || it.txt("activo") == "true" } }
         .filter { it.second.isNotEmpty() }
     val elegir = { p: JsonObject -> v.producto = id(p); v.cuantos = 1.0 }
 
     Seccion("¿Qué lleva ${c.txt("nombre")}?")
-    if (familias.isEmpty()) AvisoCampo("No hay productos en stock. Primero cierra un lote en Producir.")
+    if (familias.isEmpty()) AvisoCampo("No hay productos. Agrégalos en la web: Configuración → Productos.")
     listOf("QUESO" to "🧀 Quesos", "YOGURT" to "🥛 Yogurt", "OTRO" to "Otros").forEach { (tipo, nombre) ->
         val delTipo = familias.filter { (b, _) -> b.txt("tipo").ifEmpty { "OTRO" } == tipo }
         if (delTipo.isNotEmpty()) {
@@ -280,7 +302,7 @@ private fun PasoProductos(prods: List<JsonObject>, c: JsonObject, lineas: List<T
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 sabores.forEach { p ->
                     val nombre = if (p.txt("base_id").isEmpty()) "Natural / sin sabor" else p.txt("variante").ifEmpty { p.txt("nombre") }
-                    Chip("$nombre (${formatear(p.num("stock"), 0)})" + if (vencePronto(p)) " ⏳" else "", v.producto == id(p)) { elegir(p) }
+                    Chip("$nombre (${if (p.num("stock") > 0) formatear(p.num("stock"), 0) else "sin stock"})" + if (vencePronto(p)) " ⏳" else "", v.producto == id(p)) { elegir(p) }
                 }
             }
         }
@@ -298,10 +320,10 @@ private fun PasoProductos(prods: List<JsonObject>, c: JsonObject, lineas: List<T
             Spacer(Modifier.height(8.dp))
             StepperGrande(v.cuantos, { v.cuantos = (it ?: 1.0).coerceAtLeast(1.0) }, paso = 1.0, minimo = 1.0, decimales = 0,
                 unidad = p.txt("unidad"), fueraDeRango = pasa, compacto = true)
-            if (pasa) AvisoCampo("Solo hay ${formatear(p.num("stock"), 0)} de ${p.txt("nombre")}.", esAlerta = true)
+            if (pasa) AvisoCampo("Solo hay ${formatear(p.num("stock").coerceAtLeast(0.0), 0)} de ${p.txt("nombre")}: lo demás se vende sin stock (sale del próximo lote).")
             Spacer(Modifier.height(8.dp))
             // si agrega fresa dos veces, se junta
-            BotonPrimario("Agregar ${formatear(v.cuantos, 0)} × ${p.txt("nombre")}", !pasa) {
+            BotonPrimario("Agregar ${formatear(v.cuantos, 0)} × ${p.txt("nombre")}") {
                 v.cantidades[id(p)] = ya + v.cuantos; v.producto = null; v.familia = null; v.cuantos = 1.0
             }
         }
@@ -328,16 +350,20 @@ private fun PasoProductos(prods: List<JsonObject>, c: JsonObject, lineas: List<T
 
 /** De qué lotes sale [cant] de p: primero el que vence primero, igual que el servidor. */
 private fun textoLotes(p: JsonObject, cant: Double): String {
-    var falta = cant
+    var resta = cant
     val usa = p.lista("lotes").mapNotNull { l ->
-        if (falta <= 0.005) null else minOf(falta, l.num("queda")).let { u -> falta -= u; l to u }
+        if (resta <= 0.005) null else minOf(resta, l.num("queda")).let { u -> resta -= u; l to u }
     }
-    return usa.joinToString(" · ") { (l, u) ->
+    val falta = faltaStock(p, cant)
+    return (usa.map { (l, u) ->
         val dias = l.num("dias").toInt()
-        (if (usa.size > 1) "${formatear(u, 0)} del " else "Sale del ") + "lote ${l.txt("codigo")}, vence el ${fechaCorta(l.txt("vence_el"))}" +
+        (if (usa.size > 1 || falta > 0) "${formatear(u, 0)} del " else "Sale del ") + "lote ${l.txt("codigo")}, vence el ${fechaCorta(l.txt("vence_el"))}" +
             when (dias) { 0 -> " (hoy)"; 1 -> " (mañana)"; else -> " (en $dias días)" }
-    }
+    } + if (falta > 0) listOf("⚠ ${formatear(falta, 0)} sin stock (sale del próximo lote)") else emptyList()).joinToString(" · ")
 }
+
+/** Cuánto de [cant] no hay en stock (0 si alcanza). */
+private fun faltaStock(p: JsonObject, cant: Double) = (cant - p.num("stock").coerceAtLeast(0.0)).coerceAtLeast(0.0)
 
 /** Tiene un lote que vence en 7 días o menos: hay que venderlo primero. */
 private fun vencePronto(p: JsonObject) = p.lista("lotes").any { it.num("dias") <= 7 }

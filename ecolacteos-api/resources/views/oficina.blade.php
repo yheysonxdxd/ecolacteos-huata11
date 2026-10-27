@@ -699,7 +699,7 @@
                                 <small class="chip ojo" x-show="fa.sabores.some((p) => vencePronto(p))" title="Tiene un lote que vence esta semana: véndelo primero">⏳ vence pronto</small></button></template>
                     </div>
                 </div></template>
-                <div class="apoyo" x-show="!gruposVenta().length">No hay productos en stock. Primero cierra un lote en Producir.</div>
+                <div class="apoyo" x-show="!gruposVenta().length">No hay productos. Agrégalos en Configuración → Productos.</div>
 
                 {{-- b) el sabor (solo si tiene) --}}
                 <template x-if="familiaVenta() && familiaVenta().sabores.length > 1"><div class="grupo-venta sabores-venta">
@@ -707,7 +707,7 @@
                     <div class="chips-cliente">
                         <template x-for="p in familiaVenta().sabores" :key="p.id">
                             <button class="btn gris" :class="{ elegido: f.producto === p.id }" @click="elegirProducto(p)">
-                                <span x-text="nombreSabor(p)"></span> <small x-text="'hay ' + num(p.stock, 0)"></small>
+                                <span x-text="nombreSabor(p)"></span> <small x-text="p.stock > 0 ? 'hay ' + num(p.stock, 0) : 'sin stock'"></small>
                                 <small class="chip ojo" x-show="vencePronto(p)" title="Tiene un lote que vence esta semana: véndelo primero">⏳</small></button></template>
                     </div>
                 </div></template>

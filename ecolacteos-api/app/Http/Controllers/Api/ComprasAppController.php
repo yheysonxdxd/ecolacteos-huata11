@@ -125,6 +125,8 @@ class ComprasAppController extends Controller
      * POST /api/v1/compras/ventas — precio según el tipo de cliente.
      * Un producto: { cliente_id, producto_id, cantidad, correo? }
      * Varios en la misma venta y la misma nota: { cliente_id, items: [{ producto_id, cantidad }], correo? }
+     * sin_stock: true vende aunque no alcance (el cliente lo pide y no hay): lo que falta queda
+     * sin lote, el stock queda en negativo y se descuenta del próximo lote que se cierre.
      */
     public function vender(Request $r)
     {
@@ -137,6 +139,7 @@ class ComprasAppController extends Controller
             'items.*.producto_id' => ['required', 'distinct', 'exists:productos,id'],
             'items.*.cantidad' => ['required', 'numeric', 'min:0.01'],
             'correo' => ['nullable', 'email', 'max:120'], // opcional: mandar la nota de venta
+            'sin_stock' => ['boolean'],
         ], [
             'correo.email' => 'Ese correo no es válido.',
             'items.required' => 'Elige al menos un producto y cuánto vender.',
@@ -148,16 +151,17 @@ class ComprasAppController extends Controller
 
         // primero se revisa todo (precio y stock de cada producto); si algo falla no se vende nada
         $varios = count($data['items']) > 1;
-        $lineas = collect($data['items'])->map(function ($it) use ($cliente, $productos, $varios) {
+        $sinStock = $r->boolean('sin_stock');
+        $lineas = collect($data['items'])->map(function ($it) use ($cliente, $productos, $varios, $sinStock) {
             $p = $productos[(int) $it['producto_id']];
             $precio = $p['precios'][$cliente->tipo] ?? null;
             abort_if(! $precio, 422, "No hay precio vigente de {$p['nombre']} para ese tipo de cliente");
             $vencido = $p['vencido'] > 0 ? " (otros {$p['vencido']} ya vencieron: regístralos en Pérdidas)" : '';
-            abort_if($p['stock'] < $it['cantidad'], 422, ($varios ? "Solo hay {$p['stock']} de {$p['nombre']} en stock" : "Solo hay {$p['stock']} en stock").$vencido);
+            abort_if(! $sinStock && $p['stock'] < $it['cantidad'], 422, ($varios ? "Solo hay {$p['stock']} de {$p['nombre']} en stock" : "Solo hay {$p['stock']} en stock").$vencido);
             return ['producto_id' => $p['id'], 'cantidad' => (float) $it['cantidad'], 'precio' => (float) $precio];
         });
 
-        $ids = DB::transaction(function () use ($lineas, $cliente, $r) {
+        $ids = DB::transaction(function () use ($lineas, $cliente, $r, $sinStock) {
             $ids = [];
             foreach ($lineas as $l) {
                 // sale primero lo que vence primero; si un lote no alcanza, sigue con el siguiente (una fila por lote)
@@ -166,14 +170,10 @@ class ComprasAppController extends Controller
                     if ($falta <= 0.005) break;
                     $cant = round(min($falta, $lote->queda), 2);
                     $falta = round($falta - $cant, 2);
-                    $ids[] = DB::table('ventas')->insertGetId([
-                        'uuid' => (string) Str::uuid(), 'nota_id' => $ids[0] ?? null, 'cliente_id' => $cliente->id,
-                        'producto_id' => $l['producto_id'], 'lote_id' => $lote->id, 'cantidad' => $cant,
-                        'precio_unitario' => $l['precio'], 'total' => round($l['precio'] * $cant, 2),
-                        'registrada_por' => $r->user()->id, 'vendida_en' => now(), 'created_at' => now(), 'updated_at' => now(),
-                    ]);
+                    $ids[] = $this->filaVendida($ids, $cliente->id, $l, $lote->id, $cant, $r->user()->id);
                 }
-                abort_if($falta > 0.005, 422, 'Alguien vendió al mismo tiempo y ya no alcanza el stock. Vuelve a intentar.');
+                abort_if($falta > 0.005 && ! $sinStock, 422, 'Alguien vendió al mismo tiempo y ya no alcanza el stock. Vuelve a intentar.');
+                if ($falta > 0.005) $ids[] = $this->filaVendida($ids, $cliente->id, $l, null, $falta, $r->user()->id); // sin stock: sin lote
             }
             // con varios productos, la primera fila también lleva la nota (así se encuentran todas)
             if (count($ids) > 1) DB::table('ventas')->where('id', $ids[0])->update(['nota_id' => $ids[0]]);
@@ -194,6 +194,16 @@ class ComprasAppController extends Controller
             'correo' => $data['correo'] ?? null,
             'correo_enviado' => ! empty($data['correo']) && ! $errorCorreo,
             'correo_error' => $errorCorreo], 201);
+    }
+
+    private function filaVendida(array $ids, int $clienteId, array $l, ?int $loteId, float $cant, int $usuarioId): int
+    {
+        return DB::table('ventas')->insertGetId([
+            'uuid' => (string) Str::uuid(), 'nota_id' => $ids[0] ?? null, 'cliente_id' => $clienteId,
+            'producto_id' => $l['producto_id'], 'lote_id' => $loteId, 'cantidad' => $cant,
+            'precio_unitario' => $l['precio'], 'total' => round($l['precio'] * $cant, 2),
+            'registrada_por' => $usuarioId, 'vendida_en' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
     }
 
     /** GET /api/v1/compras/movimientos — insumos y ventas, lo más reciente primero. */

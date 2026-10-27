@@ -103,4 +103,20 @@ class VentaPorVencerTest extends TestCase
         $this->vender(1)->assertCreated();
         $this->assertNotSame($pronto, (int) DB::table('ventas')->orderByDesc('id')->value('lote_id'));
     }
+
+    public function test_sin_stock_se_vende_si_se_pide_y_lo_cubre_el_proximo_lote(): void
+    {
+        $this->lote('L-1', 3, 20, 5);
+
+        $this->postJson('/api/v1/compras/ventas', ['cliente_id' => $this->cliente, 'producto_id' => $this->queso, 'cantidad' => 5, 'sin_stock' => true])
+            ->assertCreated()->assertJson(['total' => 100]);
+        $this->assertSame([[3.0, true], [2.0, false]], DB::table('ventas')->orderBy('id')->get()
+            ->map(fn ($v) => [(float) $v->cantidad, $v->lote_id !== null])->all());
+        $this->assertEquals(-2, \App\Services\Mermas::stockProducto($this->queso));
+
+        // al cerrar el siguiente lote, los 2 que faltaban salen de ahí
+        $this->lote('L-2', 10, 30, 0);
+        $p = collect($this->getJson('/api/v1/compras/ventas-datos')->json('productos'))->firstWhere('id', $this->queso);
+        $this->assertEquals(8, $p['stock']);
+    }
 }

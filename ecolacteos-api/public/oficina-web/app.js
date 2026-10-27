@@ -857,8 +857,6 @@ function oficina() {
       if (n >= 2 && !this.clienteVenta()) { f.paso = 1; return (f.error = 'Elige a quién le vendes'); }
       if (n >= 3) {
         if (!this.lineasVenta().length) { f.paso = 2; return (f.error = 'Elige al menos un producto'); }
-        const sinStock = this.lineasVenta().find((l) => l.cantidad > l.p.stock);
-        if (sinStock) { f.paso = 2; return (f.error = `Solo hay ${num(sinStock.p.stock, 2)} de ${sinStock.p.nombre}`); }
       }
       f.paso = n;
     },
@@ -875,7 +873,7 @@ function oficina() {
     gruposVenta() {
       const todos = this.d.productos || [];
       const familias = todos.filter((p) => !p.base_id || !todos.some((b) => b.id === p.base_id)).map((base) => ({
-        base, sabores: [base, ...todos.filter((p) => p.base_id === base.id)].filter((p) => p.stock > 0),
+        base, sabores: [base, ...todos.filter((p) => p.base_id === base.id)].filter((p) => p.stock > 0 || p.activo), // sin stock también: se puede vender si el cliente lo pide
       })).filter((fa) => fa.sabores.length);
       const NOMBRES = { QUESO: '🧀 Quesos', YOGURT: '🥛 Yogurt', OTRO: 'Otros' };
       return ['QUESO', 'YOGURT', 'OTRO'].map((tipo) => ({
@@ -900,9 +898,7 @@ function oficina() {
       if (!p) return (f.error = f.familia ? 'Elige el sabor' : 'Elige un producto');
       const n = Number(f.cuantos);
       if (!(n > 0)) return (f.error = '¿Cuántos lleva?');
-      const total = (Number(f.cantidades[p.id]) || 0) + n;
-      if (total > p.stock) return (f.error = `Solo hay ${num(p.stock, 2)} ${p.unidad} de ${p.nombre}`);
-      f.cantidades[p.id] = String(total);
+      f.cantidades[p.id] = String((Number(f.cantidades[p.id]) || 0) + n); // si no alcanza, se avisa y se pregunta al registrar
       f.producto = null; f.familia = null; f.cuantos = '1'; f.error = null;
     },
     quitarProducto(p) { this.f.cantidades[p.id] = ''; },
@@ -922,8 +918,12 @@ function oficina() {
     vencePronto(p) { return (p?.lotes || []).some((l) => l.dias <= 7); },
     textoLotes(p, cantidad) {
       const ls = this.lotesQueSalen(p, cantidad);
-      return ls.map((l) => (ls.length > 1 ? num(l.cantidad, 2) + ' del ' : 'Sale del ') + 'lote ' + l.codigo + ', ' + this.cuandoVence(l)).join(' · ');
+      const falta = this.faltaStock(p, cantidad);
+      return [...ls.map((l) => (ls.length > 1 || falta ? num(l.cantidad, 2) + ' del ' : 'Sale del ') + 'lote ' + l.codigo + ', ' + this.cuandoVence(l)),
+        ...(falta ? [`⚠ ${num(falta, 2)} sin stock (sale del próximo lote)`] : [])].join(' · ');
     },
+    /** Cuánto de [cantidad] no hay en stock (0 si alcanza). */
+    faltaStock(p, cantidad) { return Math.max(0, Math.round((Number(cantidad) - Math.max(0, Number(p?.stock) || 0)) * 100) / 100); },
     clienteVenta() { return (this.d.clientes || []).find((c) => c.id === this.f.cliente); },
     /** Lo que lleva el cliente: [{ p, cantidad, precio, importe }] (precio según su tipo, 0 si aún no se eligió). */
     lineasVenta() {
@@ -981,15 +981,21 @@ function oficina() {
       const f = this.f; const lineas = this.lineasVenta(); const c = this.clienteVenta();
       if (!lineas.length) return (f.error = 'Escribe cuánto lleva de cada producto');
       if (!c) return (f.error = 'Elige el cliente');
-      const sinStock = lineas.find((l) => l.cantidad > l.p.stock);
-      if (sinStock) return (f.error = `Solo hay ${num(sinStock.p.stock, 2)} de ${sinStock.p.nombre} en stock`);
       const sinPrecio = lineas.find((l) => !l.precio);
       if (sinPrecio) return (f.error = `${sinPrecio.p.nombre} no tiene precio para ${TIPO_CLIENTE[c.tipo] || c.tipo}: ponlo en Configuración → Precios`);
       if (f.correo && !esCorreo(f.correo)) return (f.error = 'Ese correo no es válido (déjalo vacío si no quieres enviarlo)');
+      // el cliente lo pide y no hay: se puede vender igual, pero se pregunta primero
+      const faltan = lineas.filter((l) => this.faltaStock(l.p, l.cantidad) > 0);
+      if (faltan.length && !(await this.preguntar({
+        titulo: '¿Vender sin stock?', icono: '⚠', tono: 'aviso', si: 'Sí, vender igual', no: 'No, corregir',
+        texto: 'No hay suficiente en stock. Lo que falta queda vendido sin lote y se descuenta del próximo lote que cierres (el stock queda en negativo).',
+        filas: faltan.map((l) => ({ k: l.p.nombre, v: `hay ${num(Math.max(0, l.p.stock), 2)}, faltan ${num(this.faltaStock(l.p, l.cantidad), 2)}`, clase: 'ojo' })),
+      }))) return;
       f.enviando = true; f.error = null;
       try {
         const r = await this.api('/compras/ventas', {
           cliente_id: c.id, items: lineas.map((l) => ({ producto_id: l.p.id, cantidad: l.cantidad })), correo: f.correo ? f.correo.trim() : null,
+          sin_stock: faltan.length > 0,
         });
         this.aviso = {
           texto: `✓ Venta registrada: ${soles(r.total)} a ${c.nombre} · ${r.numero}` +
