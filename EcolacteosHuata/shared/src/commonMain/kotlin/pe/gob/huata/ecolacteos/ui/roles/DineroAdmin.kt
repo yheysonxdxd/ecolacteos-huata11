@@ -28,7 +28,7 @@ import pe.gob.huata.ecolacteos.ui.componentes.*
  * y se paga el viernes en efectivo o por Yape.
  */
 object DineroAdmin {
-    var vista by mutableStateOf(0)            // 0 = ventas, 1 = pagos
+    var vista by mutableStateOf(0)            // 0 = ventas, 1 = pagos, 2 = lo que se debe
     var semana by mutableStateOf<String?>(null) // lunes elegido; null = última cerrada
     var version by mutableStateOf(0)
     var mensaje by mutableStateOf<String?>(null)
@@ -38,10 +38,14 @@ object DineroAdmin {
 fun DineroReal(e: EstadoAdmin) {
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.padding(start = Medidas.Pantalla, end = Medidas.Pantalla, top = 12.dp)) {
-            Segmentos(listOf("Ventas", "Pagos a proveedores"), DineroAdmin.vista) { DineroAdmin.vista = it }
+            Segmentos(listOf("Ventas", "Pagos", "Lo que se debe"), DineroAdmin.vista) { DineroAdmin.vista = it; DineroAdmin.mensaje = null }
         }
         Box(Modifier.weight(1f)) {
-            if (DineroAdmin.vista == 0) NegocioReal(e) else PagosProveedores()
+            when (DineroAdmin.vista) {
+                0 -> NegocioReal(e)
+                1 -> PagosProveedores()
+                else -> DeudasProveedores()
+            }
         }
     }
 }
@@ -127,9 +131,86 @@ private fun PagosProveedores() {
     abierta?.let { b -> HojaBoleta(b, onCerrar = { abierta = null }) }
 }
 
-/** Pide efectivo o Yape y registra el pago de las boletas [ids]. */
+/**
+ * Todo lo que se le debe a cada proveedor, sin ir semana por semana (como Dinero → Lo que se debe
+ * en la web): el que espera desde hace más arriba; al tocarlo se ven sus semanas sin pagar.
+ */
 @Composable
-private fun DialogoPago(titulo: String, texto: String, ids: List<Long>, onCerrar: () -> Unit) {
+private fun DeudasProveedores() {
+    var pagar by remember { mutableStateOf<Triple<String, String, List<Long>>?>(null) } // título, texto, boletas
+    var verDias by remember { mutableStateOf<JsonObject?>(null) }
+    val abiertos = remember { mutableStateMapOf<String, Boolean>() }
+    var buscar by remember { mutableStateOf("") }
+
+    CargaServidor("/api/v1/admin/pagos/deudas", clave = DineroAdmin.version) { d, _ ->
+        val provs = d.lista("proveedores")
+        val q = buscar.trim().lowercase()
+        PantallaScroll {
+            DineroAdmin.mensaje?.let { AvisoCampo(it) }
+            TarjetaDato(
+                "SE DEBE A PROVEEDORES", if (d.num("total") > 0) soles(d.num("total")) else "✓ No se debe nada",
+                apoyo = "${provs.size} ${if (provs.size == 1) "proveedor" else "proveedores"} · ${d.num("cuantas").toInt()} boletas sin pagar · " +
+                    "semanas cerradas hasta el ${fechaCorta(d.txt("hasta"))}",
+                destacada = true,
+            )
+            if (d.num("cuantas") > 1) BotonPrimario("Pagar todo (${soles(d.num("total"))})") {
+                pagar = Triple("Pagar todo lo que se debe", "${soles(d.num("total"))} a ${provs.size} proveedores. ¿Cómo se pagó?",
+                    provs.flatMap { p -> p.lista("semanas").map { it.num("id").toLong() } })
+            }
+            if (provs.size > 5) Campo(buscar, { buscar = it.take(40) }, "Buscar por nombre, DNI, comunidad o vehículo")
+            if (provs.isEmpty()) AvisoCampo("No se le debe a nadie: todas las semanas cerradas están pagadas.")
+            provs.filter { p -> q.isEmpty() || listOf("nombre", "dni", "comunidad", "vehiculo").any { p.txt(it).lowercase().contains(q) } }.forEach { p ->
+                val clave = p.txt("proveedor_id")
+                val semanas = p.lista("semanas")
+                val abierto = abiertos[clave] == true
+                Tarjeta(borde = if (abierto) Altiplano.VerdeBorde else Altiplano.Borde, onClick = { abiertos[clave] = !abierto }) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(p.txt("nombre"), style = Texto.Fila, color = Altiplano.Texto)
+                            Text("${p.txt("comunidad")} · ${p.txt("vehiculo")} · se le debe desde el ${fechaCorta(p.txt("desde"))}",
+                                style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+                            Text((if (semanas.size == 1) "1 semana" else "${semanas.size} semanas") + if (abierto) " ▴" else " ▾",
+                                style = Texto.Apoyo, color = Altiplano.Aviso)
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(soles(p.num("total")), style = Texto.Fila, color = Altiplano.Texto)
+                            TextButton(onClick = {
+                                pagar = Triple("Pagar a ${p.txt("nombre")}", "Todo lo que se le debe: ${soles(p.num("total"))}. ¿Cómo se pagó?",
+                                    semanas.map { it.num("id").toLong() })
+                            }) { Text("Pagar", color = Altiplano.Exito) }
+                        }
+                    }
+                    if (abierto) semanas.forEach { s ->
+                        HorizontalDivider(color = Altiplano.BordeSuave)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Semana ${fechaCorta(s.txt("inicio"))} – ${fechaCorta(s.txt("fin"))}", style = Texto.Cuerpo, color = Altiplano.Texto)
+                                Text("${formatear(s.num("litros"))} L aceptados · ${soles(s.num("monto"))}", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+                            }
+                            TextButton(onClick = {
+                                verDias = buildJsonObject {
+                                    put("id", s.num("id").toLong()); put("proveedor", p.txt("nombre")); put("dni", p.txt("dni"))
+                                    put("comunidad", p.txt("comunidad")); put("vehiculo", p.txt("vehiculo"))
+                                    put("monto", s.num("monto")); put("litros", s.num("litros")); put("estado", "PENDIENTE")
+                                }
+                            }) { Text("Ver días", color = Altiplano.CelesteAcento) }
+                            if (semanas.size > 1) TextButton(onClick = {
+                                pagar = Triple("Pagar a ${p.txt("nombre")}", "Semana del ${fechaCorta(s.txt("inicio"))}: ${soles(s.num("monto"))}. ¿Cómo se pagó?",
+                                    listOf(s.num("id").toLong()))
+                            }) { Text("Pagar esta", color = Altiplano.Exito) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    pagar?.let { (titulo, texto, ids) -> DialogoPago(titulo, texto, ids, onCerrar = { pagar = null }) }
+    verDias?.let { b -> HojaBoleta(b, onCerrar = { verDias = null }) }
+}
+
+/** Pide efectivo o Yape y registra el pago de las boletas [ids]; [alPagar] avisa a quien lo abrió (la ficha del Padrón se recarga). */
+@Composable
+internal fun DialogoPago(titulo: String, texto: String, ids: List<Long>, onCerrar: () -> Unit, alPagar: (String) -> Unit = {}) {
     val scope = rememberCoroutineScope()
     var enviando by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -144,6 +225,7 @@ private fun DialogoPago(titulo: String, texto: String, ids: List<Long>, onCerrar
                 })
                 DineroAdmin.mensaje = "✓ Se registraron ${r.txt("pagadas")} pagos por ${soles(r.num("total"))} (${metodoTexto(metodo)})"
                 DineroAdmin.version++
+                alPagar(DineroAdmin.mensaje!!)
                 onCerrar()
             } catch (t: Throwable) {
                 error = t.message ?: "sin conexión"

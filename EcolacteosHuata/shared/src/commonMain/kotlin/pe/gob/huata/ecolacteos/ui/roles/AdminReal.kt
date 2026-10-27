@@ -1,10 +1,16 @@
 package pe.gob.huata.ecolacteos.ui.roles
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
@@ -20,6 +26,13 @@ object AdminPestanas {
     var padron by mutableStateOf(0)
     var planta by mutableStateOf(0)
     var calidad by mutableStateOf(0)
+}
+
+/** Acopio → Totales → Calendario: el mes a la vista y el día tocado (vacíos = el último con entregas). */
+object AcopioCalendario {
+    var activo by mutableStateOf(false)
+    var mes by mutableStateOf<String?>(null)
+    var fecha by mutableStateOf<String?>(null)
 }
 
 /**
@@ -71,14 +84,90 @@ fun ContenidoAdminReal(ruta: String, e: EstadoAdmin) {
     }
 }
 
+/** Un mes de lunes a domingo: cada día con sus litros (verde más fuerte = más leche); tocar uno muestra sus totales. */
+@Composable
+private fun CalendarioMes(m: JsonObject) {
+    val cal = AcopioCalendario
+    val dias = m.lista("dias").associateBy { it.txt("fecha") }
+    val max = maxOf(dias.values.maxOfOrNull { it.num("litros") } ?: 0.0, 1.0)
+    val (anio, mes) = m.txt("mes").split("-").map { it.toInt() }
+    val ultimoDia = when (mes) { 2 -> if (anio % 4 == 0 && (anio % 100 != 0 || anio % 400 == 0)) 29 else 28; 4, 6, 9, 11 -> 30; else -> 31 }
+    // día de la semana del 1 (lunes = 0), con la fórmula de Zeller
+    val antes = run {
+        val (a, mm) = if (mes < 3) (anio - 1) to (mes + 12) else anio to mes
+        val h = (1 + 13 * (mm + 1) / 5 + a % 100 + (a % 100) / 4 + (a / 100) / 4 + 5 * (a / 100)) % 7 // 0 = sábado
+        (h + 5) % 7
+    }
+    val celdas: List<Int?> = List(antes) { null } + (1..ultimoDia).toList()
+    Flechitas(
+        nombreMes(m.txt("mes")).replaceFirstChar { it.uppercase() },
+        "${formatear(m.num("litros"), 0)} L en el mes · ${dias.size} días con acopio",
+        onAnterior = { cal.mes = m.txt("anterior"); cal.fecha = null },
+        onSiguiente = m.txt("siguiente").takeIf { it.isNotEmpty() }?.let { { cal.mes = it; cal.fecha = null } },
+    )
+    Tarjeta {
+        Row { listOf("lu", "ma", "mi", "ju", "vi", "sá", "do").forEach { Text(it, Modifier.weight(1f), style = Texto.Apoyo, color = Altiplano.TextoTerciario, textAlign = TextAlign.Center) } }
+        celdas.chunked(7).forEach { semana ->
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 4.dp)) {
+                (0 until 7).forEach { k ->
+                    val dia = semana.getOrNull(k)
+                    if (dia == null) Spacer(Modifier.weight(1f)) else {
+                        val fecha = "${m.txt("mes")}-${dia.toString().padStart(2, '0')}"
+                        val x = dias[fecha]
+                        val futuro = fecha > m.txt("hoy")
+                        val elegido = fecha == cal.fecha
+                        val nivel = x?.let { (it.num("litros") / max).coerceIn(0.15, 1.0).toFloat() } ?: 0f
+                        Column(
+                            Modifier.weight(1f).height(50.dp).clip(RoundedCornerShape(8.dp))
+                                .background(if (x != null) Altiplano.Exito.copy(alpha = 0.15f + 0.5f * nivel) else Altiplano.Superficie)
+                                .border(if (elegido) 2.dp else 1.dp, if (elegido) Altiplano.Exito else Altiplano.Borde, RoundedCornerShape(8.dp))
+                                .clickable(enabled = !futuro) { cal.fecha = fecha }
+                                .padding(4.dp),
+                        ) {
+                            Text("$dia", style = Texto.Apoyo, color = if (fecha == m.txt("hoy")) Altiplano.Aviso else if (futuro) Altiplano.TextoApagado else Altiplano.TextoSecundario)
+                            x?.let { Text(formatear(it.num("litros"), 0), style = Texto.Apoyo, color = Altiplano.Texto, maxLines = 1) }
+                        }
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text("Toca un día para ver sus totales abajo.", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+    }
+}
+
 @Composable
 private fun TotalesReal(e: EstadoAdmin) {
-    val periodo = listOf("dia", "semana", "mes")[e.periodo]
-    CargaServidor("/api/v1/admin/totales?periodo=$periodo") { d, _ ->
+    val cal = AcopioCalendario
+    // con el calendario: primero el mes (litros por día) y luego los totales del día tocado
+    var mesDatos by remember { mutableStateOf<JsonObject?>(null) }
+    var errorCal by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(cal.activo, cal.mes) {
+        if (!cal.activo) return@LaunchedEffect
+        errorCal = null
+        try {
+            val m = Sesion.consultar("/api/v1/admin/acopio/calendario" + (cal.mes?.let { "?mes=$it" } ?: ""))
+            if (cal.fecha?.startsWith(m.txt("mes")) != true) cal.fecha = m.lista("dias").lastOrNull()?.txt("fecha") ?: (m.txt("mes") + "-01")
+            mesDatos = m
+        } catch (t: Throwable) { errorCal = t.message }
+    }
+    val ruta = when {
+        !cal.activo -> "/api/v1/admin/totales?periodo=" + listOf("dia", "semana", "mes")[e.periodo]
+        cal.fecha != null -> "/api/v1/admin/totales?fecha=${cal.fecha}"
+        else -> null
+    }
+    val botones: @Composable () -> Unit = {
+        Segmentos(listOf("Día", "Semana", "Mes", "Calendario"), if (cal.activo) 3 else e.periodo) {
+            if (it == 3) cal.activo = true else { cal.activo = false; e.periodo = it }
+        }
+    }
+    if (ruta == null) { PantallaScroll { botones(); errorCal?.let { AvisoCampo(it, esAlerta = true) } ?: Text("Cargando el mes…", style = Texto.Apoyo, color = Altiplano.TextoTerciario) }; return }
+    CargaServidor(ruta) { d, _ ->
         val vehiculos = d.lista("vehiculos")
         val maximo = maxOf(vehiculos.maxOfOrNull { it.num("litros") } ?: 0.0, 1.0)
         PantallaScroll {
-            Segmentos(listOf("Día", "Semana", "Mes"), e.periodo) { e.periodo = it }
+            botones()
+            if (cal.activo) mesDatos?.let { CalendarioMes(it) }
             TarjetaDato(
                 "LITROS ACOPIADOS", formatear(d.num("litros"), 0), "L",
                 "${soles(d.num("a_pagar"))} a pagar a proveedores · " +

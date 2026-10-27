@@ -80,7 +80,10 @@ private fun FichaProveedor(id: Long) {
     var d by remember(id) { mutableStateOf<JsonObject?>(null) }
     var error by remember(id) { mutableStateOf<String?>(null) }
     var abierta by remember(id) { mutableStateOf<String?>(null) }
-    LaunchedEffect(id, semanas) {
+    var recargar by remember(id) { mutableStateOf(0) } // después de pagar, la ficha se vuelve a leer
+    var pagar by remember(id) { mutableStateOf<Triple<String, String, List<Long>>?>(null) }
+    var pagado by remember(id) { mutableStateOf<String?>(null) }
+    LaunchedEffect(id, semanas, recargar) {
         try { d = Sesion.consultar("/api/v1/admin/proveedores/$id/ficha?semanas=$semanas") } catch (t: Throwable) { error = t.message }
     }
     val f = d
@@ -113,6 +116,30 @@ private fun FichaProveedor(id: Long) {
             style = Texto.Apoyo, color = Altiplano.TextoTerciario)
         pagos?.obj("semana_en_curso")?.let { Text("Semana en curso: ${soles(it.num("monto"))}, se paga el ${fechaCorta(it.txt("se_paga"))}.", style = Texto.Apoyo, color = Altiplano.TextoTerciario) }
 
+        // lo que se le debe: pagarlo aquí mismo, todo junto o semana por semana
+        pagado?.let { AvisoCampo(it) }
+        val pendientes = pagos?.lista("pendientes").orEmpty()
+        if (pendientes.isNotEmpty()) Tarjeta(borde = Altiplano.AvisoBorde) {
+            val debe = pendientes.sumOf { it.num("monto") }
+            val nombre = p.txt("nombre")
+            Text("Se le debe ${soles(debe)}", style = Texto.Fila, color = Altiplano.Aviso)
+            Text(if (pendientes.size == 1) "1 semana sin pagar" else "${pendientes.size} semanas sin pagar · desde el ${fechaCorta(pendientes[0].txt("inicio"))}",
+                style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+            Spacer(Modifier.height(8.dp))
+            BotonPrimario(if (pendientes.size > 1) "Pagar todo (${soles(debe)})" else "Pagar ${soles(debe)}") {
+                pagar = Triple("Pagar a $nombre", "Todo lo que se le debe: ${soles(debe)}. ¿Cómo se pagó?", pendientes.map { it.num("id").toLong() })
+            }
+            if (pendientes.size > 1) pendientes.forEach { b ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Semana ${fechaCorta(b.txt("inicio"))} – ${fechaCorta(b.txt("fin"))}", style = Texto.Cuerpo, color = Altiplano.Texto, modifier = Modifier.weight(1f))
+                    Text(soles(b.num("monto")), style = Texto.Fila, color = Altiplano.Texto)
+                    TextButton(onClick = {
+                        pagar = Triple("Pagar a $nombre", "Semana del ${fechaCorta(b.txt("inicio"))}: ${soles(b.num("monto"))}. ¿Cómo se pagó?", listOf(b.num("id").toLong()))
+                    }) { Text("Pagar esta", color = Altiplano.Exito) }
+                }
+            }
+        }
+
         Text("ENTREGAS Y PAGOS POR SEMANA", style = Texto.Eyebrow, color = Altiplano.TextoTerciario)
         val lista = f.lista("semanas")
         if (lista.isEmpty()) Text("Todavía no entregó leche.", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
@@ -135,6 +162,10 @@ private fun FichaProveedor(id: Long) {
                         },
                         style = Texto.Apoyo, color = when (estado) { "PAGADO" -> Altiplano.Exito; "PENDIENTE" -> Altiplano.Aviso; else -> Altiplano.TextoSecundario },
                     )
+                    if (estado == "PENDIENTE" && s.txt("boleta_id").isNotEmpty() && s.num("monto") > 0) TextButton(onClick = {
+                        pagar = Triple("Pagar a ${p.txt("nombre")}", "Semana del ${fechaCorta(ini)}: ${soles(s.num("monto"))}. ¿Cómo se pagó?",
+                            listOf(s.num("boleta_id").toLong()))
+                    }) { Text("Pagar", color = Altiplano.Exito) }
                 }
                 if (abierta == ini) {
                     Spacer(Modifier.height(6.dp))
@@ -171,6 +202,9 @@ private fun FichaProveedor(id: Long) {
             }
             TextButton(onClick = { PadronUi.ficha = null; PadronUi.eliminar = f }) { Text("Eliminar proveedor", color = Altiplano.Alerta) }
         }
+    }
+    pagar?.let { (titulo, texto, ids) ->
+        DialogoPago(titulo, texto, ids, onCerrar = { pagar = null }, alPagar = { pagado = it; recargar++ })
     }
 }
 
