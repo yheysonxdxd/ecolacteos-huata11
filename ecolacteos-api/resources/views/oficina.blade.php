@@ -817,9 +817,10 @@
                     <div class="eti" x-text="g.nombre"></div>
                     <div class="chips-cliente">
                         <template x-for="fa in g.familias" :key="fa.base.id">
-                            <button class="btn gris" :class="{ elegido: f.familia === fa.base.id }" @click="elegirFamilia(fa)">
-                                <span x-text="fa.sabores.length > 1 ? fa.base.nombre.replace(/\s+natural$/i, '') : fa.base.nombre"></span>
-                                <small class="cuantos-sabores" x-show="fa.sabores.length > 1" x-text="fa.sabores.length + ' sabores'"></small>
+                            <button class="producto-venta" :class="{ elegido: f.familia === fa.base.id }" :style="'--tono: ' + colorReceta(fa.base)" @click="elegirFamilia(fa)">
+                                <span class="mini" aria-hidden="true" x-html="dibujoReceta(fa.base)"></span>
+                                <span class="txt"><strong x-text="fa.sabores.length > 1 ? fa.base.nombre.replace(/\s+natural$/i, '') : fa.base.nombre"></strong>
+                                    <small x-text="fa.sabores.length > 1 ? fa.sabores.length + ' sabores' : (fa.base.stock > 0 ? 'hay ' + num(fa.base.stock, 0) + ' ' + unidadProducto(fa.base) : 'sin stock')"></small></span>
                                 <small class="chip ojo" x-show="fa.sabores.some((p) => vencePronto(p))" title="Tiene un lote que vence esta semana: véndelo primero">⏳ vence pronto</small></button></template>
                     </div>
                 </div></template>
@@ -830,8 +831,9 @@
                     <div class="eti" x-text="'¿De qué sabor? · ' + familiaVenta().base.nombre"></div>
                     <div class="chips-cliente">
                         <template x-for="p in familiaVenta().sabores" :key="p.id">
-                            <button class="btn gris" :class="{ elegido: f.producto === p.id }" @click="elegirProducto(p)">
-                                <span x-text="nombreSabor(p)"></span> <small x-text="p.stock > 0 ? 'hay ' + num(p.stock, 0) : 'sin stock'"></small>
+                            <button class="producto-venta sabor" :class="{ elegido: f.producto === p.id }" :style="'--tono: ' + colorReceta(p)" @click="elegirProducto(p)">
+                                <i class="punto" aria-hidden="true"></i>
+                                <span class="txt"><strong x-text="nombreSabor(p)"></strong><small x-text="p.stock > 0 ? 'hay ' + num(p.stock, 0) : 'sin stock'"></small></span>
                                 <small class="chip ojo" x-show="vencePronto(p)" title="Tiene un lote que vence esta semana: véndelo primero">⏳</small></button></template>
                     </div>
                 </div></template>
