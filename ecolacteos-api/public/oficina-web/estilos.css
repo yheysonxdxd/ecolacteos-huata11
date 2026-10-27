@@ -1235,3 +1235,20 @@ input.buscador { padding-left: 38px; background-image: url("data:image/svg+xml,%
   .vehiculo-config input, .vehiculo-config select { min-width: 0; }
 }
 .tarjeta.vehiculo-config { min-width: 0; }
+
+/* --- Kardex más sencillo (26-oct): sin íconos, flechas ni gráfico; cifras y tabla quietas --- */
+.cifras-kardex { display: grid; grid-template-columns: repeat(3, 1fr); margin: 16px 0 12px; border-radius: var(--radio); background: var(--superficie); border: 1px solid var(--borde); }
+.cifras-kardex > div { padding: 14px 18px; display: flex; flex-direction: column; gap: 2px; }
+.cifras-kardex > div + div { border-left: 1px solid var(--borde); }
+.cifras-kardex span { font: 700 11px var(--letra-titulo); letter-spacing: .1em; text-transform: uppercase; color: var(--texto-3); }
+.cifras-kardex b { font: 800 22px var(--letra-titulo); font-variant-numeric: tabular-nums; }
+.cifras-kardex b.sale, .kardex-claro td.sale { color: #f0a35e; }
+.cifras-kardex small { font-size: 12.5px; color: var(--texto-3); }
+.kardex-claro td { padding: 11px 14px; vertical-align: top; }
+.kardex-claro tr:not(:first-child):hover td { background: transparent; }
+.kardex-claro .fecha-k { white-space: nowrap; }
+.kardex-claro .fecha-k small, .kardex-claro .quien { display: block; font-size: 12px; color: var(--texto-3); }
+.kardex-claro .que-kardex { display: block; }
+.kardex-claro td.num { font-weight: 700; white-space: nowrap; }
+.kardex-claro td.queda b { font-size: 15.5px; } .kardex-claro td.queda small { color: var(--texto-3); font-weight: 400; }
+@media (max-width: 640px) { .cifras-kardex { grid-template-columns: 1fr; } .cifras-kardex > div + div { border-left: 0; border-top: 1px solid var(--borde); } }

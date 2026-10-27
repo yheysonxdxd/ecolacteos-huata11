@@ -154,21 +154,6 @@ function oficina() {
         }).join('')}
         <text x="60" y="62" class="dona-centro">${centro}</text><text x="60" y="80" class="dona-debajo">${debajo}</text></svg>`;
     },
-    /** Línea de lo que va quedando en el kardex (viewBox 0 0 640 130), con la raya del mínimo si tiene. */
-    svgLineaSaldo(filas, minimo) {
-      const v = filas.map((m) => Number(m.saldo?.cantidad) || 0);
-      if (v.length < 2) return '';
-      const max = Math.max(...v, minimo || 0, 0.001), min = Math.min(0, ...v);
-      const X = (k) => 10 + (k / (v.length - 1)) * 620, Y = (x) => 112 - ((x - min) / (max - min || 1)) * 96;
-      const linea = v.map((x, k) => (k ? 'L' : 'M') + X(k).toFixed(1) + ' ' + Y(x).toFixed(1)).join(' ');
-      const ult = v.length - 1;
-      return `<svg viewBox="0 0 640 130" role="img" aria-label="Lo que quedó después de cada movimiento">
-        <path d="${linea} L${X(ult).toFixed(1)} 112 L10 112 Z" class="area-saldo"/>
-        ${minimo ? `<line x1="10" x2="630" y1="${Y(minimo)}" y2="${Y(minimo)}" class="minimo-saldo"/><text x="628" y="${Y(minimo) - 5}" class="g-eje" text-anchor="end">mínimo ${num(minimo, 2)}</text>` : ''}
-        <path d="${linea}" class="trazo-saldo"/>
-        <circle cx="${X(ult)}" cy="${Y(v[ult])}" r="5" class="fin-saldo"/>
-        <text x="${Math.min(X(ult), 600)}" y="${Math.max(14, Y(v[ult]) - 10)}" class="g-valor" text-anchor="middle">${num(v[ult], 2)}</text></svg>`;
-    },
     /** Ícono de línea de cada opción del menú (SVG 24×24, toma el color del texto). */
     iconoMenu(id) {
       const T = {
