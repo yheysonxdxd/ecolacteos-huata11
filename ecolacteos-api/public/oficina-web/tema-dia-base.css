@@ -1,76 +1,73 @@
 /* Ecolácteos Huata · Oficina · TEMA DE DÍA (lo hecho a mano; va después de tema-dia.css, que es el generado).
-   "Lago": blancos azulados del Titicaca, tarjetas blancas, el verde de la marca más profundo para que se lea
-   con luz de ventana, el menú azul lago profundo y los totorales al amanecer apenas visibles detrás.
-   La entrada sigue de noche sobre su foto.
+   "Papel": fondo cálido color papel, tarjetas blancas y el verde de la marca más profundo para que se lea
+   con luz de ventana. El menú se queda verde bosque y la entrada sigue de noche sobre su foto.
    ":not(#_)" no elige nada: solo le da más peso a estas reglas para que siempre ganen a las generadas. */
 
-:root[data-tema="dia"]:not(#_) {
+:root[data-tema="dia"] {
   color-scheme: light;
-  --fondo: #edf2f6; --superficie: #ffffff; --superficie-2: #f3f7fa; --borde: #d8e1e9;
-  --texto: #122130; --texto-2: #364a5c; --texto-3: #627487;
-  --verde: #2e8b57; --verde-suave: #e0f1ea; --verde-borde: #b0d8c5; --exito: #16804f;
+  --fondo: #f3f0e8; --superficie: #ffffff; --superficie-2: #f7f5ef; --borde: #e3ded1;
+  --texto: #17241c; --texto-2: #3d4f43; --texto-3: #66766b;
+  --verde: #2e8b57; --verde-suave: #e2f2e8; --verde-borde: #b6dbc4; --exito: #1d8150;
   --aviso: #94600a; --aviso-fondo: #fdf3dc; --aviso-borde: #ecd39b;
   --alerta: #c23838; --alerta-fondo: #fdecec; --alerta-borde: #f0c3c3;
   --ventana-fondo: #ffffff;
-  --sombra: 0 1px 2px rgba(20,44,70,.06), 0 10px 26px -16px rgba(20,44,70,.3);
-  --sombra-alta: 0 26px 56px -26px rgba(20,44,70,.4);
-  --anillo: 0 0 0 3px rgba(22,128,79,.22);
+  --sombra: 0 1px 2px rgba(40,52,32,.06), 0 10px 26px -16px rgba(40,52,32,.28);
+  --sombra-alta: 0 26px 56px -26px rgba(40,52,32,.38);
+  --anillo: 0 0 0 3px rgba(29,129,80,.22);
 }
 :root[data-tema="dia"]:not(#_) body { background: var(--fondo); }
 :root[data-tema="dia"]:not(#_) ::selection { background: rgba(46,139,87,.22); }
 :root[data-tema="dia"]:not(#_) :focus-visible { outline-color: var(--verde); }
-:root[data-tema="dia"]:not(#_) a:not(.login *) { color: #1b6aa3; }
+:root[data-tema="dia"]:not(#_) a:not(.login *) { color: #1d7a4b; }
 
-/* tarjetas: blancas, con sombra suave en vez de borde brillante */
+/* tarjetas: blancas sobre papel, con sombra suave en vez de borde brillante */
 :root[data-tema="dia"]:not(#_) .tarjeta, :root[data-tema="dia"]:not(#_) .lote-producto, :root[data-tema="dia"]:not(#_) .le-tile,
 :root[data-tema="dia"]:not(#_) .panel-mapa, :root[data-tema="dia"]:not(#_) .mapa-caja { box-shadow: var(--sombra); }
-:root[data-tema="dia"]:not(#_) input:not(.login *), :root[data-tema="dia"]:not(#_) select, :root[data-tema="dia"]:not(#_) textarea { background: #fff; border-color: #cfd9e2; color: var(--texto); }
-:root[data-tema="dia"]:not(#_) input:not(.login *)::placeholder, :root[data-tema="dia"]:not(#_) textarea::placeholder { color: #95a3b0; }
+:root[data-tema="dia"]:not(#_) input:not(.login *), :root[data-tema="dia"]:not(#_) select, :root[data-tema="dia"]:not(#_) textarea { background: #fff; border-color: #d9d3c4; color: var(--texto); }
+:root[data-tema="dia"]:not(#_) input:not(.login *)::placeholder, :root[data-tema="dia"]:not(#_) textarea::placeholder { color: #9aa39b; }
 :root[data-tema="dia"]:not(#_) .btn { color: #18412b; }
 :root[data-tema="dia"]:not(#_) .btn:hover { background: #d3ecdc; }
-:root[data-tema="dia"]:not(#_) .btn.gris { background: #fff; border-color: #cfd9e2; color: var(--texto-2); }
-:root[data-tema="dia"]:not(#_) .btn.gris:hover { background: #eaf0f5; }
+:root[data-tema="dia"]:not(#_) .btn.gris { background: #fff; border-color: #d9d3c4; color: var(--texto-2); }
+:root[data-tema="dia"]:not(#_) .btn.gris:hover { background: #f1eee6; }
 :root[data-tema="dia"]:not(#_) .btn.rojo { background: #fdecec; color: #a92e2e; }
-:root[data-tema="dia"]:not(#_) .velo { background: rgba(12,28,44,.5); backdrop-filter: blur(4px); }
-:root[data-tema="dia"]:not(#_) .ventana { box-shadow: 0 30px 80px -24px rgba(12,28,44,.45); }
+:root[data-tema="dia"]:not(#_) .velo { background: rgba(18,32,24,.52); backdrop-filter: blur(4px); }
+:root[data-tema="dia"]:not(#_) .ventana { box-shadow: 0 30px 80px -24px rgba(20,32,24,.45); }
 
-/* los totorales del Titicaca al amanecer detrás de todo, casi blancos: se adivinan, no molestan */
-:root[data-tema="dia"]:not(#_) .app::before {
-  background: linear-gradient(180deg, rgba(237,242,246,.9) 0%, rgba(237,242,246,.97) 45%, #edf2f6 100%),
-              url("img/amanecer-titicaca.jpg") center 60% / cover no-repeat; }
+/* el fondo de la app: los brillos de la noche, casi blancos sobre papel */
+:root[data-tema="dia"]:not(#_) .app::before { opacity: .55; }
 
-/* --- el menú: azul lago profundo, con los colores de noche dentro --- */
+/* --- el menú: verde bosque, con los mismos colores de noche dentro --- */
 :root[data-tema="dia"]:not(#_) nav.menu {
   --fondo: #0f1a24; --superficie: rgba(255,255,255,.07); --superficie-2: #1c2a38; --borde: rgba(255,255,255,.1);
-  --texto: #eef4f9; --texto-2: #c6daea; --texto-3: #93b4cc; --verde-suave: rgba(143,211,255,.16); --exito: #8fd3ff; --verde: #4cc38a;
+  --texto: #eef6f0; --texto-2: #c3d6c9; --texto-3: #8fb19c; --verde-suave: rgba(127,224,168,.16); --exito: #7fe0a8; --verde: #4cc38a;
   color: var(--texto);
-  background: linear-gradient(180deg, #154a72 0%, #0f3757 55%, #0a2840 100%);
-  border-right: 0; box-shadow: 4px 0 24px -12px rgba(8,30,50,.55);
+  background: linear-gradient(180deg, #174a33 0%, #11392a 55%, #0d2c20 100%);
+  border-right: 0; box-shadow: 4px 0 24px -12px rgba(10,40,25,.5);
 }
-:root[data-tema="dia"]:not(#_) nav.menu .marca em { color: #a9dcff; }
+:root[data-tema="dia"]:not(#_) nav.menu .marca em { color: #a8e6c2; }
 :root[data-tema="dia"]:not(#_) nav.menu .rol { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.1); }
 
-/* pestañas: con fondo propio sobre el azul claro */
+/* pestañas: con fondo propio sobre el papel */
 :root[data-tema="dia"]:not(#_) .pestanas { background: #fff; border-color: var(--borde); box-shadow: var(--sombra); }
 :root[data-tema="dia"]:not(#_) .pestanas button.activo { background: var(--verde-suave); color: #145c38; }
 
 /* mapa: el panel sí es de día; los pines y nombres siguen sobre el satélite */
 :root[data-tema="dia"]:not(#_) .rm-cabeza { background: linear-gradient(160deg, rgba(46,139,87,.12), transparent 75%); }
-:root[data-tema="dia"]:not(#_) .rm-anillo { background: conic-gradient(var(--exito) var(--p), #e3eaf0 0); }
-:root[data-tema="dia"]:not(#_) .rm-barra, :root[data-tema="dia"]:not(#_) .lf-mini, :root[data-tema="dia"]:not(#_) .lf-riel { background-color: #e3eaf0; }
-:root[data-tema="dia"]:not(#_) .lf-falta { background: rgba(227,234,240,.92); }
+:root[data-tema="dia"]:not(#_) .rm-anillo { background: conic-gradient(var(--exito) var(--p), #ebe7dc 0); }
+:root[data-tema="dia"]:not(#_) .rm-barra, :root[data-tema="dia"]:not(#_) .lf-mini, :root[data-tema="dia"]:not(#_) .lf-riel { background-color: #ebe7dc; }
+:root[data-tema="dia"]:not(#_) .lf-falta { background: rgba(235,231,220,.92); }
 
 /* lotes: colores de estado más profundos para que se lean sobre blanco */
 :root[data-tema="dia"]:not(#_) .lotes-estados, :root[data-tema="dia"]:not(#_) .lote-fila, :root[data-tema="dia"]:not(#_) .lp-barra {
-  --e-nuevo: #1f74b8; --e-bien: #16804f; --e-por_vencer: #b07400; --e-vencido: #c23838;
+  --e-nuevo: #1f74b8; --e-bien: #1d8150; --e-por_vencer: #b07400; --e-vencido: #c23838;
 }
-:root[data-tema="dia"]:not(#_) .lf-hoy { box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 60%, transparent), 0 1px 4px rgba(12,28,44,.35); }
+:root[data-tema="dia"]:not(#_) .lf-hoy { box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 60%, transparent), 0 1px 4px rgba(20,40,28,.35); }
 
 /* cifras grandes con degradado: de blanco a menta en la noche, de verde hoja a bosque de día */
 :root[data-tema="dia"]:not(#_) .tarjeta .valor.enorme, :root[data-tema="dia"]:not(#_) .grande-litros .valor.enorme {
   background: linear-gradient(180deg, #2a9a62, #145c38); -webkit-background-clip: text; background-clip: text; color: transparent; }
 /* los puntitos de color (yogurt crema, queso dorado) necesitan un borde fino sobre blanco */
-:root[data-tema="dia"]:not(#_) .punto { box-shadow: inset 0 0 0 1px rgba(18,33,48,.2); }
+:root[data-tema="dia"]:not(#_) .punto { box-shadow: inset 0 0 0 1px rgba(22,38,28,.2); }
 
 /* --- la entrada se queda de noche: va sobre la foto --- */
 :root[data-tema="dia"]:not(#_) .login {

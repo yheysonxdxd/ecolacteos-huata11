@@ -191,7 +191,7 @@ function oficina() {
       const aplicar = () => {
         this.tema = nuevo;
         document.documentElement.dataset.tema = nuevo;
-        document.querySelector('meta[name=theme-color]').content = nuevo === 'dia' ? '#edf2f6' : '#0f1a24';
+        document.querySelector('meta[name=theme-color]').content = nuevo === 'dia' ? '#f3f0e8' : '#0f1a24';
       };
       try { localStorage.setItem('tema', nuevo); } catch { /* sin almacenamiento: dura hasta recargar */ }
       const quieto = matchMedia('(prefers-reduced-motion: reduce)').matches;

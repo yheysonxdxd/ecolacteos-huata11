@@ -4,7 +4,7 @@ Uso (desde ecolacteos-api, cada vez que se cambien colores en estilos.css):
     python scripts/tema-dia.py public/oficina-web/estilos.css public/oficina-web/tema-dia.css
 
 Cada color escrito a mano en estilos.css se pasa a su versión de día según para qué se usa:
-fondos oscuros -> blancos azulados, letras claras -> oscuras, sombras más suaves, acentos más profundos.
+fondos oscuros -> papel claro, letras claras -> oscuras, sombras más suaves, acentos más profundos.
 Lo que va sobre foto o satélite (entrada, mapa) y la barra del menú se quedan como están.
 """
 import colorsys
@@ -69,8 +69,8 @@ def de_hls(h, l, s):
     r, g, b = colorsys.hls_to_rgb(h, l, s)
     return r * 255, g * 255, b * 255
 
-TINTA = (18, 33, 48)  # el "negro" del tema de día: azul lago muy oscuro
-TONO = 0.57  # el tono de los grises de día: azul del lago (0.57 ≈ 205°)
+TINTA = (22, 38, 28)  # el "negro" del tema de día: verde muy oscuro
+TONO = 0.17  # el tono de los grises de día: papel cálido (0.17 ≈ 60°)
 
 # acentos conocidos: su versión para letra sobre fondo claro
 ACENTO_LETRA = {
@@ -106,7 +106,7 @@ def dia(c, prop, fondo_de_color):
         if es_neutro(r, g, b):
             if l > 0.5:  # letra clara -> oscura
                 nl = 0.12 + (1 - l) * 0.9
-                return fmt(*de_hls(TONO, min(nl, 0.55), 0.22), a)
+                return fmt(*de_hls(0.36, min(nl, 0.55), 0.18), a)  # letras: verde muy oscuro
             return c
         if l > 0.5:  # otro acento claro: más profundo
             return fmt(*de_hls(h, 0.36, min(1, s * 0.9 + 0.1)), a)
@@ -122,10 +122,10 @@ def dia(c, prop, fondo_de_color):
             if a < 0.999:
                 return fmt(255, 255, 255, min(1, a * 0.9 + 0.08))
             if borde:
-                return fmt(*de_hls(TONO, 0.87, 0.22), 1)
+                return fmt(*de_hls(0.2, 0.86, 0.12), 1)
             nl = 0.955 + (l - 0.06) * 0.15
-            return fmt(*de_hls(TONO, min(nl, 0.995), 0.3), 1)
-        return fmt(*de_hls(TONO, 1 - l * 0.45, max(s * 0.4, 0.12)), a)  # grises medios
+            return fmt(*de_hls(TONO, min(nl, 0.995), 0.2), 1)
+        return fmt(*de_hls(0.25, 1 - l * 0.45, s * 0.4), a)  # grises medios
     # colores con tono
     if l < 0.4:  # rellenos oscuros con tono (verde suave, rojo apagado) -> tinte claro
         return fmt(*de_hls(h, 0.78 if borde else 0.93, min(0.6, s + 0.15)), a)

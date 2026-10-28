@@ -16,7 +16,7 @@
         try { t = localStorage.getItem('tema'); } catch (e) {}
         if (t !== 'dia' && t !== 'noche') t = window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches ? 'dia' : 'noche';
         document.documentElement.dataset.tema = t;
-        if (t === 'dia') document.querySelector('meta[name=theme-color]').content = '#edf2f6';
+        if (t === 'dia') document.querySelector('meta[name=theme-color]').content = '#f3f0e8';
     })();
 </script>
 <link rel="stylesheet" href="/oficina-web/vendor/leaflet/leaflet.css">
