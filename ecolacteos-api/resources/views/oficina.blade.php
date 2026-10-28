@@ -1667,6 +1667,13 @@
                     <span :style="'--tono: ' + colorReceta(productoVisual(p.nombre))"><i class="punto"></i><b x-text="num(p.stock, 2) + ' ' + p.unidad"></b> <span x-text="p.nombre"></span></span>
                 </template>
             </div>
+            {{-- leche de días anteriores que nunca se procesó: ya no está en el tanque, pero tampoco se registró como pérdida --}}
+            <p class="pm-nota" x-show="d.leche?.vieja > 0.5" style="margin: -4px 0 10px"
+               x-text="'ℹ Además hay ' + num(d.leche?.vieja, 0) + ' L de leche de días anteriores que nunca entró a un lote ni se registró como pérdida (no cuenta en el tanque).'"></p>
+            <template x-for="p in (d.productos || []).filter((p) => p.por_entregar > 0)" :key="'pe' + p.id">
+                <p class="pm-nota" style="margin: -4px 0 10px"
+                   x-text="'ℹ ' + p.nombre + ': se vendieron ' + num(p.por_entregar, 2) + ' ' + p.unidad + ' sin stock; salen del próximo lote.'"></p>
+            </template>
             <h2>Últimas pérdidas</h2>
             <div class="movimientos">
                 <template x-for="m in d.mermas || []" :key="m.id"><div class="movimiento perdida">

@@ -178,7 +178,8 @@ class Kardex
         }
 
         $item = ['tipo' => 'leche', 'id' => null, 'nombre' => 'Leche cruda (aceptada)', 'unidad' => 'L',
-            'stock' => Mermas::lecheSinUsar(), 'minimo' => 0];
+            // todo lo que entró menos lo que salió, para que cuadre con los movimientos (también la leche vieja que nunca se usó)
+            'stock' => round(Mermas::lecheSinUsar() + Mermas::lecheVieja(), 2), 'minimo' => 0];
 
         return [$item, self::ordenar($lista), $base];
     }

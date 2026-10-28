@@ -67,6 +67,40 @@ class MermasTest extends TestCase
         $this->assertEquals(30, $k['totales']['saldo']['cantidad']);
     }
 
+    public function test_la_leche_vieja_no_cuenta_como_sin_procesar_ni_se_descuenta_al_perder(): void
+    {
+        $vieja = $this->entrega(500, $this->proveedorId, now('America/Lima')->subDays(10)->toDateString());
+        $this->entrega(8, $this->otroProveedor(), now('America/Lima')->toDateString());
+
+        Sanctum::actingAs($this->usuarios['OPERARIO']);
+        $d = $this->getJson('/api/v1/planta/mermas')->assertOk()->json('leche');
+        $this->assertEquals(8, $d['sin_usar']); // lo mismo que el tanque de Producir
+        $this->assertEquals(8, $d['tanque']);
+        $this->assertEquals(500, $d['vieja']);
+
+        // la pérdida sale del tanque, no de la entrega de hace 10 días
+        $this->postJson('/api/v1/planta/mermas', ['tipo' => 'LECHE', 'cantidad' => 9, 'motivo' => 'DERRAMADA'])->assertStatus(422);
+        $this->postJson('/api/v1/planta/mermas', ['tipo' => 'LECHE', 'cantidad' => 3, 'motivo' => 'DERRAMADA'])
+            ->assertCreated()->assertJsonPath('stock', 5);
+        $this->assertSame(0, DB::table('merma_entrega')->where('entrega_id', $vieja)->count());
+
+        // el kardex sigue cuadrando con todo lo que entró y salió
+        Sanctum::actingAs($this->usuarios['COMPRAS']);
+        $this->assertEquals(505, $this->getJson('/api/v1/compras/kardex?tipo=leche')->json('totales.saldo.cantidad'));
+    }
+
+    public function test_lo_vendido_sin_stock_no_sale_como_stock_negativo_en_perdidas(): void
+    {
+        DB::table('ventas')->insert(['uuid' => (string) Str::uuid(), 'cliente_id' => DB::table('clientes')->insertGetId(['nombre' => 'Mercado Unión', 'tipo' => 'DIRECTO']), 'producto_id' => $this->queso,
+            'cantidad' => 0.3, 'precio_unitario' => 5, 'total' => 1.5, 'registrada_por' => $this->usuarios['COMPRAS']->id,
+            'vendida_en' => now(), 'created_at' => now(), 'updated_at' => now()]);
+
+        Sanctum::actingAs($this->usuarios['OPERARIO']);
+        $p = collect($this->getJson('/api/v1/planta/mermas')->assertOk()->json('productos'))->firstWhere('id', $this->queso);
+        $this->assertEquals(0, $p['stock']);
+        $this->assertEquals(0.3, $p['por_entregar']);
+    }
+
     public function test_lote_usa_lo_que_queda_de_una_entrega_a_medias(): void
     {
         $this->entrega(100, $this->proveedorId, now('America/Lima')->toDateString());

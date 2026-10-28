@@ -25,13 +25,18 @@ class MermasController extends Controller
     /** GET /api/v1/compras/mermas (y planta/mermas) — motivos, qué hay, lotes, las últimas pérdidas y lo perdido del mes. */
     public function index()
     {
-        $productos = DB::table('productos')->orderBy('id')->get()->map(fn ($p) => [
-            'id' => $p->id, 'nombre' => $p->nombre, 'tipo' => $p->tipo, 'unidad' => explode(' ', $p->unidad)[0],
-            'stock' => Mermas::stockProducto($p->id),
-            // lotes de los que puede ser (opcional al registrar): los que todavía tienen algo, lo que vence primero arriba
-            'lotes' => Mermas::lotesConStock($p->id)->map(fn ($l) => ['id' => $l->id, 'codigo' => $l->codigo,
-                'vence_el' => $l->vence_el, 'queda' => $l->queda, 'vencido' => $l->vencido])->values(),
-        ]);
+        $productos = DB::table('productos')->orderBy('id')->get()->map(function ($p) {
+            $stock = Mermas::stockProducto($p->id);
+            return [
+                'id' => $p->id, 'nombre' => $p->nombre, 'tipo' => $p->tipo, 'unidad' => explode(' ', $p->unidad)[0],
+                // vendido sin stock: el stock queda en negativo hasta el próximo lote; aquí se muestra 0 y lo que se debe aparte
+                'stock' => max(0, $stock),
+                'por_entregar' => max(0, -$stock),
+                // lotes de los que puede ser (opcional al registrar): los que todavía tienen algo, lo que vence primero arriba
+                'lotes' => Mermas::lotesConStock($p->id)->map(fn ($l) => ['id' => $l->id, 'codigo' => $l->codigo,
+                    'vence_el' => $l->vence_el, 'queda' => $l->queda, 'vencido' => $l->vencido])->values(),
+            ];
+        });
         $costos = Compras::costosUnitarios();
         $insumos = DB::table('insumos')->orderBy('nombre')->get()->map(fn ($i) => [
             'id' => $i->id, 'nombre' => $i->nombre, 'unidad' => $i->unidad, 'stock' => (float) $i->stock,
@@ -54,7 +59,8 @@ class MermasController extends Controller
 
         return response()->json([
             'motivos' => Mermas::MOTIVOS,
-            'leche' => ['sin_usar' => Mermas::lecheSinUsar(), 'tanque' => Formulas::litrosEnTanque(), 'precio' => Configuracion::precioLeche()],
+            'leche' => ['sin_usar' => Mermas::lecheSinUsar(), 'tanque' => Formulas::litrosEnTanque(),
+                'vieja' => Mermas::lecheVieja(), 'precio' => Configuracion::precioLeche()],
             'productos' => $productos,
             'insumos' => $insumos,
             'mermas' => $ultimas,

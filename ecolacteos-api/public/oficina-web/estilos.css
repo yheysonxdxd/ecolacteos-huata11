@@ -2170,6 +2170,7 @@ input[type="file"]::file-selector-button:hover { background: #245a3f; }
   background: var(--superficie); border: 1px solid var(--borde); }
 .pm-hay .punto { width: 9px; height: 9px; border-radius: 50%; background: var(--tono); }
 .pm-hay b { color: var(--texto); font-family: var(--letra-titulo); }
+.pm-nota { font-size: 12.5px; color: var(--texto-3, var(--texto-2)); margin: 0 0 8px; }
 .monto-perdida { text-align: right; }
 .monto-perdida b { display: block; font: 800 15px var(--letra-titulo); white-space: nowrap; }
 .monto-perdida small { font-size: 12.5px; color: var(--texto-3); font-variant-numeric: tabular-nums; }

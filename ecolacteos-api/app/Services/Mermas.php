@@ -124,14 +124,23 @@ class Mermas
         return $lotes->filter(fn ($l) => $l->queda > 0.005)->values();
     }
 
-    /** Toda la leche aceptada que todavía no entró a un lote ni se perdió. */
+    /**
+     * La leche sin procesar que de verdad está en el tanque (la de los últimos días, igual que en Producir).
+     * La de antes que nunca entró a un lote ni se registró como pérdida no cuenta: ver lecheVieja().
+     */
     public static function lecheSinUsar(): float
     {
-        return round((float) self::entregasConLeche()->get()->sum('restante'), 2);
+        return Formulas::litrosEnTanque();
+    }
+
+    /** Leche de días anteriores que nunca se procesó ni se registró como pérdida (ya no está en el tanque). */
+    public static function lecheVieja(): float
+    {
+        return round(max(0, (float) self::entregasConLeche()->get()->sum('restante') - Formulas::litrosEnTanque()), 2);
     }
 
     /**
-     * Registra la pérdida. La leche sale de las entregas más antiguas primero
+     * Registra la pérdida. La leche sale del tanque, de las entregas más antiguas primero
      * (la que lleva más tiempo es la que se malogra).
      */
     public static function registrar(array $d, int $usuarioId): int
@@ -141,7 +150,7 @@ class Mermas
             $ahora = now();
 
             if ($d['tipo'] === 'LECHE') {
-                $entregas = self::entregasConLeche()->lockForUpdate()->get();
+                $entregas = Formulas::entregasDisponibles()->lockForUpdate()->get();
                 $hay = round((float) $entregas->sum('restante'), 2);
                 abort_if($cant > $hay + 0.005, 422, "Solo hay $hay L de leche sin procesar.");
             } elseif ($d['tipo'] === 'INSUMO') {

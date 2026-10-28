@@ -38,6 +38,15 @@ fun PerdidasReal(base: String) {
                 FilaValor("Leche sin procesar", "${formatear(leche?.num("sin_usar") ?: 0.0)} L")
                 d.lista("productos").forEach { p -> FilaValor(p.txt("nombre"), "${formatear(p.num("stock"), 2)} ${p.txt("unidad")}") }
             }
+            // leche de días anteriores que nunca se usó, y lo vendido sin stock (sale del próximo lote)
+            (leche?.num("vieja") ?: 0.0).takeIf { it > 0.5 }?.let {
+                Text("Además hay ${formatear(it)} L de leche de días anteriores que nunca entró a un lote ni se registró como pérdida (no cuenta en el tanque).",
+                    style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+            }
+            d.lista("productos").filter { it.num("por_entregar") > 0 }.forEach { p ->
+                Text("${p.txt("nombre")}: se vendieron ${formatear(p.num("por_entregar"), 2)} ${p.txt("unidad")} sin stock; salen del próximo lote.",
+                    style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+            }
             Seccion("Últimas pérdidas")
             val ultimas = d.lista("mermas")
             if (ultimas.isEmpty()) Text("Todavía no se registró ninguna pérdida.", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
