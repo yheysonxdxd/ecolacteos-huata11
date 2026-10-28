@@ -1,12 +1,22 @@
 package pe.gob.huata.ecolacteos.ui.roles
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.serialization.json.JsonObject
 import pe.gob.huata.ecolacteos.datos.Rol
 import pe.gob.huata.ecolacteos.indiceDe
 import pe.gob.huata.ecolacteos.datos.AnalisisPendientes
@@ -50,8 +60,8 @@ fun MuestreoReal(irA: (Int) -> Unit) {
                 style = Texto.Cuerpo, color = Altiplano.TextoTerciario,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Tarjeta(Modifier.weight(1f)) { MiniCifra("Analizadas hoy", "$analizadas", Altiplano.Exito) }
-                Tarjeta(Modifier.weight(1f)) { MiniCifra("Sin analizar", "${todas.size}") }
+                Cifra(0, "✅", "Analizadas hoy", analizadas.toDouble(), "", "con el lactoscan", VERDE, Modifier.weight(1f)) {}
+                Cifra(1, "🧪", "Sin analizar", todas.size.toDouble(), "", "de hoy y ayer", if (todas.isEmpty()) VERDE else AMBAR, Modifier.weight(1f)) {}
             }
             OutlinedTextField(
                 value = buscar, onValueChange = { buscar = it.take(40) },
@@ -72,23 +82,54 @@ fun MuestreoReal(irA: (Int) -> Unit) {
                 if (grupo.isEmpty()) return@forEach
                 Seccion("$titulo · ${grupo.size}")
                 grupo.forEach { x ->
-                    val prom = x.num("promedio")
-                    val desvio = if (prom > 0) (x.num("litros") - prom) / prom * 100 else 0.0
-                    FilaLista(
-                        x.txt("proveedor"),
-                        "${x.txt("comunidad")} · ${x.txt("vehiculo")} · ${x.txt("hora")}" +
-                            if (abs(desvio) >= 20) " · ${if (desvio > 0) "+" else ""}${formatear(desvio, 0)} % vs. promedio" else "",
-                        onClick = { CalidadReal.limpiar(); CalidadReal.seleccion = x; CalidadReal.mensaje = null; irA(indiceDe(Rol.CALIDAD, "calidad/cola")) }, // se abre el diagnóstico aquí mismo
-                        // un desvío grande no obliga, pero ayuda a decidir a quién muestrear
-                        borde = if (abs(desvio) >= 20) Altiplano.AvisoBorde else Altiplano.Borde,
-                    ) {
-                        Text("${formatear(x.num("litros"))} L", style = Texto.Fila, color = Altiplano.Texto)
-                    }
+                    // se abre el diagnóstico aquí mismo
+                    FilaMuestreo(x) { CalidadReal.limpiar(); CalidadReal.seleccion = x; CalidadReal.mensaje = null; irA(indiceDe(Rol.CALIDAD, "calidad/cola")) }
                 }
             }
             if (todas.isEmpty()) AvisoCampo("No hay entregas de hoy ni de ayer sin analizar.")
             else if (lista.isEmpty()) AvisoCampo("Nadie coincide con \"$texto\".")
             TextButton(onClick = recargar) { Text("Actualizar", color = Altiplano.TextoTerciario) }
+        }
+    }
+}
+
+/** Color de cada carro, el mismo de su ruta en Acopio. */
+private fun colorCarro(codigo: String): Color = when (codigo) {
+    "C-01" -> CELESTE; "C-02" -> ARENA; "C-03" -> LILA; "M-01" -> VERDE; else -> Color(0xFF9FB0C0)
+}
+
+/**
+ * Un proveedor por analizar: la franja y el círculo con sus iniciales del color de su carro, los litros grandes
+ * y, si trajo mucho más o menos que su promedio, un aviso ámbar (no obliga, pero ayuda a decidir a quién muestrear).
+ */
+@Composable
+private fun FilaMuestreo(x: JsonObject, onClick: () -> Unit) {
+    val color = colorCarro(x.txt("vehiculo"))
+    val prom = x.num("promedio")
+    val desvio = if (prom > 0) (x.num("litros") - prom) / prom * 100 else 0.0
+    val raro = abs(desvio) >= 20
+    val iniciales = x.txt("proveedor").split(' ').filter { it.isNotEmpty() }.take(2).joinToString("") { it.take(1).uppercase() }
+    Tocable(if (raro) AMBAR else color, Modifier.fillMaxWidth(), onClick) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(42.dp).clip(CircleShape).background(color.copy(alpha = 0.22f)).border(2.dp, color, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) { Text(iniciales, style = Texto.Fila.copy(fontWeight = FontWeight.Bold, fontSize = 15.sp), color = color) }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(x.txt("proveedor"), style = Texto.Fila, color = Altiplano.Texto, maxLines = 1)
+                Text("${x.txt("vehiculo")} · ${x.txt("hora")} · ${x.txt("comunidad")}", style = Texto.Apoyo, color = Altiplano.TextoTerciario, maxLines = 1)
+                if (raro) Text(
+                    "${if (desvio > 0) "▲ +" else "▼ "}${formatear(desvio, 0)} % vs. su promedio (${formatear(prom)} L)",
+                    style = Texto.Apoyo, color = AMBAR,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Column(horizontalAlignment = Alignment.End) {
+                Text(formatear(x.num("litros")), style = Texto.Dato.copy(fontSize = 22.sp), color = Altiplano.Texto)
+                Text("litros", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+            }
+            Text("  ›", fontSize = 22.sp, color = color)
         }
     }
 }

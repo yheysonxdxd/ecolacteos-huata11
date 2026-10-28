@@ -2,12 +2,15 @@ package pe.gob.huata.ecolacteos.ui.roles
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -247,33 +250,41 @@ private fun ParametroReal(nombre: String, valor: Double?, paso: Double, dec: Int
 private fun InfractoresReal() {
     CargaServidor("/api/v1/calidad/infractores", clave = CalidadReal.version) { d, _ ->
         val lista = d.lista("data")
+        val adulteradas = lista.count { it.txt("tipo") == "ADULTERACION" }
         PantallaScroll {
-            Text("Registro en tiempo real desde la base de datos.", style = Texto.Cuerpo, color = Altiplano.TextoTerciario)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Cifra(0, "💧", "Con agua", adulteradas.toDouble(), "", "precio reducido o baja", ROSA, Modifier.weight(1f)) {}
+                Cifra(1, "👩‍🏫", "Capacitar", (lista.size - adulteradas).toDouble(), "", "acidez o significada", AMBAR, Modifier.weight(1f)) {}
+            }
             if (lista.isEmpty()) AvisoCampo("No hay infractores registrados.")
-            lista.forEach { s ->
+            lista.forEachIndexed { k, s ->
                 val prov = s.obj("proveedor")
                 val grave = s.txt("tipo") == "ADULTERACION"
                 val baja = s.txt("medida") == "BAJA_DEFINITIVA" || prov?.txt("estado") == "BAJA"
-                Tarjeta(borde = if (grave) Altiplano.AlertaBorde else Altiplano.Borde) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(prov?.txt("nombre") ?: "—", style = Texto.Fila, color = Altiplano.Texto)
-                            prov?.obj("comunidad")?.let { Text(it.txt("nombre"), style = Texto.Apoyo, color = Altiplano.TextoTerciario) }
+                Aparece(2 + k) {
+                    FilaFranja(if (grave || baja) ROSA else AMBAR) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(when (s.txt("tipo")) { "ADULTERACION" -> "💧"; "SIGNIFICADA" -> "🥛"; else -> "🧪" }, fontSize = 24.sp)
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(prov?.txt("nombre") ?: "—", style = Texto.Fila, color = Altiplano.Texto)
+                                prov?.obj("comunidad")?.let { Text(it.txt("nombre"), style = Texto.Apoyo, color = Altiplano.TextoTerciario) }
+                            }
+                            ChipEstado(if (grave) Estado.ADULTERADA else Estado.PENDIENTE)
                         }
-                        ChipEstado(if (grave) Estado.ADULTERADA else Estado.PENDIENTE)
+                        Spacer(Modifier.height(6.dp))
+                        val tipo = when (s.txt("tipo")) { "ADULTERACION" -> "Adulteración"; "SIGNIFICADA" -> "Leche significada"; else -> "Acidez" }
+                        Text("$tipo · ${s.txt("nivel")}ª vez · ${fechaCorta(s.txt("created_at"))}", style = Texto.Apoyo, color = Altiplano.TextoSecundario)
+                        Text(
+                            when (s.txt("medida")) {
+                                "PRECIO_REDUCIDO" -> "Precio reducido en esa entrega" + (s.txt("precio_aplicado").takeIf { it.isNotEmpty() }?.let { " (S/ $it por litro)" } ?: "")
+                                "BAJA_DEFINITIVA" -> "Baja definitiva"
+                                else -> "Capacitación en buenas prácticas"
+                            },
+                            style = Texto.Apoyo, color = if (baja) Altiplano.Alerta else Altiplano.Aviso,
+                        )
+                        s.txt("detalle").takeIf { it.isNotEmpty() }?.let { Text(it, style = Texto.Apoyo, color = Altiplano.TextoTerciario) }
                     }
-                    Spacer(Modifier.height(6.dp))
-                    val tipo = when (s.txt("tipo")) { "ADULTERACION" -> "Adulteración"; "SIGNIFICADA" -> "Leche significada"; else -> "Acidez" }
-                    Text("$tipo · ${s.txt("nivel")}ª vez · ${fechaCorta(s.txt("created_at"))}", style = Texto.Apoyo, color = Altiplano.TextoSecundario)
-                    Text(
-                        when (s.txt("medida")) {
-                            "PRECIO_REDUCIDO" -> "Precio reducido en esa entrega" + (s.txt("precio_aplicado").takeIf { it.isNotEmpty() }?.let { " (S/ $it por litro)" } ?: "")
-                            "BAJA_DEFINITIVA" -> "Baja definitiva"
-                            else -> "Capacitación en buenas prácticas"
-                        },
-                        style = Texto.Apoyo, color = if (baja) Altiplano.Alerta else Altiplano.Aviso,
-                    )
-                    s.txt("detalle").takeIf { it.isNotEmpty() }?.let { Text(it, style = Texto.Apoyo, color = Altiplano.TextoTerciario) }
                 }
             }
             Seccion("Política")
@@ -290,18 +301,46 @@ private fun InfractoresReal() {
 private fun HistorialReal() {
     CargaServidor("/api/v1/calidad/historial", clave = CalidadReal.version) { d, _ ->
         val lista = d.lista("analisis")
+        val aceptados = lista.count { it.txt("veredicto") == "ACEPTADO" }
+        val adulterados = lista.count { it.txt("veredicto") == "ADULTERADA" }
         PantallaScroll {
             Text("Últimos ${lista.size} análisis", style = Texto.Cuerpo, color = Altiplano.TextoTerciario)
-            lista.forEach { a ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Cifra(0, "✅", "Aceptados", aceptados.toDouble(), "", "", VERDE, Modifier.weight(1f)) {}
+                Cifra(1, "❌", "Rechazados", (lista.size - aceptados - adulterados).toDouble(), "", "", ROSA, Modifier.weight(1f)) {}
+                Cifra(2, "💧", "Con agua", adulterados.toDouble(), "", "", Color(0xFFB0453F), Modifier.weight(1f)) {}
+            }
+            lista.forEachIndexed { k, a ->
                 val causas = (a["causas"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.content } ?: emptyList()
-                FilaLista(
-                    a.txt("proveedor"),
-                    "${fechaCorta(a.txt("fecha"))} · ${a.txt("vehiculo")} · ${formatear(a.num("litros"))} L · " +
-                        (causas.firstOrNull() ?: "grasa ${formatear(a.num("grasa"))} % · agua ${formatear(a.num("agua"))} %"),
-                ) {
-                    ChipEstado(when (a.txt("veredicto")) { "ACEPTADO" -> Estado.ACEPTADO; "ADULTERADA" -> Estado.ADULTERADA; else -> Estado.RECHAZADO })
+                val (estado, color) = when (a.txt("veredicto")) {
+                    "ACEPTADO" -> Estado.ACEPTADO to VERDE
+                    "ADULTERADA" -> Estado.ADULTERADA to Color(0xFFB0453F)
+                    else -> Estado.RECHAZADO to ROSA
+                }
+                Aparece(3 + k.coerceAtMost(12)) {
+                    FilaFranja(color) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(a.txt("proveedor"), style = Texto.Fila, color = Altiplano.Texto, maxLines = 1)
+                                Text("${fechaCorta(a.txt("fecha"))} · ${a.txt("vehiculo")} · ${formatear(a.num("litros"))} L",
+                                    style = Texto.Apoyo, color = Altiplano.TextoSecundario)
+                                Text(causas.firstOrNull() ?: "grasa ${formatear(a.num("grasa"))} % · agua ${formatear(a.num("agua"))} %",
+                                    style = Texto.Apoyo, color = if (estado == Estado.ACEPTADO) Altiplano.TextoTerciario else color)
+                            }
+                            ChipEstado(estado)
+                        }
+                    }
                 }
             }
         }
+    }
+}
+
+/** Tarjeta con una franja de color a la izquierda (verde bien, ámbar a corregir, rosa grave), como en Planta y Acopio. */
+@Composable
+private fun FilaFranja(color: Color, contenido: @Composable ColumnScope.() -> Unit) {
+    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).clip(RoundedCornerShape(16.dp)).background(color.copy(alpha = 0.08f))) {
+        Box(Modifier.width(6.dp).fillMaxHeight().background(color))
+        Column(Modifier.weight(1f).padding(horizontal = 14.dp, vertical = 12.dp), content = contenido)
     }
 }
