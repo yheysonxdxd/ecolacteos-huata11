@@ -13,6 +13,8 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware) {
         //
+        // detrás del túnel (ngrok): https y la IP real de cada uno (el límite de intentos de login va por IP)
+        $middleware->trustProxies(at: '*');
         // no hay página de login web: a la API sin sesión no se la redirige
         $middleware->redirectGuestsTo(fn ($request) => $request->is('api/*') ? null : '/');
         $middleware->appendToGroup('api', [
