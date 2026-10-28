@@ -2,6 +2,7 @@ package pe.gob.huata.ecolacteos.datos
 
 import io.ktor.client.*
 import io.ktor.client.call.*
+import io.ktor.client.plugins.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
 import io.ktor.http.*
@@ -39,6 +40,7 @@ class ClienteSync(private val baseUrl: String, private val token: () -> String?)
         install(ContentNegotiation) {
             json(Json { ignoreUnknownKeys = true; isLenient = true })
         }
+        defaultRequest { header("ngrok-skip-browser-warning", "1") }
     }
 
     private fun HttpRequestBuilder.auth() {

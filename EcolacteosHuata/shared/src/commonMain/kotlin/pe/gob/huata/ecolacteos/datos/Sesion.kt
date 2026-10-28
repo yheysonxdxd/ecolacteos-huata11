@@ -2,6 +2,7 @@ package pe.gob.huata.ecolacteos.datos
 
 import io.ktor.client.*
 import io.ktor.client.call.*
+import io.ktor.client.plugins.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
 import io.ktor.http.*
@@ -21,7 +22,7 @@ object ConfigServidor {
 }
 
 /** Se ve en la pantalla de ingreso. Igual que versionName en androidApp/build.gradle.kts. */
-const val VERSION_APP = "3.10"
+const val VERSION_APP = "3.11"
 
 /** Sesión del usuario contra el servidor: token, rol y datos reales. */
 object Sesion {
@@ -36,7 +37,11 @@ object Sesion {
         private set
 
     val http by lazy {
-        HttpClient { install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true; isLenient = true }) } }
+        HttpClient {
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true; isLenient = true }) }
+            // ngrok gratis pone una página de aviso antes del servidor; este encabezado la salta
+            defaultRequest { header("ngrok-skip-browser-warning", "1") }
+        }
     }
 
     /** POST /api/v1/login. Devuelve el rol del usuario. */
