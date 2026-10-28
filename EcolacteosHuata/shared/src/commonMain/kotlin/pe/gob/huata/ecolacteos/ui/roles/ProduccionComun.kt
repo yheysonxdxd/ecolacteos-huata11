@@ -1,5 +1,16 @@
 package pe.gob.huata.ecolacteos.ui.roles
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -75,52 +86,91 @@ fun Notificacion(n: Noti?) {
     }
 }
 
+/** "13 quesos" si rinde siempre igual; "10–11 quesos" si varía. */
+private fun rindeTexto(p: JsonObject): String {
+    val u = p.txt("unidad").substringBefore(' ')
+    val a = formatear(rendMin(p) * 100, 1); val b = formatear(rendMax(p) * 100, 1)
+    return (if (a == b) a else "$a–$b") + " $u por 100 L"
+}
+
 /**
- * Recetas, compactas: una línea por producto (los sabores debajo de su base);
- * al tocar se abre con sus insumos por 100 L y los pasos.
+ * Recetas: cada base con su dibujo y sus sabores debajo (con su color). Al tocar una se abre
+ * con lo que lleva por cada 100 L (lo del sabor resaltado), cuánto dura y los pasos numerados.
  */
 @Composable
 fun RecetasCompactas(productos: List<JsonObject>) {
     Seccion("Recetas · toca una para verla")
-    productos.forEach { p ->
-        val id = p.num("id").toLong()
-        val abierta = Produccion.abierta == id
-        val sabor = p.txt("base_id").isNotEmpty()
-        val u = p.txt("unidad").substringBefore(' ')
-        val propios = p.lista("propios").map { it.num("insumo_id").toLong() }.toSet()
-        Tarjeta(
-            modifier = Modifier.padding(start = if (sabor) 18.dp else 0.dp),
-            fondo = Color(0xFF1B2A36), borde = if (abierta) Altiplano.VerdeBorde else Color(0xFF3A4A52),
-            onClick = { Produccion.abierta = if (abierta) null else id },
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text((if (abierta) "▾ " else "▸ ") + nombreCorto(p), style = Texto.Fila, color = Altiplano.Texto, modifier = Modifier.weight(1f))
-                Text("${formatear(rendMin(p) * 100, 0)}–${formatear(rendMax(p) * 100, 0)} $u por 100 L",
-                    style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+    val ids = productos.map { it.num("id").toLong() }.toSet()
+    val bases = productos.filter { it.txt("base_id").isEmpty() || it.num("base_id").toLong() !in ids }
+    bases.forEach { base ->
+        val sabores = productos.filter { it.txt("base_id") == base.txt("id") }
+        val tono = colorReceta(base)
+        Surface(shape = RoundedCornerShape(18.dp), color = Color(0xFF17242F), border = BorderStroke(1.dp, Altiplano.Borde),
+            modifier = Modifier.fillMaxWidth().animateContentSize()) {
+            Column(Modifier.padding(6.dp)) {
+                FilaReceta(base, tono, esBase = true)
+                sabores.forEach { s -> FilaReceta(s, colorReceta(s), esBase = false) }
             }
-            if (sabor && !abierta) Text("lo del ${p.txt("base")} + " +
-                p.lista("insumos").filter { it.num("id").toLong() in propios }.joinToString(", ") { it.txt("nombre").lowercase() },
-                style = Texto.Apoyo, color = Altiplano.TextoTerciario, modifier = Modifier.padding(top = 2.dp))
-            if (abierta) {
-                Text(
-                    if (sabor) "Lleva todo lo del ${p.txt("base")} más lo marcado · dura ${p.txt("vida_util_dias")} días"
-                    else "Cantidades por cada 100 L de leche · dura ${p.txt("vida_util_dias")} días",
-                    style = Texto.Apoyo, color = Altiplano.TextoTerciario, modifier = Modifier.padding(top = 4.dp),
-                )
-                HorizontalDivider(Modifier.padding(vertical = 10.dp), color = Altiplano.BordeSuave)
+        }
+    }
+}
+
+@Composable
+private fun FilaReceta(p: JsonObject, tono: Color, esBase: Boolean) {
+    val id = p.num("id").toLong()
+    val abierta = Produccion.abierta == id
+    val giro by animateFloatAsState(if (abierta) 180f else 0f, label = "flecha")
+    val propios = p.lista("propios").map { it.num("insumo_id").toLong() }.toSet()
+    val sabor = p.txt("base_id").isNotEmpty()
+    val fondo by animateColorAsState(if (abierta) tono.copy(alpha = .08f) else Color.Transparent, label = "fondo")
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(fondo)) {
+        Row(Modifier.fillMaxWidth().clickable { Produccion.abierta = if (abierta) null else id }.padding(horizontal = 10.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            if (esBase) {
+                Box(Modifier.size(52.dp, 44.dp).background(tono.copy(alpha = .12f), RoundedCornerShape(13.dp)), contentAlignment = Alignment.Center) {
+                    DibujoReceta(p.txt("tipo").ifEmpty { "OTRO" }, tono, Modifier.size(42.dp, 34.dp))
+                }
+            } else {
+                Spacer(Modifier.width(20.dp))
+                Box(Modifier.size(12.dp).background(tono, CircleShape))
+                Spacer(Modifier.width(8.dp))
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(if (sabor) p.txt("variante") else p.txt("nombre"), style = (if (esBase) Texto.Fila.copy(fontWeight = FontWeight.SemiBold) else Texto.Fila), color = Altiplano.Texto)
+                Text(if (sabor) "lo del ${p.txt("base")} + " + p.lista("insumos").filter { it.num("id").toLong() in propios }.joinToString(", ") { it.txt("nombre").lowercase() }
+                    else rindeTexto(p) + " · dura ${p.txt("vida_util_dias")} días", style = Texto.Apoyo, color = Altiplano.TextoTerciario, maxLines = 2)
+            }
+            Text("▾", color = Altiplano.TextoTerciario, modifier = Modifier.rotate(giro))
+        }
+        AnimatedVisibility(abierta, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+            Column(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp)) {
+                Text(if (sabor) "Lleva todo lo del ${p.txt("base")} más lo resaltado · por cada 100 L de leche" else "Por cada 100 L de leche",
+                    style = Texto.Apoyo, color = Altiplano.TextoTerciario)
                 val insumos = p.lista("insumos")
-                if (insumos.isEmpty()) Text("Esta fórmula no tiene insumos todavía.", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+                if (insumos.isEmpty()) Text("Esta fórmula no tiene insumos todavía.", style = Texto.Apoyo, color = Altiplano.Aviso, modifier = Modifier.padding(top = 6.dp))
                 insumos.forEach { i ->
                     val delSabor = i.num("id").toLong() in propios
-                    FilaValor(i.txt("nombre") + if (delSabor) "  · del sabor" else "",
-                        "${formatear(i.num("por_100l"), 3)} ${i.txt("unidad")}", if (delSabor) Altiplano.Exito else Altiplano.Texto)
+                    Row(Modifier.fillMaxWidth().padding(top = 6.dp).clip(RoundedCornerShape(10.dp))
+                        .background(if (delSabor) tono.copy(alpha = .14f) else Color(0xFF1C2C39)).padding(horizontal = 12.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Text(i.txt("nombre") + if (delSabor) "  ★" else "", style = Texto.Cuerpo, color = Altiplano.TextoSecundario, modifier = Modifier.weight(1f))
+                        Text("${formatear(i.num("por_100l"), 3)} ${i.txt("unidad")}", style = Texto.Cuerpo.copy(fontWeight = FontWeight.SemiBold),
+                            color = if (delSabor) tono else Altiplano.Texto)
+                    }
                 }
                 val pasos = (p["procedimiento"] as? JsonArray)?.map { it.jsonPrimitive.content } ?: emptyList()
                 if (pasos.isNotEmpty()) {
-                    HorizontalDivider(Modifier.padding(vertical = 10.dp), color = Altiplano.BordeSuave)
-                    Text("Cómo se hace", style = Texto.Apoyo, color = Altiplano.CelesteAcento)
+                    Text("Cómo se hace", style = Texto.Fila.copy(fontWeight = FontWeight.SemiBold), color = Altiplano.Texto, modifier = Modifier.padding(top = 14.dp, bottom = 2.dp))
                     pasos.forEachIndexed { k, paso ->
-                        Text("${k + 1}. $paso", style = Texto.Cuerpo, color = Altiplano.TextoSecundario, modifier = Modifier.padding(top = 6.dp))
+                        Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.Top) {
+                            Box(Modifier.size(26.dp).background(tono.copy(alpha = .18f), CircleShape).border(1.dp, tono.copy(alpha = .5f), CircleShape),
+                                contentAlignment = Alignment.Center) {
+                                Text("${k + 1}", style = Texto.Apoyo.copy(fontWeight = FontWeight.Bold), color = Altiplano.Texto)
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Text(paso, style = Texto.Cuerpo, color = Altiplano.TextoSecundario, modifier = Modifier.weight(1f).padding(top = 3.dp))
+                        }
                     }
                 }
             }

@@ -26,16 +26,16 @@ fun FormulasReal(puedeAceptar: Boolean, onLoteIniciado: () -> Unit = {}) {
     CargaServidor("/api/v1/compras/formulas", clave = FormulasApp.version) { d, recargar ->
         val tanque = d.num("tanque")
         val productos = d.lista("productos")
-        PantallaScroll {
+        val avisos: @Composable ColumnScope.() -> Unit = {
             Notificacion(Produccion.noti)
             d.lista("avisos").filter { it.txt("nivel") == "FALTA" }.forEach { AvisoCampo(it.txt("texto"), esAlerta = true) }
-            if (productos.isEmpty()) AvisoCampo("No hay productos que se estén produciendo.")
-            else ProducirVarios(productos, tanque, puedeAceptar) { n ->
+        }
+        if (productos.isEmpty()) PantallaScroll { avisos(); AvisoCampo("No hay productos que se estén produciendo.") }
+        else PantallaProducir(productos, tanque, puedeAceptar, arriba = avisos, abajo = { RecetasCompactas(productos) },
+            onListo = { n ->
                 Produccion.noti = n
                 OperarioReal.version++
                 recargar(); onLoteIniciado()
-            }
-            RecetasCompactas(productos)
-        }
+            })
     }
 }
