@@ -9,9 +9,21 @@
 <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
 <link rel="apple-touch-icon" href="/oficina-web/img/logo-180.png">
 <meta name="theme-color" content="#0f1a24">
+{{-- tema de día o de noche: lo que se eligió en esta computadora, o si no, el del sistema. Antes de dibujar, para que no parpadee --}}
+<script>
+    (function () {
+        var t = null;
+        try { t = localStorage.getItem('tema'); } catch (e) {}
+        if (t !== 'dia' && t !== 'noche') t = window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches ? 'dia' : 'noche';
+        document.documentElement.dataset.tema = t;
+        if (t === 'dia') document.querySelector('meta[name=theme-color]').content = '#edf2f6';
+    })();
+</script>
 <link rel="stylesheet" href="/oficina-web/vendor/leaflet/leaflet.css">
 <script src="/oficina-web/vendor/leaflet/leaflet.js"></script>
 <link rel="stylesheet" href="/oficina-web/estilos.css">
+<link rel="stylesheet" href="/oficina-web/tema-dia.css">
+<link rel="stylesheet" href="/oficina-web/tema-dia-base.css">
 <script src="/oficina-web/app.js"></script>
 <script defer src="/oficina-web/vendor/alpine.min.js"></script>
 </head>
@@ -98,6 +110,8 @@
                     <span class="ico" aria-hidden="true" x-html="iconoMenu(m.id)"></span><span x-text="m.nombre"></span></button>
             </div>
         </template>
+        <button class="tema" @click="cambiarTema($event)" :aria-label="tema === 'dia' ? 'Pasar al tema de noche' : 'Pasar al tema de día'">
+            <span class="ico" aria-hidden="true" x-html="iconoMenu(tema === 'dia' ? 'luna' : 'sol')"></span><span x-text="tema === 'dia' ? 'Tema de noche' : 'Tema de día'"></span></button>
         <button class="salir" @click="salir()"><span class="ico" aria-hidden="true" x-html="iconoMenu('salir')"></span><span>Cerrar sesión</span></button>
     </nav>
 
@@ -1237,7 +1251,7 @@
                 <div class="apoyo" x-show="!gruposVenta().length">No hay productos. Agrégalos en Configuración → Productos.</div>
 
                 {{-- b) el sabor (solo si tiene) --}}
-                <template x-if="familiaVenta() && familiaVenta().sabores.length > 1"><div class="grupo-venta sabores-venta">
+                <template x-if="familiaVenta() && familiaVenta().sabores.length > 1"><div class="grupo-venta sabores-venta" x-revelar>
                     <div class="eti" x-text="(familiaVenta().juntos ? '¿Qué queso? · ' : '¿De qué sabor? · ') + familiaVenta().base.nombre"></div>
                     <div class="chips-cliente">
                         <template x-for="p in familiaVenta().sabores" :key="p.id">
@@ -1250,7 +1264,7 @@
                 </div></template>
 
                 {{-- c) cuántos --}}
-                <template x-if="f.producto"><div class="agregar-producto">
+                <template x-if="f.producto"><div class="agregar-producto" x-revelar>
                     <div style="flex: 1; min-width: 200px"><div class="eti">Elegiste</div>
                         <strong style="font-size: 17px" x-text="(d.productos || []).find((x) => x.id === f.producto)?.nombre"></strong>
                         <small class="apoyo" style="display: block" x-text="(() => { const p = (d.productos || []).find((x) => x.id === f.producto); return p ? soles(p.precios?.[clienteVenta()?.tipo]) + ' c/u · hay ' + num(p.stock, 0) + ' ' + p.unidad : ''; })()"></small>

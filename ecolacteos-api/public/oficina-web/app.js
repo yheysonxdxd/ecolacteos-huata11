@@ -43,6 +43,56 @@ const ahoraLima = () => new Date().toLocaleString('sv-SE', { timeZone: 'America/
 
 // mapa de Huata (Leaflet): fuera del estado de Alpine para que no lo envuelva en proxies
 const MAPA = { m: null, capa: null, encuadrado: false };
+
+// ------------------------------------------------------------- que se vea lo que se abre
+// Al tocar algo que se despliega (un grupo, una semana, una deuda…) o que hace aparecer algo debajo
+// (los sabores al vender), si lo nuevo quedó cortado por abajo de la pantalla, se baja solo lo justo.
+let ultimoClic = 0;
+/** El contenedor que se desplaza: una ventana con su propio scroll, o la página. */
+function contenedorScroll(el) {
+  for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+    const o = getComputedStyle(p).overflowY;
+    if ((o === 'auto' || o === 'scroll') && p.scrollHeight > p.clientHeight) return p;
+  }
+  return null;
+}
+/** Si [el] quedó cortado por abajo, baja lo justo para verlo entero, sin que [cabeza] (lo que se tocó) se salga por arriba. */
+function mostrarEntero(el, cabeza = el) {
+  if (!el?.isConnected) return;
+  const cont = contenedorScroll(el);
+  const borde = cont ? cont.getBoundingClientRect() : { top: 0, bottom: innerHeight };
+  const r = el.getBoundingClientRect();
+  const falta = r.bottom - (borde.bottom - 20);
+  if (falta <= 0) return;
+  const top = Math.min(falta, cabeza.getBoundingClientRect().top - borde.top - 16);
+  if (top <= 0) return;
+  const behavior = matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+  (cont || window).scrollBy({ top, behavior });
+}
+document.addEventListener('click', (e) => {
+  ultimoClic = Date.now();
+  const b = e.target.closest?.('[aria-expanded]');
+  if (!b || b.closest('nav.menu, .login')) return;
+  // mientras el bloque crece al abrirse (la animación, o datos que llegan), se va bajando lo que falte
+  setTimeout(() => {
+    if (b.getAttribute('aria-expanded') !== 'true') return;
+    const bloque = b.parentElement;
+    const ro = new ResizeObserver(() => mostrarEntero(bloque, b));
+    ro.observe(bloque);
+    setTimeout(() => ro.disconnect(), 700);
+    // y una última vez cuando la animación de abrir termina (en una compu lenta puede tardar más)
+    bloque.addEventListener('transitionend', () => mostrarEntero(bloque, b), { once: true });
+  }, 30);
+}, true);
+// x-revelar: lo que aparece por un clic (x-if) se muestra entero; al cargar la pantalla no se mueve nada
+document.addEventListener('alpine:init', () => {
+  window.Alpine.directive('revelar', (el) => {
+    if (Date.now() - ultimoClic > 900) return;
+    const ro = new ResizeObserver(() => mostrarEntero(el));
+    ro.observe(el);
+    setTimeout(() => { ro.disconnect(); mostrarEntero(el); }, 700);
+  });
+});
 // en el satélite hacen falta colores bien distintos (en la app son tonos de verde)
 const COLOR_RUTA = { 'C-01': '#4cc38a', 'C-02': '#5fb3ff', 'C-03': '#e8b44c', 'M-01': '#f07ad8' };
 const colorRuta = (codigo) => COLOR_RUTA[codigo] || '#ffffff';
@@ -53,6 +103,7 @@ function oficina() {
     token: sessionStorage.getItem('token'),
     usuario: JSON.parse(sessionStorage.getItem('usuario') || 'null'),
     login: { dni: '', clave: '', ver: false, error: null, enviando: false, mayus: false, listo: false },
+    tema: document.documentElement.dataset.tema || 'noche', // 'dia' | 'noche' (lo pone el script del <head>)
     // la pantalla de entrada: la hora (para el saludo y el reloj)
     entrada: { ahora: new Date() },
 
@@ -130,6 +181,33 @@ function oficina() {
       if (this.usuario) this.ir(this.menu()[0].pestanas[0].id);
       // entrada: el reloj se actualiza cada 20 s (solo mientras no se ha entrado)
       setInterval(() => { if (!this.usuario) this.entrada.ahora = new Date(); }, 20000);
+    },
+    /**
+     * Día ↔ noche. Se guarda en esta computadora. Si el navegador puede, el tema nuevo entra
+     * como un círculo que crece desde el botón; si no, los colores cambian suave.
+     */
+    cambiarTema(ev) {
+      const nuevo = this.tema === 'dia' ? 'noche' : 'dia';
+      const aplicar = () => {
+        this.tema = nuevo;
+        document.documentElement.dataset.tema = nuevo;
+        document.querySelector('meta[name=theme-color]').content = nuevo === 'dia' ? '#edf2f6' : '#0f1a24';
+      };
+      try { localStorage.setItem('tema', nuevo); } catch { /* sin almacenamiento: dura hasta recargar */ }
+      const quieto = matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (!document.startViewTransition || quieto) {
+        const raiz = document.documentElement;
+        raiz.classList.add('cambiando-tema');
+        aplicar();
+        return setTimeout(() => raiz.classList.remove('cambiando-tema'), 400);
+      }
+      const r = ev?.currentTarget?.getBoundingClientRect();
+      const x = r ? r.left + r.width / 2 : innerWidth / 2, y = r ? r.top + r.height / 2 : innerHeight / 2;
+      const radio = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+      document.startViewTransition(() => { aplicar(); return this.$nextTick(); }).ready.then(() => {
+        document.documentElement.animate({ clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${radio}px at ${x}px ${y}px)`] },
+          { duration: 700, easing: 'cubic-bezier(.4,0,.2,1)', pseudoElement: '::view-transition-new(root)' });
+      });
     },
     saludoEntrada() {
       const h = this.entrada.ahora.getHours();
@@ -339,6 +417,8 @@ function oficina() {
         vender: '<path d="M20 12.6 12.6 20a2 2 0 0 1-2.8 0L3 13.2V3h10.2L20 9.8a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
         kardex: '<path d="M4 4h16v16H4z"/><path d="M4 9h16M4 14h16M10 9v11"/>',
         salir: '<path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"/><path d="M10 16l-4-4 4-4M6 12h10"/>',
+        sol: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"/>',
+        luna: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>',
       };
       return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${T[id] || '<circle cx="12" cy="12" r="4"/>'}</svg>`;
     },
