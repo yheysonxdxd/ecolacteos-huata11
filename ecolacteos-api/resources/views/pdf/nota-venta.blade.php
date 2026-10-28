@@ -50,7 +50,7 @@
 
 <table class="cliente">
     <tr><td class="etiqueta">Fecha</td><td>{{ $fecha }}</td></tr>
-    <tr><td class="etiqueta">Cliente</td><td><strong>{{ $cliente }}</strong> · {{ $tipo }}</td></tr>
+    <tr><td class="etiqueta">Cliente</td><td><strong>{{ $cliente }}</strong>@if ($tipo) · {{ $tipo }}@endif</td></tr>
     @if($ruc)<tr><td class="etiqueta">RUC</td><td>{{ $ruc }}</td></tr>@endif
 </table>
 

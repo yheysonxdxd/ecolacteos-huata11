@@ -108,7 +108,7 @@ class NotaVentaTest extends TestCase
     {
         \Illuminate\Support\Facades\Mail::fake();
         Sanctum::actingAs($this->usuarios['COMPRAS']);
-        $vecino = DB::table('clientes')->where('nombre', 'Vecino de Huata')->value('id'); // lo crea la migración
+        $vecino = DB::table('clientes')->where('nombre', 'Cliente sin registrar')->value('id'); // lo crean las migraciones
         DB::table('ventas')->where('id', $this->venta)->update(['cliente_id' => $vecino]);
 
         $this->postJson("/api/v1/compras/ventas/{$this->venta}/enviar-nota", ['correo' => 'vecino@gmail.com'])->assertOk();

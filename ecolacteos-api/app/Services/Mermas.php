@@ -5,10 +5,18 @@ namespace App\Services;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
-/** Pérdidas de leche y de producto terminado, y el stock que queda después de ellas. */
+/** Pérdidas de leche, de producto terminado y de insumos, con su valor en soles, y el stock que queda después de ellas. */
 class Mermas
 {
     public const MOTIVOS = [
+        'INSUMO' => [
+            'ROTO' => 'Se rompió el saco o la bolsa',
+            'MOJADO' => 'Se mojó o se derramó',
+            'PLAGA' => 'Plagas o roedores',
+            'VENCIDO' => 'Se venció',
+            'DEFECTUOSO' => 'Envase dañado o defectuoso',
+            'OTRO' => 'Otro motivo',
+        ],
         'LECHE' => [
             'CORTADA' => 'Se cortó o se agrió',
             'DERRAMADA' => 'Se derramó',
@@ -50,6 +58,32 @@ class Mermas
     }
 
     /** Stock de producto terminado = obtenido en lotes cerrados − vendido − perdido. */
+    /**
+     * Cuánto costó lo que se perdió, en soles:
+     * - leche: el precio que se le pagó al productor ese día;
+     * - insumo: lo que se pagó por unidad en la última compra;
+     * - producto: lo que costó hacer una unidad de su lote (leche + insumos ÷ lo que salió); sin lote, el último lote cerrado.
+     * null si todavía no hay con qué calcularlo (un insumo que nunca se compró, un producto sin lotes).
+     */
+    public static function valor(string $tipo, ?int $id, ?int $loteId, float $cantidad, $fecha = null): ?float
+    {
+        if ($tipo === 'LECHE') return round($cantidad * Configuracion::precioLeche($fecha), 2);
+        if ($tipo === 'INSUMO') {
+            $c = Compras::costosUnitarios()[$id] ?? null;
+            return $c === null ? null : round($cantidad * $c, 2);
+        }
+        $lote = DB::table('lotes')->where('estado', 'TERMINADO')->where('obtenido', '>', 0)
+            ->when($loteId, fn ($q) => $q->where('id', $loteId), fn ($q) => $q->where('producto_id', $id)->orderByDesc('cerrado_en'))
+            ->first();
+        if (! $lote) return null;
+        $costos = Compras::costosUnitarios();
+        $insumos = DB::table('movimientos_insumo')->where('origen_type', 'lote')->where('origen_id', $lote->id)->get()
+            ->sum(fn ($m) => abs((float) $m->cantidad) * ($costos[$m->insumo_id] ?? 0));
+        $unidad = ((float) $lote->litros_leche * Configuracion::precioLeche($lote->iniciado_en) + $insumos) / (float) $lote->obtenido;
+
+        return round($cantidad * $unidad, 2);
+    }
+
     public static function stockProducto(int $productoId): float
     {
         $producido = (float) DB::table('lotes')->where('producto_id', $productoId)->where('estado', 'TERMINADO')->sum('obtenido');
@@ -110,18 +144,37 @@ class Mermas
                 $entregas = self::entregasConLeche()->lockForUpdate()->get();
                 $hay = round((float) $entregas->sum('restante'), 2);
                 abort_if($cant > $hay + 0.005, 422, "Solo hay $hay L de leche sin procesar.");
+            } elseif ($d['tipo'] === 'INSUMO') {
+                $insumo = DB::table('insumos')->lockForUpdate()->find($d['insumo_id']);
+                abort_if($cant > (float) $insumo->stock + 0.0005, 422, 'Solo hay '.(float) $insumo->stock." {$insumo->unidad} de {$insumo->nombre}.");
             } else {
                 $stock = self::stockProducto((int) $d['producto_id']);
                 abort_if($cant > $stock + 0.005, 422, "Solo hay $stock en stock.");
             }
 
+            $esProducto = $d['tipo'] === 'PRODUCTO';
             $id = DB::table('mermas')->insertGetId([
                 'uuid' => (string) Str::uuid(), 'tipo' => $d['tipo'],
-                'producto_id' => $d['tipo'] === 'PRODUCTO' ? $d['producto_id'] : null,
-                'lote_id' => $d['lote_id'] ?? null, 'cantidad' => $cant, 'motivo' => $d['motivo'],
+                'producto_id' => $esProducto ? $d['producto_id'] : null,
+                'lote_id' => $esProducto ? ($d['lote_id'] ?? null) : null,
+                'insumo_id' => $d['tipo'] === 'INSUMO' ? $d['insumo_id'] : null,
+                'cantidad' => $cant, 'motivo' => $d['motivo'],
+                'valor' => self::valor($d['tipo'], $d['tipo'] === 'INSUMO' ? (int) $d['insumo_id'] : ($esProducto ? (int) $d['producto_id'] : null),
+                    $esProducto ? ($d['lote_id'] ?? null) : null, $cant, $ahora),
                 'detalle' => isset($d['detalle']) ? trim($d['detalle']) ?: null : null,
                 'registrado_por' => $usuarioId, 'fecha' => $ahora, 'created_at' => $ahora, 'updated_at' => $ahora,
             ]);
+
+            // el insumo perdido baja su stock y sale en su kardex como una salida más
+            if ($d['tipo'] === 'INSUMO') {
+                DB::table('insumos')->where('id', $insumo->id)->decrement('stock', $cant);
+                DB::table('movimientos_insumo')->insert([
+                    'uuid' => (string) Str::uuid(), 'insumo_id' => $insumo->id, 'cantidad' => -$cant,
+                    'referencia' => 'Pérdida · '.self::MOTIVOS['INSUMO'][$d['motivo']].(empty($d['detalle']) ? '' : ' · '.trim($d['detalle'])),
+                    'origen_type' => 'merma', 'origen_id' => $id,
+                    'registrado_por' => $usuarioId, 'created_at' => $ahora, 'updated_at' => $ahora,
+                ]);
+            }
 
             if ($d['tipo'] === 'LECHE') {
                 $falta = $cant;

@@ -41,6 +41,20 @@ class OrdenesCompraController extends Controller
                 $delMes->whereRaw("$fecha BETWEEN ? AND ?", [$desde, $hasta]);
             }
             $mes += ['gastado' => round((float) (clone $delMes)->sum('o.total'), 2), 'compras' => $delMes->count()];
+            // en qué se fue la plata (por insumo) y cuánto se gastó el mes anterior, para comparar
+            $mes['por_insumo'] = DB::table('orden_compra_items as it')->join('insumos as i', 'i.id', '=', 'it.insumo_id')
+                ->joinSub((clone $delMes)->select('o.id'), 'm', 'm.id', '=', 'it.orden_compra_id')
+                ->groupBy('it.insumo_id', 'i.nombre', 'i.unidad')
+                ->selectRaw('it.insumo_id, i.nombre as insumo, i.unidad, SUM(it.cantidad) as cantidad, SUM(COALESCE(it.costo_real, it.costo_estimado)) as total')
+                ->orderByDesc('total')->get()
+                ->map(fn ($x) => ['insumo_id' => (int) $x->insumo_id, 'insumo' => $x->insumo, 'unidad' => $x->unidad,
+                    'cantidad' => (float) $x->cantidad, 'total' => round((float) $x->total, 2)]);
+            $mes['anterior_gastado'] = null;
+            if ($mes['anterior']) {
+                [$aDesde, $aHasta] = Compras::mes($mes['anterior']);
+                $mes['anterior_gastado'] = round((float) DB::table('ordenes_compra as o')->where('o.estado', 'RECIBIDA')
+                    ->whereRaw("$fecha BETWEEN ? AND ?", [$aDesde, $aHasta])->sum('o.total'), 2);
+            }
         } else {
             $q->limit(30); // la app del celular: las últimas
         }
@@ -49,6 +63,7 @@ class OrdenesCompraController extends Controller
             ->whereIn('it.orden_compra_id', $ordenes->pluck('id'))->orderBy('it.id')
             ->get(['it.id', 'it.orden_compra_id', 'it.insumo_id', 'it.cantidad', 'it.costo_estimado', 'it.costo_real', 'i.nombre as insumo', 'i.unidad'])
             ->groupBy('orden_compra_id');
+        $previo = self::preciosAnteriores($items->flatten()->pluck('insumo_id')->unique()->all());
 
         return response()->json([
             'ordenes' => $ordenes->map(fn ($o) => [
@@ -61,6 +76,8 @@ class OrdenesCompraController extends Controller
                     'id' => $i->id, 'insumo_id' => $i->insumo_id, 'insumo' => $i->insumo, 'unidad' => $i->unidad,
                     'cantidad' => (float) $i->cantidad, 'costo_estimado' => (float) $i->costo_estimado,
                     'costo_real' => $i->costo_real !== null ? (float) $i->costo_real : null,
+                    // lo que se pagó por unidad en la compra recibida anterior de ese insumo (null si es la primera)
+                    'precio_anterior' => $previo["{$o->id}-{$i->insumo_id}"] ?? null,
                 ])->values(),
                 'costo_estimado' => (float) $o->costo_estimado,
                 'comprobante_tipo' => $o->comprobante_tipo, 'comprobante_serie' => $o->comprobante_serie,
@@ -75,6 +92,27 @@ class OrdenesCompraController extends Controller
             'vendedores' => self::vendedores(),
             'comprobantes' => Compras::COMPROBANTES,
         ] + ($mes ? ['periodo' => $mes] : []));
+    }
+
+    /**
+     * "orden-insumo" => precio por unidad que se pagó en la compra recibida anterior de ese insumo
+     * (por fecha del comprobante). Sirve para avisar "▲ 12 % más caro que la última vez".
+     */
+    private static function preciosAnteriores(array $insumos): array
+    {
+        if (! $insumos) return [];
+        $filas = DB::table('orden_compra_items as it')->join('ordenes_compra as o', 'o.id', '=', 'it.orden_compra_id')
+            ->where('o.estado', 'RECIBIDA')->whereNotNull('it.costo_real')->where('it.cantidad', '>', 0)
+            ->whereIn('it.insumo_id', $insumos)
+            ->orderByRaw('COALESCE(o.comprobante_fecha, DATE(o.created_at))')->orderBy('o.id')
+            ->get(['it.orden_compra_id', 'it.insumo_id', 'it.cantidad', 'it.costo_real']);
+        $ultimo = [];
+        $previo = [];
+        foreach ($filas as $f) {
+            if (isset($ultimo[$f->insumo_id])) $previo["{$f->orden_compra_id}-{$f->insumo_id}"] = $ultimo[$f->insumo_id];
+            $ultimo[$f->insumo_id] = round((float) $f->costo_real / (float) $f->cantidad, 4);
+        }
+        return $previo;
     }
 
     public static function vendedores()

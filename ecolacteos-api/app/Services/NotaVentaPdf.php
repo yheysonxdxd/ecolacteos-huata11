@@ -66,7 +66,9 @@ class NotaVentaPdf
                 'telefono'  => Parametro::valor('empresa.telefono', ''),
             ],
             'cliente'  => $v->comprador_nombre ?: $v->cliente, // "Solo vender": quien compró sin registrarse
-            'tipo'     => ['MAYORISTA' => 'Mayorista', 'DIRECTO' => 'Vecino de Huata', 'PLANTA' => 'Proveedor de leche'][$v->tipo_cliente] ?? $v->tipo_cliente,
+            // quien compró sin registrarse sale solo con su nombre (salvo que sea proveedor de leche: eso sí se sabe)
+            'tipo'     => $v->comprador_nombre && $v->tipo_cliente !== 'PLANTA' ? null
+                : (['MAYORISTA' => 'Mayorista', 'DIRECTO' => 'Cliente directo', 'PLANTA' => 'Proveedor de leche'][$v->tipo_cliente] ?? $v->tipo_cliente),
             'ruc'      => $v->comprador_nombre ? $v->comprador_documento : $v->ruc,
             // los del primer producto (lo que ya usaban el correo y las pruebas)
             'producto' => $v->producto,

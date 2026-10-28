@@ -18,6 +18,9 @@ Route::prefix('v1')->group(function () {
     // foto del comprobante de una compra: igual, con enlace firmado (ver OrdenesCompraController)
     Route::get('comprobantes/{id}/foto', [Api\OrdenesCompraController::class, 'verFoto'])
         ->whereNumber('id')->middleware('signed:relative')->name('comprobante.foto');
+    // foto de un gasto de planta o de una pérdida (ver GastosController)
+    Route::get('fotos/{tipo}/{id}', [Api\GastosController::class, 'verFoto'])
+        ->whereIn('tipo', ['gasto', 'perdida'])->whereNumber('id')->middleware('signed:relative')->name('foto.archivo');
 
     Route::middleware('auth:sanctum')->group(function () {
 
@@ -126,6 +129,13 @@ Route::prefix('v1')->group(function () {
         Route::get('compras/excel/ventas',        [Api\ExcelController::class, 'ventas']);
         Route::get('compras/excel/compras',       [Api\ExcelController::class, 'compras']);
         Route::post('compras/ajustes',            [Api\KardexController::class, 'ajustar']);
+        // gastos de planta (reparaciones, mantenimiento, combustible…) y los equipos
+        Route::get('compras/gastos',              [Api\GastosController::class, 'index']);
+        Route::post('compras/gastos',             [Api\GastosController::class, 'guardar']);
+        Route::post('compras/gastos/{id}/borrar', [Api\GastosController::class, 'borrar'])->whereNumber('id');
+        Route::post('compras/equipos',            [Api\GastosController::class, 'equipo']);
+        Route::post('compras/equipos/{id}',       [Api\GastosController::class, 'equipo'])->whereNumber('id');
+        Route::get('compras/fotos/{tipo}/{id}',   [Api\GastosController::class, 'enlaceFoto'])->whereIn('tipo', ['gasto', 'perdida'])->whereNumber('id');
         Route::get('compras/mermas',              [Api\MermasController::class, 'index']);
         Route::post('compras/mermas',             [Api\MermasController::class, 'guardar']);
         // el operario también registra la leche que se corta y lo que se malogra en planta

@@ -277,12 +277,12 @@ private fun PasoCliente(clientes: List<JsonObject>, inactivos: List<JsonObject>,
             buscando = true; doc = consultarDocumento(numero) ?: JsonObject(mapOf("error" to JsonPrimitive("Sin conexión: no se pudo buscar el nombre."))); buscando = false
         }
     }
-    /** "Solo vender": a un cliente general (vecino; si es proveedor, el de proveedor de leche) con la nota a su nombre. */
+    /** "Solo vender": a un cliente general ("Cliente sin registrar"; si es proveedor, el de proveedor de leche) con la nota solo a su nombre. */
     val soloVender = soloVender@{ nombre: String, documento: String, fuente: String ->
         val tipo = if (fuente == "proveedor") "PLANTA" else "DIRECTO"
         val genericos = clientes.filter { it.txt("tipo") == tipo && it.txt("ruc").isEmpty() }
-        val g = genericos.find { Regex("vecino|proveedor de leche", RegexOption.IGNORE_CASE).containsMatchIn(it.txt("nombre")) } ?: genericos.firstOrNull()
-        if (g == null) { v.mensaje = "Falta un cliente general «Vecino de Huata» para vender sin registrar."; return@soloVender }
+        val g = genericos.find { Regex("sin registrar|vecino|proveedor de leche", RegexOption.IGNORE_CASE).containsMatchIn(it.txt("nombre")) } ?: genericos.firstOrNull()
+        if (g == null) { v.mensaje = "Falta un cliente general «Cliente sin registrar» para vender sin registrar."; return@soloVender }
         elegir(g)
         v.comprador = nombre to documento
     }

@@ -48,6 +48,17 @@ class AdminAppController extends Controller
             ->where('ausente', false);
 
         $litros    = (float) (clone $ents)->sum('litros');
+        // el periodo de antes para comparar: un día se compara con el día anterior que tuvo acopio;
+        // 7 o 30 días, con los 7 o 30 días de justo antes
+        if ($desde->equalTo($hasta)) {
+            $f = DB::table('entregas')->where('fecha', '<', $desde->toDateString())->where('ausente', false)->max('fecha');
+            [$antDesde, $antHasta] = $f ? [$f, $f] : [null, null];
+        } else {
+            $dias = $desde->diffInDays($hasta) + 1;
+            [$antDesde, $antHasta] = [$desde->copy()->subDays($dias)->toDateString(), $desde->copy()->subDay()->toDateString()];
+        }
+        $anterior = $antDesde ? ['desde' => $antDesde, 'hasta' => $antHasta,
+            'litros' => (float) DB::table('entregas')->whereBetween('fecha', [$antDesde, $antHasta])->where('ausente', false)->sum('litros')] : null;
         $aPagar    = (float) (clone $ents)->where('estado_calidad', 'ACEPTADO')->sum('monto');
         $total     = (clone $ents)->count();
         // una adulterada de 1.ª vez queda ACEPTADO a precio reducido: se cuenta aparte
@@ -89,7 +100,7 @@ class AdminAppController extends Controller
 
         return response()->json([
             'desde' => $desde->toDateString(), 'hasta' => $hasta->toDateString(),
-            'litros' => $litros, 'a_pagar' => round($aPagar, 2), 'entregas' => $total,
+            'litros' => $litros, 'a_pagar' => round($aPagar, 2), 'entregas' => $total, 'anterior' => $anterior,
             'aceptados_pct' => $pct($aceptadas), 'rechazados_pct' => $pct($rechazadas),
             'adulterada_pct' => $pct($adulteradas), 'pendientes' => $pendientes,
             'vehiculos' => $porVehiculo,
@@ -541,11 +552,20 @@ class AdminAppController extends Controller
             ->whereNull('pv.vigente_hasta')->orderBy('p.nombre')->orderBy('pv.precio')
             ->get(['p.nombre as producto', 'pv.tipo_cliente', 'pv.precio']);
 
+        // lo que no es leche ni insumo pero también cuesta: gastos de planta (reparaciones, combustible…) y lo que se perdió
+        $gastos = round((float) DB::table('gastos_planta')->where('fecha', '>=', $desde->toDateString())->sum('monto'), 2);
+        $perdidas = DB::table('mermas')->where('fecha', '>=', $desde)->groupBy('tipo')->selectRaw('tipo, SUM(COALESCE(valor, 0)) as valor')->pluck('valor', 'tipo');
+
         return response()->json([
             'desde' => $desde->toDateString(),
             'litros_procesados' => $litrosProcesados,
             'costo_leche_litro' => $precioLeche,
             'costo_insumos_litro' => $litrosProcesados ? round($costoInsumos / $litrosProcesados, 3) : 0,
+            'gastos_planta' => $gastos,
+            'costo_gastos_litro' => $litrosProcesados ? round($gastos / $litrosProcesados, 3) : 0,
+            'perdidas' => ['total' => round((float) $perdidas->sum(), 2), 'LECHE' => round((float) ($perdidas['LECHE'] ?? 0), 2),
+                'PRODUCTO' => round((float) ($perdidas['PRODUCTO'] ?? 0), 2), 'INSUMO' => round((float) ($perdidas['INSUMO'] ?? 0), 2)],
+            'costo_perdidas_litro' => $litrosProcesados ? round((float) $perdidas->sum() / $litrosProcesados, 3) : 0,
             'rendimiento' => $rend,
             'ventas_total' => round((float) (clone $ventas)->sum('total'), 2),
             'ventas_cantidad' => (clone $ventas)->count(),

@@ -137,7 +137,7 @@ fun NegocioReal(e: EstadoAdmin) {
 
 private fun tipoCliente(t: String) = when (t) {
     "MAYORISTA" -> "Mayorista"
-    "DIRECTO" -> "Vecino de Huata"
+    "DIRECTO" -> "Cliente directo"
     "PLANTA" -> "Proveedor de leche"
     else -> t
 }

@@ -248,6 +248,32 @@ class ComprasComprobanteTest extends TestCase
         $this->assertEquals(0.8, $falta[$this->cuajo]['cantidad']);
     }
 
+    public function test_compras_traen_precio_anterior_gasto_por_insumo_y_consumo(): void
+    {
+        $rosa = $this->vendedor('DNI', '41234567', 'Rosa Mamani');
+        $compra = fn (string $fecha, float $kg, float $pagado) => $this->postJson('/api/v1/compras/ordenes/directa', [
+            'vendedor_id' => $rosa, 'comprobante_tipo' => 'RECIBO', 'comprobante_fecha' => $fecha,
+            'items' => [['insumo_id' => $this->sal, 'cantidad' => $kg, 'costo_real' => $pagado]],
+        ])->assertCreated()->json('id');
+        $primera = $compra(now('America/Lima')->subDay()->toDateString(), 20, 40);   // S/ 2.00 el kg
+        $segunda = $compra(now('America/Lima')->toDateString(), 10, 25);             // S/ 2.50 el kg
+
+        $o = collect($this->getJson('/api/v1/compras/ordenes?mes=todo')->assertOk()->json('ordenes'))->keyBy('id');
+        $this->assertNull($o[$primera]['items'][0]['precio_anterior']);              // la primera no tiene con qué compararse
+        $this->assertEquals(2, $o[$segunda]['items'][0]['precio_anterior']);         // la segunda: 2.50 contra 2.00 (+25 %)
+        $gasto = collect($this->getJson('/api/v1/compras/ordenes?mes=todo')->json('periodo.por_insumo'))->keyBy('insumo_id');
+        $this->assertEquals(65, $gasto[$this->sal]['total']);
+        $this->assertEquals(30, $gasto[$this->sal]['cantidad']);
+        $this->assertArrayHasKey('anterior_gastado', $this->getJson('/api/v1/compras/ordenes?mes=actual')->json('periodo'));
+
+        // lo que se gasta por día (salidas de 30 días / 30) y la cantidad de la última compra, para la próxima
+        DB::table('movimientos_insumo')->insert(['uuid' => (string) \Illuminate\Support\Str::uuid(), 'insumo_id' => $this->sal, 'cantidad' => -3,
+            'referencia' => 'Lote de prueba', 'origen_type' => 'lote', 'registrado_por' => $this->usuarios['COMPRAS']->id, 'created_at' => now(), 'updated_at' => now()]);
+        $inv = collect($this->getJson('/api/v1/compras/inventario')->json('insumos'))->keyBy('id');
+        $this->assertEquals(0.1, $inv[$this->sal]['consumo_dia']);
+        $this->assertEquals(10, $inv[$this->sal]['ultima_cantidad']);
+    }
+
     public function test_solo_compras_y_admin(): void
     {
         Sanctum::actingAs($this->usuarios['OPERARIO']);

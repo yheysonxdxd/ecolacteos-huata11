@@ -152,6 +152,21 @@ class AdminPagosTest extends TestCase
         $this->assertEquals(20, $t->json('litros'));
         $this->assertCount(7, $t->json('recientes'));
         $this->assertEquals(20, $t->json('recientes.6.litros')); // el último es el día elegido
+        $this->assertNull($t->json('anterior'));                  // antes del lunes no hubo acopio
+    }
+
+    public function test_totales_trae_el_periodo_anterior_para_comparar(): void
+    {
+        // un día se compara con el día anterior que tuvo acopio
+        $miercoles = $this->lunesPasado->copy()->addDays(2)->toDateString();
+        $t = $this->getJson('/api/v1/admin/totales?fecha=' . $miercoles)->assertOk();
+        $this->assertSame($this->lunesPasado->copy()->addDay()->toDateString(), $t->json('anterior.desde'));
+        $this->assertEquals(10, $t->json('anterior.litros'));
+
+        // 7 días se comparan con los 7 de justo antes
+        $s = $this->getJson('/api/v1/admin/totales?periodo=semana')->assertOk();
+        $this->assertSame(Carbon::parse($s->json('desde'))->subDays(7)->toDateString(), $s->json('anterior.desde'));
+        $this->assertSame(Carbon::parse($s->json('desde'))->subDay()->toDateString(), $s->json('anterior.hasta'));
     }
 
     public function test_la_ficha_del_padron_trae_lo_que_se_debe_para_pagarlo(): void

@@ -29,6 +29,9 @@ const fechaCorta = (iso) => {
 const hora = (iso) => String(iso || '').slice(11, 16);
 const TIPO_CLIENTE = { MAYORISTA: 'Mayorista', DIRECTO: 'Cliente directo', PLANTA: 'Proveedor de leche' };
 const ROLES = { ACOPIADOR: 'Acopiador', CALIDAD: 'Calidad', OPERARIO: 'Operario', COMPRAS: 'Compras', ADMIN: 'Administrador', PRODUCTOR: 'Productor' };
+/** Los roles que usan la web de oficina; los demás (operario, acopiador, productor) trabajan en la app del celular. */
+const ROLES_WEB = ['ADMIN', 'COMPRAS', 'CALIDAD'];
+const avisoRolWeb = (rol) => 'La web de oficina es para Administración, Compras y Calidad. Tu rol (' + (ROLES[rol] || rol) + ') usa la app del celular.';
 /** Litros que va mostrando el tanque de Producir mientras cuenta (ver animarUso). */
 const ANIM_USO = { valor: 0, cuadro: 0 };
 const esCorreo = (s) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(s || '').trim());
@@ -75,6 +78,14 @@ function oficina() {
     padron: 'proveedores',
     adulteracion: 'todos',
     buscar: '',
+    porVencer: [], // lotes con stock vencidos o que vencen en 7 días (de /compras/inventario): el aviso de arriba y Almacén
+    porVencerEn: 0, // cuándo se trajo (para no pedirlo en cada pantalla)
+    avisoVenceCerrado: false, // se cerró el aviso de arriba (vuelve a salir al recargar la página)
+    mesGastos: '', // Gastos: el mes que se mira (vacío = el actual)
+    panelEquipos: false, // Gastos: el panel de equipos al costado
+    compraFiltro: { estado: 'todas', vendedor: '', insumo: '' }, // Compras de insumos: todas · llegar · foto, y vendedor / insumo
+    semanasAbiertas: {}, // Compras de insumos: título de la semana => abierta o cerrada (si no se tocó: las dos primeras abiertas)
+    precioAbierto: {}, // Configuración → Precios de venta: QUESO / YOGURT / OTRO => true si su grupo está desplegado
     kardex: { tipo: 'insumo', id: null, desde: '', hasta: '', solo: false }, // tipo: insumo | producto | leche · solo: un producto y no toda su familia
     recetaAbierta: null, // receta abierta en el recetario (Producir > Recetario)
     recetaFiltro: 'TODOS', // TODOS · QUESO · YOGURT · OTRO
@@ -93,7 +104,7 @@ function oficina() {
     verClientesInactivos: false,
     fVenta: null,   // la venta a medias mientras se agrega o edita un cliente
     verDesactivados: false,
-    vendedoresAbiertos: (() => { try { return localStorage.getItem('vendedoresAbiertos') === '1'; } catch { return false; } })(),
+    panelVendedores: false, // Compras de insumos: el panel de vendedores al costado
     concFecha: '',  // vacío = último día con acopio
     concLitros: {}, // vehiculo_id => litros que llegaron a planta (lo que se está escribiendo)
     mapaEditar: false, // arrastrar comunidades a su lugar real
@@ -111,6 +122,8 @@ function oficina() {
     iniciar() {
       // si la ventana del cliente se cierra con Esc o clic afuera, se vuelve a la venta a medias
       this.$watch('ventana', (v) => { if (!v && this.fVenta) { this.f = this.fVenta; this.fVenta = null; } });
+      // una sesión guardada de un rol que no usa la web (operario, acopiador, productor) se cierra con el mismo aviso del login
+      if (this.usuario && !ROLES_WEB.includes(this.usuario.rol)) return this.salir(avisoRolWeb(this.usuario.rol));
       if (this.usuario) this.ir(this.menu()[0].pestanas[0].id);
     },
 
@@ -161,7 +174,8 @@ function oficina() {
         // el total solo si todos se cuentan igual (quesos de 1 kg, litros)
         const unidades = new Set(items.map((p) => p.unidad));
         return { id, icono, nombre, items, conStock: items.filter((p) => p.stock > 0).length,
-          total: unidades.size === 1 ? items.reduce((t, p) => t + Math.max(0, p.stock), 0) : null, unidad: this.unidadProducto(items[0]) };
+          total: unidades.size === 1 ? items.reduce((t, p) => t + Math.max(0, p.stock), 0) : null, unidad: this.unidadProducto(items[0]),
+          vencido: unidades.size === 1 ? items.reduce((t, p) => t + (Number(p.vencido) || 0), 0) : 0 }; // ya no se vende
       }).filter((g) => g.items.length);
     },
     grupoInsumoAbierto(g) { return this.almacenAbierto[g.id] ?? g.faltan > 0; },
@@ -206,6 +220,74 @@ function oficina() {
           ${serie.length <= 8 ? `<text x="${cx}" y="${82 - h}" class="g-valor">${num(x.valor, 0)}</text>` : ''}
           <text x="${cx}" y="106" class="g-eje">${dia}</text></g>`;
       }).join('')}</svg>`;
+    },
+    /**
+     * Litros por día de la tarjeta grande de Acopio (viewBox 0 0 640 156): cada día con su carril de fondo,
+     * la barra en degradado, la cifra en una burbuja, el mejor día con brillo y estrella, hoy en verde
+     * y una línea punteada con el promedio de los días que tuvieron acopio (su cifra va arriba del gráfico, en el HTML).
+     */
+    svgLitrosDia(serie) {
+      if (!serie?.length) return '';
+      const ARRIBA = 30, ABAJO = 124, ALTO = ABAJO - ARRIBA;
+      const max = Math.max(...serie.map((x) => x.valor), 1);
+      const ancho = 620 / serie.length, barra = Math.min(52, ancho * 0.62), radio = Math.min(10, barra / 2);
+      const DIAS = ['do', 'lu', 'ma', 'mi', 'ju', 'vi', 'sá'];
+      const pocos = serie.length <= 8;
+      const hoy = new Date(), iso = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+      const conDato = serie.filter((x) => x.valor > 0);
+      const mejor = conDato.length > 1 ? conDato.reduce((a, b) => (b.valor > a.valor ? b : a)) : null;
+      const prom = conDato.reduce((t, x) => t + x.valor, 0) / (conDato.length || 1), yProm = ABAJO - (prom / max) * ALTO;
+      const paso = Math.min(70, 600 / serie.length);
+      return `<svg viewBox="0 0 640 156" role="img" aria-label="Litros por día">
+        <defs>
+          <linearGradient id="g-barra" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8ef0bd"/><stop offset=".55" stop-color="#4cc38a"/><stop offset="1" stop-color="#23704a"/></linearGradient>
+          <linearGradient id="g-mejor" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d9ffe9"/><stop offset=".45" stop-color="#6fe0a8"/><stop offset="1" stop-color="#2e8b57"/></linearGradient>
+        </defs>
+        ${conDato.length > 1 ? `<line x1="10" x2="630" y1="${yProm}" y2="${yProm}" class="g-prom"/>` : ''}
+        ${serie.map((x, k) => {
+          const h = x.valor ? Math.max(radio * 2, (x.valor / max) * ALTO) : 4, cx = 10 + ancho * k + ancho / 2, y = ABAJO - h;
+          const [a, m, d] = String(x.fecha).slice(0, 10).split('-').map(Number);
+          const dia = pocos ? DIAS[new Date(a, m - 1, d).getDay()] + ' ' + d : String(d);
+          const esMejor = x === mejor, esHoy = String(x.fecha).slice(0, 10) === iso;
+          const txt = num(x.valor, 0), bw = txt.length * 7.4 + 16;
+          // la burbuja con la cifra: siempre con pocos días; con el mes, solo la del mejor día
+          const burbuja = x.valor && (pocos || esMejor) ? `<g class="g-burbuja${esMejor ? ' mejor' : ''}" style="animation-delay:${k * paso + 350}ms">
+              <rect x="${cx - bw / 2}" y="${y - 26}" width="${bw}" height="19" rx="9.5"/>
+              <path d="M${cx - 4} ${y - 7.5}l4 4.5 4-4.5z"/>
+              <text x="${cx}" y="${y - 12.5}">${esMejor ? '★ ' : ''}${txt}</text></g>` : '';
+          return `<g class="g-dia${esHoy ? ' hoy' : ''}"><title>${fechaCorta(x.fecha)}: ${x.valor ? num(x.valor, 0) + ' L' : 'sin acopio'}${esMejor ? ' · mejor día' : ''}</title>
+            ${pocos ? `<rect x="${cx - barra / 2}" y="${ARRIBA}" width="${barra}" height="${ALTO}" rx="${radio}" class="g-pista"/>` : ''}
+            <rect x="${cx - barra / 2}" y="${y}" width="${barra}" height="${h}" rx="${x.valor ? radio : 2}"
+              class="g-barra${x.valor ? '' : ' cero'}${esMejor ? ' mejor' : ''}" style="animation-delay:${k * paso}ms"/>
+            ${burbuja}
+            <text x="${cx}" y="144" class="g-eje">${dia}</text>
+            ${esHoy ? `<circle cx="${cx}" cy="152" r="2.5" class="g-hoy"/>` : ''}</g>`;
+        }).join('')}</svg>`;
+    },
+    /** Escribe en el elemento un número que sube desde 0 hasta `total` en 0,7 s (sin animación si el sistema pide menos movimiento). */
+    contarHasta(el, total) {
+      const fin = Number(total) || 0;
+      cancelAnimationFrame(el._cuenta);
+      if (matchMedia('(prefers-reduced-motion: reduce)').matches) { el.textContent = num(fin, 0); return; }
+      const t0 = performance.now();
+      const paso = (t) => {
+        const p = Math.min(1, (t - t0) / 700);
+        el.textContent = num(fin * (1 - (1 - p) ** 3), 0);
+        if (p < 1) el._cuenta = requestAnimationFrame(paso);
+      };
+      el._cuenta = requestAnimationFrame(paso);
+    },
+    /** Todos los días de desde..hasta (máx. 31) con sus litros; los días sin acopio van en 0 para que el gráfico no tenga huecos. */
+    diasDelPeriodo(desde, hasta, porDia) {
+      const litros = Object.fromEntries((porDia || []).map((x) => [String(x.fecha).slice(0, 10), Number(x.litros)]));
+      if (!desde || !hasta) return (porDia || []).map((x) => ({ fecha: x.fecha, valor: x.litros }));
+      const iso = (f) => `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, '0')}-${String(f.getDate()).padStart(2, '0')}`;
+      const [a, m, d] = String(desde).slice(0, 10).split('-').map(Number);
+      const dias = [];
+      for (let f = new Date(a, m - 1, d); iso(f) <= String(hasta).slice(0, 10) && dias.length < 31; f.setDate(f.getDate() + 1)) {
+        dias.push({ fecha: iso(f), valor: litros[iso(f)] || 0 });
+      }
+      return dias;
     },
     /** Anillo con partes [{ valor, color, nombre }] y un número al centro (viewBox 0 0 120 120). */
     svgDona(partes, centro, debajo = '') {
@@ -253,12 +335,12 @@ function oficina() {
           pestanas: [{ id: 'muestreo', nombre: 'Muestreo' }, { id: 'infractores', nombre: 'Infractores' }, { id: 'historial-calidad', nombre: 'Historial' }] }];
       }
       const admin = this.usuario?.rol === 'ADMIN';
-      // en el orden del día de la planta: comprar → guardar → producir → vender; el kardex (para revisar) al final
+      // en el orden del día de la planta: guardar y comprar → producir → vender; el kardex (para revisar) al final.
+      // Las compras van dentro de Almacén: ver qué falta, comprarlo y que suba el stock es un solo trabajo
       const compras = [
-        { id: 'ordenes-grupo', nombre: 'Compras de insumos', grupo: 'Compras y almacén',
-          pestanas: [{ id: 'ordenes', nombre: 'Compras de insumos' }] }, // órdenes y vendedores en una sola pantalla
-        { id: 'almacen', nombre: 'Almacén', grupo: 'Compras y almacén',
-          pestanas: [{ id: 'inventario', nombre: 'Stock y avisos' }, { id: 'mermas', nombre: 'Pérdidas' }] },
+        { id: 'almacen', nombre: 'Almacén y compras', grupo: 'Compras y almacén',
+          pestanas: [{ id: 'inventario', nombre: 'Stock y avisos' }, { id: 'ordenes', nombre: '🛒 Compras' }, { id: 'gastos', nombre: '🔧 Gastos' },
+            { id: 'mermas', nombre: 'Pérdidas' }] },
         { id: 'formulas-grupo', nombre: 'Fórmulas y producción', grupo: 'Compras y almacén',
           // los lotes son de planta: los ve e inicia/cierra el administrador (Compras solo ve las fórmulas)
           pestanas: [{ id: 'formulas', nombre: 'Producir y recetas' }, ...(admin ? [{ id: 'lotes', nombre: 'Lotes en producción' }] : [])] },
@@ -317,9 +399,7 @@ function oficina() {
         });
         const j = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(j.message || 'No se pudo ingresar');
-        if (!['ADMIN', 'COMPRAS', 'CALIDAD'].includes(j.rol)) {
-          throw new Error('La web de oficina es para Administración, Compras y Calidad. Tu rol (' + (ROLES[j.rol] || j.rol) + ') usa la app del celular.');
-        }
+        if (!ROLES_WEB.includes(j.rol)) throw new Error(avisoRolWeb(j.rol));
         this.token = j.token;
         this.usuario = { nombre: j.usuario?.nombre, rol: j.rol };
         sessionStorage.setItem('token', this.token);
@@ -418,6 +498,10 @@ function oficina() {
             break;
           case 'formulas': this.d = await this.api('/compras/formulas'); break;
           case 'mermas': this.d = await this.api('/compras/mermas'); break;
+          case 'gastos':
+            this.d = await this.api('/compras/gastos?mes=' + (this.mesGastos || 'actual'));
+            this.mesGastos = this.d.periodo.mes;
+            break;
           case 'lotes': this.d = await this.api('/planta/lotes'); this.cierre = {}; break;
           case 'kardex': {
             const inv = await this.api('/compras/inventario');
@@ -437,6 +521,33 @@ function oficina() {
       }
       // Leaflet necesita que el contenedor ya se vea para medirlo
       if (this.seccion === 'mapa' && !this.error) this.$nextTick(() => this.dibujarMapa());
+      // lotes por vencer: en Almacén vienen con los datos; en las demás pantallas se piden cada 5 minutos como mucho
+      if (!this.error) this.cargarPorVencer();
+      // las cifras grandes cuentan desde 0 solo al entrar a una pantalla o cambiar de periodo, no tras cada guardado
+      const vista = this.seccion + '|' + this.periodo + '|' + this.dinero;
+      if (!this.error && vista !== this._vistaContada) { this._vistaContada = vista; this.$nextTick(() => this.animarCifras()); }
+    },
+    /**
+     * Las cifras de tarjetas y KPI ("S/ 5,716.00", "666 L", "40") suben desde 0 en 0,7 s.
+     * Solo se toca el texto que ya pintó Alpine; si Alpine lo vuelve a pintar, queda su valor.
+     */
+    animarCifras() {
+      if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      document.querySelectorAll('main .tarjeta .valor, main .kpi b, main .kpis-fila b').forEach((el) => {
+        if (el.children.length || !el.offsetParent) return;
+        const m = el.textContent.match(/^(\D*?)(\d[\d,]*(?:\.\d+)?)(.*)$/s);
+        if (!m) return;
+        const [, antes, cifra, despues] = m, fin = Number(cifra.replace(/,/g, '')), dec = (cifra.split('.')[1] || '').length;
+        if (!fin) return;
+        const t0 = performance.now();
+        const paso = (t) => {
+          const p = Math.min(1, (t - t0) / 700);
+          if (p < 1 && !el.isConnected) return;
+          el.textContent = antes + (p < 1 ? (fin * (1 - (1 - p) ** 3)).toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec }) : cifra) + despues;
+          if (p < 1) requestAnimationFrame(paso);
+        };
+        requestAnimationFrame(paso);
+      });
     },
 
     cambiar(campo, valor) { this[campo] = valor; this.cargar(); },
@@ -799,6 +910,35 @@ function oficina() {
 
     // ---------------------------------------------------------- configuración
     camposDe(grupo) { return (this.d.campos || []).filter((c) => c.grupo === grupo); },
+    /**
+     * Los campos del grupo como tarjetas: 'calidad.densidad_min' y 'calidad.densidad_max' van juntos en una
+     * ("Densidad", con Mínimo y Máximo); los demás, uno por tarjeta. Cada una con su ícono.
+     */
+    filasConfig(grupo) {
+      const ICONOS = { grasa: '🧈', proteina: '🧀', densidad: '⚖️', ph: '🧪', temperatura: '🌡️', agua: '💧', brecha: '🔍',
+        tolerancia: '🚚', desvio: '📈', nombre: '🏭', ruc: '🧾', direccion: '📍', telefono: '📞' };
+      const filas = [];
+      for (const c of this.camposDe(grupo)) {
+        const base = c.clave.replace(/_(min|max)$/, '');
+        const par = base !== c.clave && filas.find((f) => f.clave === base);
+        if (par) { par.campos.push(c); par.nombre = c.etiqueta.replace(/\s+m[aáí][xn]\w*$/i, ''); continue; }
+        const llave = Object.keys(ICONOS).find((k) => c.clave.split('.')[1].startsWith(k)) || '';
+        filas.push({ clave: base, nombre: c.etiqueta, ayuda: c.ayuda, icono: ICONOS[llave] || '⚙️', campos: [c] });
+      }
+      return filas;
+    },
+    /** La parte verde de la barrita: de 0 al valor (un límite) o del mínimo al máximo (un rango), dentro de lo que se puede poner. */
+    barraRangoConfig(f) {
+      const a = Number(f.campos[0].min), b = Number(f.campos[0].max), pos = (v) => Math.max(0, Math.min(100, ((Number(v) - a) / ((b - a) || 1)) * 100));
+      const v1 = this.cfg[f.campos[0].clave], v2 = f.campos[1] ? this.cfg[f.campos[1].clave] : null;
+      if (v2 == null) return `left: 0; width: ${pos(v1)}%`;
+      const [i, j] = [pos(v1), pos(v2)].sort((x, y) => x - y);
+      return `left: ${i}%; width: ${Math.max(1.5, j - i)}%`;
+    },
+    textoRangoConfig(f) {
+      const u = f.campos[0].unidad ? ' ' + f.campos[0].unidad : '';
+      return f.campos[1] ? `aceptado: ${this.cfg[f.campos[0].clave]} – ${this.cfg[f.campos[1].clave]}${u}` : `ahora: ${this.cfg[f.campos[0].clave]}${u}`;
+    },
     /** Los campos del grupo que se escribieron distinto a lo guardado. */
     cambiadosDe(grupo) {
       return this.camposDe(grupo).filter((c) => String(this.cfg[c.clave] ?? '').trim() !== String(c.valor ?? ''));
@@ -829,6 +969,21 @@ function oficina() {
         this.aviso = { texto: `✓ Se quitó el precio de ${soles(p.precio)} que iba a regir desde el ${fechaCorta(p.desde)}.` };
         await this.cargar();
       } catch (e) { this.aviso = { error: true, texto: e.message }; }
+    },
+    /** Los precios de venta agrupados: quesos, yogures y lo demás (por el nombre del producto). */
+    familiasPrecioVenta() {
+      const FAM = [['QUESO', 'Quesos', '🧀', /queso/i], ['YOGURT', 'Yogures', '🥛', /yog/i], ['OTRO', 'Otros', '📦', /./]];
+      return FAM.map(([tipo, nombre, icono, re]) => ({ tipo, nombre, icono,
+        productos: (this.d.precios_venta || []).filter((p) => re.test(p.producto) && FAM.find((f) => f[3].test(p.producto))[0] === tipo) }))
+        .filter((f) => f.productos.length);
+    },
+    /** "S/ 19 – 25" con los precios guardados del grupo (todos los tipos de cliente). */
+    rangoPrecios(fam) {
+      const v = fam.productos.flatMap((p) => Object.values(p.precios)).filter((x) => x != null).map(Number);
+      if (!v.length) return 'sin precios';
+      const [a, b] = [Math.min(...v), Math.max(...v)];
+      const s = (x) => num(x, x % 1 ? 2 : 0);
+      return a === b ? `S/ ${s(a)}` : `S/ ${s(a)} – ${s(b)}`;
     },
     async guardarPrecioVenta(p, tipo) {
       const v = this.cfgVenta[p.producto_id + '.' + tipo];
@@ -1083,7 +1238,8 @@ function oficina() {
     // una venta puede llevar varios productos (queso y yogurt): cantidades = producto => cuánto (vacío = no lleva)
     nuevaVenta() {
       this.f = { cantidades: {}, cliente: null, correo: '', error: null, enviando: false, paso: 1,
-        familia: null, producto: null, cuantos: '1', metodo: 'EFECTIVO', operacion: '' };
+        familia: null, producto: null, cuantos: '1', metodo: 'EFECTIVO', operacion: '',
+        sinRegistro: null }; // { nombre, dni }: venderle a alguien sin registrarlo (la nota sale solo a su nombre)
     },
     /** Paso a paso: 1 cliente, 2 productos, 3 confirmar. No deja avanzar sin lo necesario. */
     pasoVenta(n) {
@@ -1095,8 +1251,13 @@ function oficina() {
       f.paso = n;
     },
     /** Los 6 clientes a los que se vendió hace menos (botones rápidos del paso 1). */
+    /**
+     * Los clientes generales ("Cliente sin registrar", "Proveedor de leche") no se eligen de la lista:
+     * se vende con "Vender a alguien sin registrar" o "Solo vender", y la nota sale con el nombre de quien compra.
+     */
+    esClienteGeneral(c) { return !c.ruc && /sin registrar|vecino de huata|^proveedor de leche$/i.test(c.nombre || ''); },
     clientesFrecuentes() {
-      return (this.d.clientes || []).filter((c) => c.ultima_venta)
+      return (this.d.clientes || []).filter((c) => c.ultima_venta && !this.esClienteGeneral(c))
         .sort((a, b) => String(b.ultima_venta).localeCompare(String(a.ultima_venta))).slice(0, 6);
     },
     productosConStock() { return (this.d.productos || []).filter((p) => p.stock > 0); },
@@ -1110,9 +1271,16 @@ function oficina() {
         base, sabores: [base, ...todos.filter((p) => p.base_id === base.id)].filter((p) => p.stock > 0 || p.activo), // sin stock también: se puede vender si el cliente lo pide
       })).filter((fa) => fa.sabores.length);
       const NOMBRES = { QUESO: '🧀 Quesos', YOGURT: '🥛 Yogurt', OTRO: 'Otros' };
-      return ['QUESO', 'YOGURT', 'OTRO'].map((tipo) => ({
-        tipo, nombre: NOMBRES[tipo], familias: familias.filter((fa) => (fa.base.tipo || 'OTRO') === tipo),
-      })).filter((g) => g.familias.length);
+      return ['QUESO', 'YOGURT', 'OTRO'].map((tipo) => {
+        const delTipo = familias.filter((fa) => (fa.base.tipo || 'OTRO') === tipo);
+        // varios quesos (Paria, andino, mantecoso): una sola tarjeta "Queso · 3 tipos" que se abre, como el yogurt con sus sabores
+        if (tipo === 'QUESO' && delTipo.length > 1) {
+          return { tipo, nombre: NOMBRES[tipo], familias: [{ juntos: true,
+            base: { ...delTipo[0].base, id: 'QUESOS', nombre: 'Queso', base_id: null, variante: null },
+            sabores: delTipo.flatMap((fa) => fa.sabores) }] };
+        }
+        return { tipo, nombre: NOMBRES[tipo], familias: delTipo };
+      }).filter((g) => g.familias.length);
     },
     familiaVenta() { return this.gruposVenta().flatMap((g) => g.familias).find((fa) => fa.base.id === this.f.familia); },
     /** Sin sabores se elige directo; con sabores se muestran para escoger. */
@@ -1120,7 +1288,11 @@ function oficina() {
       this.f.familia = fa.base.id; this.f.error = null;
       if (fa.sabores.length === 1) this.elegirProducto(fa.sabores[0]); else this.f.producto = null;
     },
-    nombreSabor(p) { return p.base_id ? p.variante || p.nombre : 'Natural / sin sabor'; },
+    /** En los quesos juntos va el tipo ("Paria", "Andino"); en el yogurt, el sabor. */
+    nombreSabor(p, juntos = false) {
+      if (juntos) { const t = p.nombre.replace(/^queso\s+/i, ''); return t.charAt(0).toUpperCase() + t.slice(1); }
+      return p.base_id ? p.variante || p.nombre : 'Natural / sin sabor';
+    },
     elegirProducto(p) {
       this.f.producto = p.id; this.f.cuantos = '1'; this.f.error = null;
       this.$nextTick(() => document.getElementById('venta-cuantos')?.select());
@@ -1129,7 +1301,7 @@ function oficina() {
     agregarProducto() {
       const f = this.f;
       const p = (this.d.productos || []).find((x) => x.id === f.producto);
-      if (!p) return (f.error = f.familia ? 'Elige el sabor' : 'Elige un producto');
+      if (!p) return (f.error = f.familia === 'QUESOS' ? 'Elige qué queso' : f.familia ? 'Elige el sabor' : 'Elige un producto');
       const n = Number(f.cuantos);
       if (!(n > 0)) return (f.error = '¿Cuántos lleva?');
       f.cantidades[p.id] = String((Number(f.cantidades[p.id]) || 0) + n); // si no alcanza, se avisa y se pregunta al registrar
@@ -1163,19 +1335,27 @@ function oficina() {
     nombreComprador() { return this.f.comprador?.nombre || this.clienteVenta()?.nombre || ''; },
     /**
      * "Solo vender" (sin registrarlo como cliente): la venta va a un cliente genérico del tipo que toca
-     * — un proveedor de leche paga precio de proveedor; los demás, el de vecino — y la nota lleva su nombre.
+     * — un proveedor de leche paga precio de proveedor; los demás, el de cliente directo — y la nota lleva solo su nombre.
      */
     soloVender(doc) {
       const tipo = doc.fuente === 'proveedor' ? 'PLANTA' : 'DIRECTO';
       const genericos = (this.d.clientes || []).filter((c) => c.tipo === tipo && !c.ruc);
-      const g = genericos.find((c) => /vecino|proveedor de leche/i.test(c.nombre)) || genericos[0];
-      if (!g) return (this.f.error = 'Falta un cliente general «Vecino de Huata» para vender sin registrar: agrégalo como Cliente directo.');
+      const g = genericos.find((c) => /sin registrar|vecino|proveedor de leche/i.test(c.nombre)) || genericos[0];
+      if (!g) return (this.f.error = 'Falta un cliente general «Cliente sin registrar» para vender sin registrar: agrégalo como Cliente directo.');
       const nombre = (doc.nombre || '').trim();
       if (nombre.length < 3) return (this.f.error = 'No salió el nombre: escribe a quién le vendes o agrégalo como cliente.');
       this.elegirCliente(g);
       this.f.comprador = { nombre, documento: doc.numero };
       this.buscarCliente = ''; this.docVenta = null;
       this.pasoVenta(2);
+    },
+    /** "Vender a alguien sin registrar": con el nombre escrito a mano (y su DNI si lo da), precio de cliente directo. */
+    venderSinRegistro() {
+      const s = this.f.sinRegistro || {};
+      const dni = (s.dni || '').trim();
+      if (dni && !/^\d{8}$/.test(dni)) return (this.f.error = 'El DNI tiene 8 números (o déjalo vacío).');
+      this.soloVender({ nombre: s.nombre, numero: dni || null, fuente: 'manual' });
+      if (this.f.comprador) this.f.sinRegistro = null;
     },
     /** Lo que lleva el cliente: [{ p, cantidad, precio, importe }] (precio según su tipo, 0 si aún no se eligió). */
     lineasVenta() {
@@ -1199,7 +1379,8 @@ function oficina() {
     clientesVisibles() {
       const q = this.buscarCliente.trim().toLowerCase();
       const todos = [...(this.d.clientes || []), ...(this.verClientesInactivos ? this.d.inactivos || [] : [])];
-      return todos.filter((c) => !q || c.nombre.toLowerCase().includes(q) || (c.ruc || '').includes(q) || (c.telefono || '').includes(q));
+      return todos.filter((c) => !this.esClienteGeneral(c)
+        && (!q || c.nombre.toLowerCase().includes(q) || (c.ruc || '').includes(q) || (c.telefono || '').includes(q)));
     },
     /** nuevo = { nombre, documento } ya encontrados (DNI escrito en el buscador del paso 1). */
     abrirCliente(c = null, nuevo = null) {
@@ -1461,8 +1642,136 @@ function oficina() {
       const v = this.insumoDe(l.insumo_id)?.ultimo_vendedor_id;
       if (!this.f.vendedor_id && v && (this.d.vendedores || []).some((x) => x.id === v)) this.f.vendedor_id = v;
     },
-    elegirInsumoCompra(l) { this.sugerirPrecio(l); this.sugerirVendedor(l); },
-    precioUnidad(l) { const c = this.insumoDe(l.insumo_id)?.costo; return c ? `última vez ${this.cu(c)} por ${this.insumoDe(l.insumo_id).unidad}` : 'primera compra'; },
+    /** Al elegir el insumo: si la cantidad está vacía, la de la última compra; luego el precio y el vendedor. */
+    elegirInsumoCompra(l) {
+      const i = this.insumoDe(l.insumo_id);
+      if (l.cantidad === '' && i?.ultima_cantidad) l.cantidad = i.ultima_cantidad;
+      this.sugerirPrecio(l); this.sugerirVendedor(l);
+    },
+    precioUnidad(l) {
+      const i = this.insumoDe(l.insumo_id);
+      if (!i) return '';
+      const partes = [i.costo ? `la última vez ${this.cu(i.costo)} por ${i.unidad}` : 'primera compra de este insumo'];
+      if (i.ultima_cantidad) partes.push(`se compraron ${num(i.ultima_cantidad, 3)} ${i.unidad}`);
+      return partes.join(' · ');
+    },
+    /**
+     * Insumos para "¿Qué hay que comprar?", lo más urgente primero. Urgente: bajo su mínimo, en la lista de lo que
+     * falta para las fórmulas o que se acaba en menos de 14 días (stock / lo que se gasta por día en los últimos 30).
+     * Cantidad sugerida: lo que falta para las fórmulas, o 30 días de gasto + el mínimo, o lo de la última compra.
+     */
+    insumosPorComprar() {
+      const falta = new Map((this.d.inv?.por_comprar || []).map((p) => [p.insumo_id, p.cantidad]));
+      return (this.d.inv?.insumos || []).map((i) => {
+        const dias = i.consumo_dia > 0 ? i.stock / i.consumo_dia : null;
+        const bajo = i.stock < i.minimo;
+        let cantidad = falta.get(i.id) ?? (i.consumo_dia > 0 ? Math.max(0, i.consumo_dia * 30 + i.minimo - i.stock) : 0);
+        if (!(cantidad > 0)) cantidad = i.ultima_cantidad || i.minimo || 1;
+        cantidad = cantidad >= 10 ? Math.ceil(cantidad) : Math.ceil(cantidad * 10) / 10;
+        return { i, dias, bajo, cantidad, urgente: falta.has(i.id) || bajo || (dias !== null && dias < 14),
+          nivel: Math.max(0, Math.min(1, i.stock / Math.max(i.minimo * 2, 0.001))) };
+      }).sort((a, b) => (b.urgente - a.urgente) || ((a.dias ?? 1e9) - (b.dias ?? 1e9)));
+    },
+    textoAlcance(x) {
+      if (x.bajo) return `bajo su mínimo (${num(x.i.minimo, 3)} ${x.i.unidad})`;
+      if (x.dias === null) return 'casi no se usa';
+      if (x.dias < 1) return 'se acaba hoy';
+      if (x.dias > 90) return 'alcanza para más de 3 meses';
+      return `alcanza para unos ${Math.round(x.dias)} días`;
+    },
+    /** Trae los lotes por vencer (solo Administración y Compras: Calidad no ve el almacén). */
+    async cargarPorVencer() {
+      if (!['ADMIN', 'COMPRAS'].includes(this.usuario?.rol)) return;
+      if (this.dDe === 'inventario' && this.d.por_vencer) { this.porVencer = this.d.por_vencer; this.porVencerEn = Date.now(); return; }
+      if (Date.now() - this.porVencerEn < 5 * 60000) return;
+      this.porVencerEn = Date.now();
+      try { this.porVencer = (await this.api('/compras/inventario')).por_vencer || []; } catch { /* el aviso es de ayuda: si falla, no se muestra */ }
+    },
+    /** "venció hace 6 días", "vence hoy", "vence mañana", "vence en 3 días". */
+    textoVence(x) {
+      if (x.dias < 0) return 'venció hace ' + -x.dias + (x.dias === -1 ? ' día' : ' días');
+      return x.dias === 0 ? 'vence hoy' : x.dias === 1 ? 'vence mañana' : 'vence en ' + x.dias + ' días';
+    },
+    /** Lo vencido se registra como pérdida: la ventana ya viene con ese producto, ese lote, lo que queda y el motivo. */
+    async registrarVencido(x) {
+      await this.abrirMerma('PRODUCTO', x.producto_id);
+      Object.assign(this.f, { lote_id: x.lote_id, cantidad: String(x.queda), motivo: 'VENCIDO' });
+      this.porVencerEn = 0; // al volver se vuelve a pedir
+    },
+    /** El lote que vence primero de un producto, si vence en 7 días o menos (para "vence en 3 días" al vender). */
+    loteQueVence(p) { const l = (p?.lotes || [])[0]; return l && l.dias <= 7 ? l : null; },
+    /**
+     * Desde Almacén → Stock y avisos: pasa a la pestaña Compras y abre la compra ya llenada
+     * ('todo' = todo lo que falta; si no, ese insumo y esa cantidad).
+     */
+    async irAComprar(insumo_id, cantidad) {
+      await this.ir('ordenes');
+      if (this.error) return;
+      if (insumo_id === 'todo') this.abrirCompra(true);
+      else this.abrirCompraDe(insumo_id, cantidad >= 10 ? Math.ceil(cantidad) : Math.ceil(cantidad * 10) / 10);
+    },
+    /** Compra nueva de un solo insumo (desde "¿Qué hay que comprar?"). */
+    abrirCompraDe(insumo_id, cantidad) {
+      this.abrirCompra();
+      this.f.items = [this.lineaCompra(insumo_id, cantidad)];
+      this.sugerirVendedor(this.f.items[0]);
+    },
+    /** "Volver a comprar": la misma compra (vendedor, insumos y cantidades) con el precio de la última vez. */
+    volverAComprar(o) {
+      this.abrirCompra();
+      if (o.vendedor && (this.d.vendedores || []).some((v) => v.id === o.vendedor.id)) this.f.vendedor_id = o.vendedor.id;
+      this.f.items = o.items.map((it) => this.lineaCompra(it.insumo_id, it.cantidad));
+      this.f.items.forEach((l) => this.sugerirVendedor(l));
+    },
+    /** Una semana de compras se ve abierta si se tocó para abrirla; si no, las dos primeras o todas cuando hay un filtro puesto. */
+    semanaAbierta(g, k) {
+      const f = this.compraFiltro;
+      return this.semanasAbiertas[g.titulo] ?? (k < 2 || f.estado !== 'todas' || !!f.vendedor || !!f.insumo);
+    },
+    sinFoto() { return (this.d.ordenes || []).filter((o) => o.estado === 'RECIBIDA' && !o.tiene_foto); },
+    /** Precio por unidad de una línea ya recibida (null si no se sabe lo pagado). */
+    precioDeItem(it) { return it.costo_real != null && it.cantidad > 0 ? it.costo_real / it.cantidad : null; },
+    /** % que subió (+) o bajó (−) el precio por unidad frente a la compra anterior; null si no hay con qué comparar. */
+    cambioPrecio(it) {
+      const p = this.precioDeItem(it);
+      return p != null && it.precio_anterior ? (p - it.precio_anterior) / it.precio_anterior * 100 : null;
+    },
+    /** El gasto del mes por insumo para el anillo: los 5 que más y el resto junto en "Otros". */
+    partesGasto() {
+      const COLORES = ['#4cc38a', '#5fb3ff', '#e8b44c', '#f07ad8', '#a78bfa', '#8394a4'];
+      const lista = this.d.periodo?.por_insumo || [];
+      const partes = lista.slice(0, 5).map((x, k) => ({ nombre: x.insumo, total: x.total, color: COLORES[k], icono: this.iconoInsumo({ nombre: x.insumo }) }));
+      const resto = lista.slice(5).reduce((t, x) => t + x.total, 0);
+      if (resto > 0) partes.push({ nombre: `Otros (${lista.length - 5})`, total: resto, color: COLORES[5], icono: '📦' });
+      return partes;
+    },
+    vendedoresDeCompras() {
+      const m = new Map();
+      (this.d.ordenes || []).forEach((o) => o.vendedor && m.set(o.vendedor.id, o.vendedor));
+      return [...m.values()].sort((a, b) => a.nombre.localeCompare(b.nombre));
+    },
+    /** Las compras con los filtros puestos, en grupos: primero "Por llegar" y luego una por semana (lunes a domingo). */
+    ordenesAgrupadas() {
+      const f = this.compraFiltro;
+      const lista = (this.d.ordenes || []).filter((o) =>
+        (f.estado === 'todas' || (f.estado === 'llegar' ? o.estado === 'EMITIDA' : o.estado === 'RECIBIDA' && !o.tiene_foto))
+        && (!f.vendedor || o.vendedor?.id === f.vendedor) && (!f.insumo || o.items.some((it) => it.insumo_id === f.insumo)));
+      const lunes = (iso) => { const [a, m, d] = String(iso).slice(0, 10).split('-').map(Number); const x = new Date(a, m - 1, d); x.setDate(d - ((x.getDay() + 6) % 7)); return x; };
+      const esta = lunes(this.hoy()).getTime(), semana = 7 * 86400000;
+      const grupos = new Map();
+      const porLlegar = lista.filter((o) => o.estado === 'EMITIDA');
+      if (porLlegar.length) grupos.set('🕒 Por llegar', { titulo: '🕒 Por llegar', ordenes: porLlegar, total: 0 });
+      for (const o of lista.filter((x) => x.estado !== 'EMITIDA')) {
+        const l = lunes(o.comprobante_fecha || o.created_at);
+        const titulo = l.getTime() === esta ? 'Esta semana' : l.getTime() === esta - semana ? 'Semana pasada'
+          : 'Semana del ' + fechaCorta(l.toLocaleDateString('en-CA'));
+        if (!grupos.has(titulo)) grupos.set(titulo, { titulo, ordenes: [], total: 0 });
+        const g = grupos.get(titulo);
+        g.ordenes.push(o);
+        if (o.estado === 'RECIBIDA') g.total += o.total ?? 0;
+      }
+      return [...grupos.values()];
+    },
     costoEstimadoOrden() {
       return (this.f.items || []).reduce((t, it) => t + (Number(it.cantidad) || 0) * (this.insumoDe(it.insumo_id)?.costo || 0), 0);
     },
@@ -1500,10 +1809,11 @@ function oficina() {
       const t = new Date(ym + '-15T12:00:00').toLocaleDateString('es-PE', { month: 'long', year: 'numeric' }).replace(' de ', ' ');
       return t.charAt(0).toUpperCase() + t.slice(1);
     },
-    /** Abre o pliega la lista de vendedores; la compu lo recuerda para la próxima vez. */
-    plegarVendedores(abrir) {
-      this.vendedoresAbiertos = abrir;
-      try { localStorage.setItem('vendedoresAbiertos', abrir ? '1' : '0'); } catch { /* sin almacenamiento: solo por ahora */ }
+    /** "Ver sus compras": cierra el panel y filtra la lista por ese vendedor (si este mes no le compramos, se ve todo). */
+    verComprasDe(v) {
+      this.panelVendedores = false;
+      this.compraFiltro = { estado: 'todas', vendedor: v.id, insumo: '' };
+      if (!(this.d.ordenes || []).some((o) => o.vendedor?.id === v.id)) this.cambiar('mesCompras', 'todo');
     },
     /** Vendedores que coinciden con lo buscado (nombre o DNI/RUC); los desactivados solo si se piden. */
     vendedoresVisibles() {
@@ -1554,6 +1864,16 @@ function oficina() {
         img.onerror = () => mal(new Error('No se pudo leer la imagen'));
         img.src = URL.createObjectURL(archivo);
       });
+    },
+    /**
+     * El ✕ de una ventana (o Esc): hace lo mismo que su botón Cancelar, que en algunas vuelve a otra ventana
+     * (la ficha del proveedor, la compra a medias); si no tiene, solo la cierra.
+     */
+    cerrarVentana(el = null) {
+      const v = el?.closest('.ventana') || [...document.querySelectorAll('.velo .ventana')].find((x) => x.offsetParent !== null);
+      const cancelar = v?.querySelector(':scope > .pie > .btn.gris');
+      if (cancelar && cancelar.offsetParent !== null && !cancelar.disabled) cancelar.click();
+      else this.ventana = null;
     },
     async elegirFoto(e) {
       try { this.f.foto = await this.leerFoto(e.target.files[0]); this.f.fotoNombre = e.target.files[0]?.name || ''; }
@@ -1645,6 +1965,23 @@ function oficina() {
      * solo se busca cuando la fecha está completa, medio segundo después y sin recargar toda la
      * pantalla (así no se pierde lo que se está escribiendo). Si quedan al revés, se ordenan solas.
      */
+    /** Atajos del kardex: 'todo' (sin fechas), 'mes' (este mes hasta hoy) o 'pasado' (el mes anterior completo). */
+    rangoKardex(cual) {
+      const f = new Date(), iso = (x) => x.toLocaleDateString('en-CA');
+      const k = this.kardex;
+      if (cual === 'mes') [k.desde, k.hasta] = [iso(new Date(f.getFullYear(), f.getMonth(), 1)), this.hoy()];
+      else if (cual === 'pasado') [k.desde, k.hasta] = [iso(new Date(f.getFullYear(), f.getMonth() - 1, 1)), iso(new Date(f.getFullYear(), f.getMonth(), 0))];
+      else [k.desde, k.hasta] = ['', ''];
+      this.fechaKardex('desde', k.desde);
+    },
+    /** Qué atajo coincide con las fechas puestas (null si son fechas a mano). */
+    rangoKardexActivo() {
+      const k = this.kardex, f = new Date(), iso = (x) => x.toLocaleDateString('en-CA');
+      if (!k.desde && !k.hasta) return 'todo';
+      if (k.desde === iso(new Date(f.getFullYear(), f.getMonth(), 1)) && k.hasta === this.hoy()) return 'mes';
+      if (k.desde === iso(new Date(f.getFullYear(), f.getMonth() - 1, 1)) && k.hasta === iso(new Date(f.getFullYear(), f.getMonth(), 0))) return 'pasado';
+      return null;
+    },
     fechaKardex(campo, valor) {
       clearTimeout(this._fechaKardex);
       if (valor && !(/^\d{4}-\d{2}-\d{2}$/.test(valor) && Number(valor.slice(0, 4)) >= 2000)) return;
@@ -1692,34 +2029,148 @@ function oficina() {
     },
 
     // -------------------------------------------------------------- pérdidas
-    async abrirMerma(tipo = 'PRODUCTO', productoId = null) {
-      this.f = { tipo, producto_id: productoId, lote_id: null, cantidad: '', motivo: null, detalle: '', datos: null, error: null, enviando: false };
+    /** tipo: LECHE | PRODUCTO | INSUMO; id: el producto o el insumo (si ya se sabe cuál). */
+    async abrirMerma(tipo = 'PRODUCTO', id = null) {
+      this.f = { tipo, producto_id: tipo === 'PRODUCTO' ? id : null, insumo_id: tipo === 'INSUMO' ? id : null, lote_id: null,
+        cantidad: '', motivo: null, detalle: '', foto: null, datos: null, error: null, enviando: false };
       this.ventana = 'merma';
       try {
         this.f.datos = await this.api('/compras/mermas');
-        if (tipo === 'PRODUCTO' && !productoId) this.f.producto_id = this.f.datos.productos[0]?.id ?? null;
+        if (tipo === 'PRODUCTO' && !id) this.f.producto_id = this.productosMerma()[0]?.id ?? null;
       } catch (e) { this.f.error = e.message; }
     },
+    insumoMerma() { return (this.f.datos?.insumos || []).find((i) => i.id === this.f.insumo_id); },
+    elegirInsumoMerma(i) { Object.assign(this.f, { tipo: 'INSUMO', insumo_id: i.id, producto_id: null, lote_id: null, motivo: null, error: null }); },
+    /** Cuánto vale lo que se pierde (estimado: leche a su precio, insumo a lo de la última compra; el producto lo calcula el servidor). */
+    valorMerma() {
+      const n = Number(this.f.cantidad) || 0;
+      if (this.f.tipo === 'LECHE') return n * (this.f.datos?.leche?.precio || 0);
+      if (this.f.tipo === 'INSUMO') { const c = this.insumoMerma()?.costo; return c == null ? null : n * c; }
+      return null;
+    },
+    async elegirFotoMerma(e) {
+      try { this.f.foto = await this.leerFoto(e.target.files[0]); } catch (err) { this.f.error = err.message; }
+    },
+    /** Ver la foto de una pérdida o de un gasto (enlace firmado de 30 minutos). */
+    async verFotoDe(tipo, id) {
+      const pestana = window.open('', '_blank');
+      try {
+        const r = await this.api(`/compras/fotos/${tipo}/${id}`);
+        if (pestana) pestana.location = r.url; else window.location = r.url;
+      } catch (e) {
+        pestana?.close();
+        this.aviso = { error: true, texto: 'No se pudo abrir la foto: ' + e.message };
+      }
+    },
+    iconoPerdida(m) { return m.tipo === 'LECHE' ? '🥛' : m.tipo === 'INSUMO' ? this.iconoInsumo({ nombre: m.que }) : (/yogurt/i.test(m.que) ? '🥤' : '🧀'); },
+
+    // ------------------------------------------------------------ gastos de planta y equipos
+    CATEGORIA_GASTO: { REPARACION: '🔧', MANTENIMIENTO: '🧽', COMBUSTIBLE: '⛽', SERVICIOS: '💡', TRANSPORTE: '🚚', OTRO: '✏️' },
+    /** equipoId: si se abre desde un equipo (reparación de ese equipo). */
+    abrirGasto(equipoId = null, categoria = null) {
+      this.f = { fecha: this.hoy(), categoria: categoria || (equipoId ? 'REPARACION' : null), equipo_id: equipoId, monto: '', detalle: '', foto: null,
+        error: null, enviando: false };
+      this.panelEquipos = false;
+      this.ventana = 'gasto';
+    },
+    pideEquipo() { return ['REPARACION', 'MANTENIMIENTO'].includes(this.f.categoria); },
+    async elegirFotoGasto(e) {
+      try { this.f.foto = await this.leerFoto(e.target.files[0]); } catch (err) { this.f.error = err.message; }
+    },
+    async guardarGasto() {
+      const f = this.f;
+      if (!f.categoria) return (f.error = '¿Qué tipo de gasto es?');
+      if (this.pideEquipo() && !f.equipo_id) return (f.error = '¿A qué equipo se le hizo? Elígelo (o agrégalo).');
+      if (!(Number(f.monto) > 0)) return (f.error = 'Escribe cuánto se pagó');
+      if (f.categoria === 'OTRO' && !f.detalle.trim()) return (f.error = 'Escribe en qué se gastó');
+      await this.enviar('/compras/gastos', { fecha: f.fecha, categoria: f.categoria, equipo_id: f.equipo_id || null, monto: Number(f.monto),
+        detalle: f.detalle.trim() || null, foto: f.foto }, null,
+        () => `✓ Gasto anotado: ${soles(Number(f.monto))} · ${this.d.categorias?.[f.categoria] || ''}` + (f.equipo_id ? ' · ' + (this.equipoDe(f.equipo_id)?.nombre || '') : ''));
+    },
+    equipoDe(id) { return (this.d.equipos || []).find((e) => e.id === id); },
+    async borrarGasto(g) {
+      if (!(await this.preguntar({ titulo: '¿Borrar este gasto?', icono: '🗑️', tono: 'peligro', si: 'Sí, borrar', no: 'No',
+        texto: `${g.categoria_texto} · ${soles(g.monto)}${g.equipo ? ' · ' + g.equipo : ''} del ${fechaCorta(g.fecha)}. Solo si se anotó mal.` }))) return;
+      try { await this.api(`/compras/gastos/${g.id}/borrar`, {}); this.aviso = { texto: '✓ Gasto borrado' }; await this.cargar(); }
+      catch (e) { this.aviso = { error: true, texto: e.message }; }
+    },
+    abrirEquipo(e = null) {
+      this.f = e ? { id: e.id, nombre: e.nombre, tipo: e.tipo, mantenimiento_dias: e.mantenimiento_dias ?? '', activo: e.activo, error: null, enviando: false }
+        : { id: null, nombre: '', tipo: 'PLANTA', mantenimiento_dias: '', activo: true, error: null, enviando: false };
+      this.ventana = 'equipo';
+    },
+    async guardarEquipo() {
+      const f = this.f;
+      if (f.nombre.trim().length < 3) return (f.error = 'Escribe el nombre del equipo (ej.: Pasteurizadora)');
+      await this.enviar('/compras/equipos' + (f.id ? '/' + f.id : ''), { nombre: f.nombre.trim(), tipo: f.tipo,
+        mantenimiento_dias: f.mantenimiento_dias === '' ? null : Number(f.mantenimiento_dias), activo: !!f.activo }, `✓ Equipo ${f.nombre.trim()} guardado`);
+      this.panelEquipos = true;
+    },
+    /** "le toca en 12 días", "le toca hoy", "se pasó hace 5 días". */
+    textoMantenimiento(m) {
+      if (!m) return '';
+      if (m.dias < 0) return 'el mantenimiento se pasó hace ' + -m.dias + (m.dias === -1 ? ' día' : ' días');
+      return m.dias === 0 ? 'le toca mantenimiento hoy' : 'mantenimiento en ' + m.dias + (m.dias === 1 ? ' día' : ' días');
+    },
+    equiposConAviso() { return (this.d.equipos || []).filter((e) => e.avisar); },
+    /** Costo por litro: leche + insumos + gastos de planta + lo perdido (todo ÷ litros procesados en 30 días). */
+    partesCosto() {
+      const d = this.d;
+      return [['Leche', d.costo_leche_litro, '#e9e3d3'], ['Insumos', d.costo_insumos_litro, '#4cc38a'],
+        ['Gastos de planta', d.costo_gastos_litro, '#5fb3ff'], ['Pérdidas', d.costo_perdidas_litro, '#ef6b6b']]
+        .map(([nombre, v, color]) => ({ nombre, valor: Number(v) || 0, color })).filter((p, k) => k < 2 || p.valor > 0);
+    },
+    costoLitroTotal() { return this.partesCosto().reduce((t, p) => t + p.valor, 0); },
+    partesGastoPlanta() {
+      const COL = { REPARACION: '#ef6b6b', MANTENIMIENTO: '#5fb3ff', COMBUSTIBLE: '#e8b44c', SERVICIOS: '#a78bfa', TRANSPORTE: '#4cc38a', OTRO: '#8394a4' };
+      return (this.d.periodo?.por_categoria || []).map((c) => ({ ...c, color: COL[c.categoria] || '#8394a4', icono: this.CATEGORIA_GASTO[c.categoria] }));
+    },
     productoMerma() { return (this.f.datos?.productos || []).find((p) => p.id === this.f.producto_id); },
+    /** Los productos para elegir: primero los que tienen stock, quesos y luego yogures. */
+    productosMerma() {
+      const orden = { QUESO: 0, YOGURT: 1 };
+      return [...(this.f.datos?.productos || [])].sort((a, b) => (b.stock > 0) - (a.stock > 0) || (orden[a.tipo] ?? 2) - (orden[b.tipo] ?? 2));
+    },
+    /** Al elegir un producto: si tiene un lote vencido, ya queda elegido con "Se venció" (lo más común). */
+    elegirProductoMerma(p) {
+      Object.assign(this.f, { tipo: 'PRODUCTO', producto_id: p.id, motivo: null, lote_id: null, error: null });
+      const vencido = (p.lotes || []).find((l) => l.vencido);
+      if (vencido) { this.f.motivo = 'VENCIDO'; this.elegirLoteMerma(vencido); }
+    },
+    /** Al elegir un lote: la cantidad propuesta es lo que le queda (se puede cambiar). */
+    elegirLoteMerma(l) { this.f.lote_id = l.id; if (!(Number(this.f.cantidad) > 0) || Number(this.f.cantidad) > l.queda) this.f.cantidad = String(l.queda); },
+    /** Lo máximo que se puede perder: lo del lote elegido o, si no, todo lo que hay. */
+    topeMerma() {
+      const l = (this.productoMerma()?.lotes || []).find((x) => x.id === this.f.lote_id);
+      return Math.max(0, this.f.tipo === 'PRODUCTO' && l ? Number(l.queda) : Number(this.hayParaMerma().cant) || 0);
+    },
+    iconoMotivo(clave) {
+      return { VENCIDO: '⏰', MALOGRADO: '🦠', DANADO: '💥', MUESTRA: '👅', CORTADA: '🧪', DERRAMADA: '💧', VIEJA: '⏳', OTRO: '✏️',
+        ROTO: '🧺', MOJADO: '💧', PLAGA: '🐭', DEFECTUOSO: '💥' }[clave] || '•';
+    },
     hayParaMerma() {
       const f = this.f;
       if (!f.datos) return { cant: 0, u: '' };
       if (f.tipo === 'LECHE') return { cant: f.datos.leche.sin_usar, u: 'L' };
+      if (f.tipo === 'INSUMO') { const i = this.insumoMerma(); return { cant: i?.stock ?? 0, u: i?.unidad ?? '' }; }
       const p = this.productoMerma();
       return { cant: p?.stock ?? 0, u: p?.unidad ?? '' };
     },
     async guardarMerma() {
       const f = this.f; const hay = this.hayParaMerma();
       if (f.tipo === 'PRODUCTO' && !f.producto_id) return (f.error = 'Elige si es queso o yogurt');
+      if (f.tipo === 'INSUMO' && !f.insumo_id) return (f.error = 'Elige qué insumo se perdió');
       if (!(Number(f.cantidad) > 0)) return (f.error = 'Escribe cuánto se perdió');
       if (Number(f.cantidad) > hay.cant) return (f.error = `Solo hay ${num(hay.cant, 2)} ${hay.u}`);
       if (!f.motivo) return (f.error = 'Elige el motivo');
       if (f.motivo === 'OTRO' && !f.detalle.trim()) return (f.error = 'Escribe qué pasó');
-      const que = f.tipo === 'LECHE' ? 'leche' : this.productoMerma().nombre;
+      const que = f.tipo === 'LECHE' ? 'leche' : f.tipo === 'INSUMO' ? this.insumoMerma().nombre.toLowerCase() : this.productoMerma().nombre;
       await this.enviar('/compras/mermas', {
-        tipo: f.tipo, producto_id: f.tipo === 'PRODUCTO' ? f.producto_id : null, lote_id: f.lote_id || null,
-        cantidad: Number(f.cantidad), motivo: f.motivo, detalle: f.detalle.trim() || null,
-      }, null, (r) => `✓ Pérdida registrada: ${num(f.cantidad, 2)} ${hay.u} de ${que} · ahora quedan ${num(r.stock, 2)} ${hay.u}`);
+        tipo: f.tipo, producto_id: f.tipo === 'PRODUCTO' ? f.producto_id : null, insumo_id: f.tipo === 'INSUMO' ? f.insumo_id : null,
+        lote_id: f.tipo === 'PRODUCTO' ? f.lote_id || null : null,
+        cantidad: Number(f.cantidad), motivo: f.motivo, detalle: f.detalle.trim() || null, foto: f.foto,
+      }, null, (r) => `✓ Pérdida registrada: ${num(f.cantidad, 3)} ${hay.u} de ${que}` + (r.valor != null ? ` (${soles(Number(r.valor))})` : '')
+        + ` · ahora quedan ${num(r.stock, 2)} ${hay.u}`);
     },
     opcionesKardex() {
       const inv = this.d.inv || {};
@@ -1751,8 +2202,6 @@ function oficina() {
     cu: (v) => 'S/ ' + Number(v || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 4 }),
     /** Qué pasó con el insumo, en palabras de todos los días. "contamos": se escribe cuánto hay y se calcula la diferencia. */
     RAZONES_AJUSTE: [
-      { id: 'malogro', texto: 'Se malogró, mojó o derramó', tipo: 'SALIDA', motivo: 'Se malogró' },
-      { id: 'vencio', texto: 'Se venció', tipo: 'SALIDA', motivo: 'Se venció' },
       { id: 'contamos', texto: 'Contamos y no cuadra', tipo: null, motivo: 'Conteo' },
       { id: 'devolvieron', texto: 'Nos devolvieron', tipo: 'ENTRADA', motivo: 'Devolución' },
       { id: 'otro', texto: 'Otra cosa', tipo: null, motivo: '' },
@@ -2038,6 +2487,30 @@ function oficina() {
 
     // ----------------------------------------------------- lotes en producción
     cierre: {}, // lote => cantidad que salió
+    loteInfo: {}, // lote => true si su detalle (ⓘ) está abierto
+    terminadosAbiertos: false, // la lista de lotes terminados (cerrada: solo el resumen)
+    /** Lotes en proceso, los más antiguos primero (los olvidados quedan arriba). */
+    lotesAbiertos() {
+      return (this.d.lotes || []).filter((l) => l.estado === 'EN_PROCESO')
+        .sort((a, b) => String(a.iniciado_en).localeCompare(String(b.iniciado_en)));
+    },
+    lotesTerminados() { return (this.d.lotes || []).filter((l) => l.estado !== 'EN_PROCESO'); },
+    /** Un lote abierto hace más de 7 días: lo más probable es que ya salió y nadie lo cerró (no está en el stock). */
+    loteOlvidado(l) { return (Date.now() - new Date(String(l.iniciado_en).replace(' ', 'T')).getTime()) / 86400000 > 7; },
+    /** Lo que debe salir en un solo número: el medio de lo esperado ("~15", "~25.7"). */
+    esperadoCorto(l) {
+      const m = (Number(l.esperado_min) + Number(l.esperado_max)) / 2;
+      return num(m, m % 1 ? 1 : 0) + ' ' + l.unidad.split(' ')[0];
+    },
+    /** Al escribir cuántos salieron: bien (dentro de ±3 % de lo esperado, como el servidor), menos o más. */
+    estadoCierre(l) {
+      const v = this.cierre[l.id];
+      if (v === '' || v == null || !(Number(v) >= 0)) return null;
+      const n = Number(v), u = l.unidad.split(' ')[0];
+      if (n < l.esperado_min * 0.97) return { clase: 'menos', texto: `⚠ Salió menos de lo esperado (se acepta desde ${num(l.esperado_min * 0.97, 2)} ${u}). Si es así, ciérralo igual: queda anotado.` };
+      if (n > l.esperado_max * 1.03) return { clase: 'mas', texto: `⚠ Salió más de lo esperado (hasta ${num(l.esperado_max * 1.03, 2)} ${u}). Revisa que el número esté bien.` };
+      return { clase: 'bien', texto: '✓ Bien: está dentro de lo esperado' };
+    },
     /** Lo esperado con sus decimales (redondeado engañaba: 8.55 L se veía "9 a 9"). */
     esperadoLote(l) {
       const u = l.unidad.split(' ')[0];

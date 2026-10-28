@@ -57,17 +57,52 @@ class ComprasAppController extends Controller
         foreach (Formulas::recetas($tipos->keys()->all()) as $productoId => $filas) {
             foreach ($filas as $f) $usadoEn[$f->id][$tipos[$productoId] ?? 'OTRO'] = true;
         }
+        // lo que se gasta por día (lo usado en lotes los últimos 30 días / 30), para decir "alcanza para unos N días"
+        $gasto30 = DB::table('movimientos_insumo')->where('origen_type', 'lote')->where('cantidad', '<', 0) // lo que se usa al producir, no lo perdido
+            ->where('created_at', '>=', now('America/Lima')->subDays(30))
+            ->groupBy('insumo_id')->selectRaw('insumo_id, -SUM(cantidad) as total')->pluck('total', 'insumo_id');
+        // cuánto se compró la última vez de cada insumo: la Nueva compra lo propone como cantidad
+        $ultimaCantidad = DB::table('orden_compra_items as it')->join('ordenes_compra as o', 'o.id', '=', 'it.orden_compra_id')
+            ->where('o.estado', 'RECIBIDA')->orderByRaw('COALESCE(o.comprobante_fecha, DATE(o.created_at))')->orderBy('o.id')
+            ->pluck('it.cantidad', 'it.insumo_id'); // pluck se queda con la última de cada insumo
         $insumos = DB::table('insumos')->orderBy('nombre')->get()->map(fn ($i) => [
             'id' => $i->id, 'nombre' => $i->nombre, 'unidad' => $i->unidad,
             'stock' => (float) $i->stock, 'minimo' => (float) $i->stock_minimo,
+            'consumo_dia' => round((float) ($gasto30[$i->id] ?? 0) / 30, 4),
+            'ultima_cantidad' => isset($ultimaCantidad[$i->id]) ? (float) $ultimaCantidad[$i->id] : null,
             'costo' => (float) ($costos[$i->id] ?? 0),               // lo que se pagó por unidad la última vez
             'ultimo_vendedor_id' => $vendedores[$i->id] ?? null,      // a quién se le compró la última vez
             'usado_en' => array_keys($usadoEn[$i->id] ?? []),         // tipos de producto que lo llevan
         ]);
         $avisos = Formulas::avisos();
 
-        return response()->json(['insumos' => $insumos, 'productos' => $this->productos(), 'avisos' => $avisos,
-            'por_comprar' => Compras::porComprar($avisos)]);
+        // productos con su stock para vender (sin lo vencido) y lo vencido aparte, igual que al vender
+        return response()->json(['insumos' => $insumos, 'productos' => $this->productos(true), 'avisos' => $avisos,
+            'por_comprar' => Compras::porComprar($avisos), 'por_vencer' => self::porVencer()]);
+    }
+
+    /** Días antes del vencimiento en que un lote ya se avisa "por vencer" (la web también lo usa al vender). */
+    public const DIAS_AVISO_VENCE = 7;
+
+    /**
+     * Lotes con stock que ya vencieron o vencen en DIAS_AVISO_VENCE días o menos, lo más urgente primero:
+     * [{ producto_id, producto, tipo, unidad, codigo, queda, vence_el, dias, vencido }].
+     * Sirve para avisar "véndelo primero" (o, si ya venció, registrarlo como pérdida).
+     */
+    public static function porVencer(): array
+    {
+        $hoy = now('America/Lima')->startOfDay();
+        $limite = $hoy->copy()->addDays(self::DIAS_AVISO_VENCE)->toDateString();
+        $productos = DB::table('productos')->whereIn('id', DB::table('lotes')->where('estado', 'TERMINADO')
+            ->where('vence_el', '<=', $limite)->select('producto_id'))->get(['id', 'nombre', 'tipo', 'unidad']);
+
+        return $productos->flatMap(fn ($p) => Mermas::lotesConStock($p->id)
+            ->filter(fn ($l) => $l->vence_el <= $limite)
+            ->map(fn ($l) => [
+                'producto_id' => $p->id, 'producto' => $p->nombre, 'tipo' => $p->tipo, 'unidad' => $p->unidad,
+                'lote_id' => $l->id, 'codigo' => $l->codigo, 'queda' => $l->queda, 'vence_el' => $l->vence_el, 'vencido' => $l->vencido,
+                'dias' => (int) round($hoy->diffInDays(\Illuminate\Support\Carbon::parse($l->vence_el, 'America/Lima'), false)),
+            ]))->sortBy('dias')->values()->all();
     }
 
     /** GET /api/v1/compras/ventas-datos — productos con stock y precios, y clientes. */

@@ -127,10 +127,44 @@ class VentaVariosTest extends TestCase
         $nota = app(NotaVentaPdf::class)->datos($r->json('id'));
         $this->assertSame('Eracleo Juan Huamani Mendoza', $nota['cliente']);
         $this->assertSame('46027897', $nota['ruc']);
+        $this->assertNull($nota['tipo']); // solo su nombre: nada de "Vecino de Huata" ni del tipo del cliente general
         $m = $this->getJson('/api/v1/compras/movimientos?mes=actual')->json('movimientos.0');
         $this->assertSame('Eracleo Juan Huamani Mendoza', $m['cliente']);
+        // en Dinero (últimas ventas) y en el kardex también sale su nombre
+        Sanctum::actingAs($this->usuarios['ADMIN']);
+        $this->assertSame('Eracleo Juan Huamani Mendoza', $this->getJson('/api/v1/admin/negocio?periodo=semana')->json('ventas.ultimas.0.cliente'));
+        Sanctum::actingAs($this->usuarios['COMPRAS']);
 
         $this->postJson('/api/v1/compras/ventas', ['cliente_id' => $this->cliente, 'comprador' => ['nombre' => '', 'documento' => '123'],
             'items' => [['producto_id' => $this->queso, 'cantidad' => 1]]])->assertStatus(422);
+    }
+
+    public function test_almacen_avisa_los_lotes_vencidos_o_por_vencer(): void
+    {
+        $lote = fn (string $codigo, int $dias, float $cantidad) => DB::table('lotes')->insert([
+            'uuid' => (string) Str::uuid(), 'codigo' => $codigo, 'producto_id' => $this->queso, 'litros_leche' => 100,
+            'esperado_min' => $cantidad, 'esperado_max' => $cantidad, 'obtenido' => $cantidad, 'estado' => 'TERMINADO',
+            'vence_el' => now('America/Lima')->addDays($dias)->toDateString(), 'operario_id' => $this->usuarios['ADMIN']->id,
+            'iniciado_en' => now()->subDays(40), 'cerrado_en' => now()->subDays(40),
+        ]);
+        $lote('L-VIEJO', -2, 4);   // ya venció
+        $lote('L-PRONTO', 3, 6);   // vence esta semana
+        // el de setUp vence en 20 días: no se avisa
+
+        $pv = collect($this->getJson('/api/v1/compras/inventario')->assertOk()->json('por_vencer'));
+        $this->assertSame(['L-VIEJO', 'L-PRONTO'], $pv->pluck('codigo')->all()); // lo más urgente primero
+        $this->assertTrue($pv[0]['vencido']);
+        $this->assertSame(-2, $pv[0]['dias']);
+        $this->assertSame(3, $pv[1]['dias']);
+        $this->assertEquals(6, $pv[1]['queda']);
+        // en Almacén el stock es lo que se puede vender (20 + 6); lo vencido (4) va aparte
+        $queso = collect($this->getJson('/api/v1/compras/inventario')->json('productos'))->firstWhere('id', $this->queso);
+        $this->assertEquals(26, $queso['stock']);
+        $this->assertEquals(4, $queso['vencido']);
+
+        // vendido todo lo que quedaba del que vence pronto, ya no se avisa (sale primero lo que vence primero)
+        $this->postJson('/api/v1/compras/ventas', ['cliente_id' => $this->cliente,
+            'items' => [['producto_id' => $this->queso, 'cantidad' => 6]]])->assertCreated();
+        $this->assertSame(['L-VIEJO'], collect($this->getJson('/api/v1/compras/inventario')->json('por_vencer'))->pluck('codigo')->all());
     }
 }

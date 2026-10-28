@@ -19,7 +19,7 @@ use Illuminate\Support\Facades\DB;
  */
 class Kardex
 {
-    public const TIPOS = ['orden_compra' => 'COMPRA', 'lote' => 'PRODUCCION', 'ajuste' => 'AJUSTE'];
+    public const TIPOS = ['orden_compra' => 'COMPRA', 'lote' => 'PRODUCCION', 'ajuste' => 'AJUSTE', 'merma' => 'MERMA'];
 
     /** $solo: de un producto, solo ese (Queso Paria) y no toda su familia (todos los quesos). */
     public static function de(string $tipo, ?int $id, ?string $desde = null, ?string $hasta = null, bool $solo = false): array
@@ -71,6 +71,7 @@ class Kardex
                 $oc !== null => "Llegó la compra {$oc->codigo} de {$oc->proveedor_comercial}"
                     .(($c = Compras::textoComprobante($oc->comprobante_tipo, $oc->comprobante_serie, $oc->comprobante_numero)) ? " ($c)" : ''),
                 $lote !== null => "Se usó para hacer el lote {$lote->codigo} ({$lote->producto})",
+                $tipo === 'MERMA' => 'Se perdió: '.preg_replace('/^Pérdida · /u', '', $m->referencia),
                 $tipo === 'AJUSTE' => ($m->cantidad > 0 ? 'Se agregó por ajuste: ' : 'Se sacó por ajuste: ')
                     .preg_replace('/^Ajuste · /u', '', $m->referencia),
                 default => $m->referencia,
@@ -122,7 +123,7 @@ class Kardex
         $ventas = DB::table('ventas as v')->join('clientes as c', 'c.id', '=', 'v.cliente_id')
             ->leftJoin('users as u', 'u.id', '=', 'v.registrada_por')->leftJoin('lotes as l', 'l.id', '=', 'v.lote_id')
             ->whereIn('v.producto_id', $ids)
-            ->get(['v.id', 'v.producto_id', DB::raw('COALESCE(v.nota_id, v.id) as nota'), 'v.cantidad', 'v.precio_unitario', 'v.vendida_en', 'c.nombre as cliente', 'l.codigo as lote', 'u.name as usuario']);
+            ->get(['v.id', 'v.producto_id', DB::raw('COALESCE(v.nota_id, v.id) as nota'), 'v.cantidad', 'v.precio_unitario', 'v.vendida_en', DB::raw('COALESCE(v.comprador_nombre, c.nombre) as cliente'), 'l.codigo as lote', 'u.name as usuario']);
         foreach ($ventas as $v) {
             $lista[] = $con(self::mov((string) $v->vendida_en, 'VENTA',
                 NotaVentaPdf::numero((int) $v->nota)." · {$v->cliente} · S/ ".number_format($v->precio_unitario, 2).' c/u'.($v->lote ? " · {$v->lote}" : ''),
