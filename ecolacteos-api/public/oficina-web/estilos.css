@@ -2008,19 +2008,19 @@ input[type="file"]::file-selector-button:hover { background: #245a3f; }
 
 /* --- Lotes en producción, compacta: una fila por lote; el detalle en ⓘ; los terminados plegados --- */
 .lotes-abiertos { display: grid; gap: 8px; margin-bottom: 14px; }
-.lote-fila { --tono: #f1cf6b; border-radius: 14px; background: var(--superficie); border: 1px solid var(--borde); box-shadow: var(--sombra);
+.lote-prod { --tono: #f1cf6b; border-radius: 14px; background: var(--superficie); border: 1px solid var(--borde); box-shadow: var(--sombra);
   border-left: 4px solid var(--tono); animation: sube-suave .35s ease both; transition: border-color .15s ease; }
-.lote-fila.olvidado { border-color: var(--alerta-borde); border-left-color: var(--alerta); background: linear-gradient(90deg, rgba(239,107,107,.07), var(--superficie) 45%); }
+.lote-prod.olvidado { border-color: var(--alerta-borde); border-left-color: var(--alerta); background: linear-gradient(90deg, rgba(239,107,107,.07), var(--superficie) 45%); }
 .lf-principal { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto auto; align-items: center; gap: 14px; padding: 8px 12px; }
-.lote-fila .mini-dibujo { width: 46px; height: 46px; }
-.lote-fila .mini-dibujo svg { width: 100%; height: 100%; }
+.lote-prod .mini-dibujo { width: 46px; height: 46px; }
+.lote-prod .mini-dibujo svg { width: 100%; height: 100%; }
 .lf-que { display: grid; gap: 1px; text-align: left; padding: 4px 26px 4px 0; position: relative; background: none; border: 0; color: var(--texto); font: inherit; cursor: pointer; min-width: 0; }
 .lf-que strong { font: 800 16px var(--letra-titulo); }
 .lf-que small { font-size: 13px; color: var(--texto-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lf-que small.olvido { color: var(--alerta); font-weight: 700; }
 .lf-info { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center;
   font-size: 13px; color: var(--texto-3); border: 1px solid var(--borde); transition: color .15s ease, border-color .15s ease; }
-.lf-que:hover .lf-info, .lote-fila.abierto .lf-info { color: var(--exito); border-color: var(--verde-borde); }
+.lf-que:hover .lf-info, .lote-prod.abierto .lf-info { color: var(--exito); border-color: var(--verde-borde); }
 .lf-espera { text-align: right; line-height: 1.15; }
 .lf-espera span { display: block; font: 700 10.5px var(--letra-titulo); letter-spacing: .08em; text-transform: uppercase; color: var(--texto-3); }
 .lf-espera b { font: 800 19px var(--letra-titulo); font-variant-numeric: tabular-nums; }
@@ -2059,7 +2059,7 @@ input[type="file"]::file-selector-button:hover { background: #245a3f; }
   .lf-veredicto, .lf-detalle { margin-left: 12px; }
   .terminado { grid-template-columns: 12px minmax(0, 1fr) auto auto; } .terminado small { display: none; }
 }
-@media (prefers-reduced-motion: reduce) { .lote-fila, .lf-veredicto { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .lote-prod, .lf-veredicto { animation: none; } }
 .lf-cierre .caja-unidad { width: 170px; }
 .lf-cierre .caja-unidad input { padding-right: 66px; }
 @media (max-width: 900px) { .lf-que small.olvido { white-space: normal; } .lf-cierre .caja-unidad { width: auto; } }

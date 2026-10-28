@@ -21,7 +21,7 @@
 </script>
 <link rel="stylesheet" href="/oficina-web/vendor/leaflet/leaflet.css">
 <script src="/oficina-web/vendor/leaflet/leaflet.js"></script>
-<link rel="stylesheet" href="/oficina-web/estilos.css">
+<link rel="stylesheet" href="/oficina-web/estilos.css?v={{ filemtime(public_path('oficina-web/estilos.css')) }}">
 <link rel="stylesheet" href="/oficina-web/tema-dia.css">
 <link rel="stylesheet" href="/oficina-web/tema-dia-base.css">
 <script src="/oficina-web/app.js"></script>
@@ -1813,7 +1813,7 @@
             {{-- una fila por lote abierto: qué es, cuánto debería salir y cuánto salió; lo demás en ⓘ. Los olvidados van primero --}}
             <div class="lotes-abiertos">
                 <template x-for="l in lotesAbiertos()" :key="l.id">
-                    <article class="lote-fila" :class="{ olvidado: loteOlvidado(l), abierto: loteInfo[l.id] }" :style="'--tono: ' + colorReceta(productoVisual(l.producto))">
+                    <article class="lote-prod" :class="{ olvidado: loteOlvidado(l), abierto: loteInfo[l.id] }" :style="'--tono: ' + colorReceta(productoVisual(l.producto))">
                         <div class="lf-principal">
                             <div class="mini-dibujo" x-html="dibujoReceta(productoVisual(l.producto))"></div>
                             <button class="lf-que" @click="loteInfo[l.id] = !loteInfo[l.id]" :aria-expanded="!!loteInfo[l.id]" title="Ver detalle del lote">
