@@ -19,35 +19,70 @@
 
 {{-- ============================================================ LOGIN --}}
 <div class="login" x-show="!usuario" x-cloak>
-    {{-- foto real: vaca Brown Swiss (la raza lechera más común en Puno) en el pasto --}}
+    {{-- foto real: vaca Brown Swiss (la raza lechera más común en Puno) en el pasto; crédito abajo a la derecha --}}
     <div class="escena" aria-hidden="true"></div>
-    <a class="credito" href="https://commons.wikimedia.org/wiki/File:Braunvieh_am_Simplonpass,_Wallis_(Schweiz).jpg"
-       target="_blank" rel="noopener">Foto: Olga Ernst · CC BY-SA 4.0</a>
+    <div class="brillos" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+
+    <header class="login-top">
+        <div class="marca-top"><img src="/oficina-web/img/logo.svg" alt="" width="40" height="40"><span>Ecolácteos <em>Huata</em></span></div>
+        <div class="reloj" x-text="horaEntrada()"></div>
+    </header>
 
     <div class="login-intro">
-        <img class="logo-login" src="/oficina-web/img/logo.svg" alt="" width="84" height="84">
-        <div class="marca grande">Ecolácteos <em>Huata</em></div>
-        <p>De la vaca a la planta: el acopio de leche, su calidad, la producción y las ventas de Huata en un solo lugar.</p>
-        <div class="chips">
-            <span>🥛 Acopio en campo</span><span>🔬 Calidad de leche</span><span>🧀 Planta y ventas</span>
-        </div>
+        <span class="saludo"><i aria-hidden="true" x-text="saludoEntrada().icono"></i><span x-text="saludoEntrada().texto + ' · ' + fechaEntrada()"></span></span>
+        <h1 class="titulo-entrada">De la vaca<br>a la <em>mesa</em>,<br>todo en un lugar.</h1>
+        <p>El acopio de leche, su calidad, la planta y las ventas de la Planta Ecolácteos de Huata.</p>
+        {{-- el camino de la leche: una gota recorre las cuatro estaciones y cada una se prende al pasar --}}
+        <ol class="camino" aria-label="El camino de la leche">
+            <li style="--i:0"><span class="estacion">🥛</span><b>Acopio</b><small>en el campo</small></li>
+            <li style="--i:1"><span class="estacion">🔬</span><b>Calidad</b><small>en el laboratorio</small></li>
+            <li style="--i:2"><span class="estacion">🧀</span><b>Planta</b><small>quesos y yogures</small></li>
+            <li style="--i:3"><span class="estacion">🛒</span><b>Ventas</b><small>y cobranzas</small></li>
+            <span class="riel" aria-hidden="true"><span class="gota"></span></span>
+        </ol>
     </div>
 
-    <form @submit.prevent="entrar()">
-        <img class="logo-form" src="/oficina-web/img/logo.svg" alt="" width="64" height="64">
-        <div class="marca">Ecolácteos <em>Huata</em></div>
-        <div class="marca-sub">OFICINA · ADMINISTRACIÓN Y COMPRAS</div>
-        <label>DNI</label>
-        <input x-model="login.dni" inputmode="numeric" maxlength="8" autocomplete="username" autofocus
-               @input="login.dni = login.dni.replace(/\D/g, '')">
-        <label>Contraseña</label>
-        <div class="fila">
-            <input :type="login.ver ? 'text' : 'password'" x-model="login.clave" autocomplete="current-password" style="flex:1">
-            <button type="button" class="btn gris" @click="login.ver = !login.ver" x-text="login.ver ? 'Ocultar' : 'Ver'"></button>
-        </div>
-        <div class="aviso error" x-show="login.error" x-text="login.error"></div>
-        <button class="btn ancho" :disabled="login.enviando" x-text="login.enviando ? 'Ingresando…' : 'Ingresar'"></button>
+    <form x-ref="formEntrada" @submit.prevent="entrar()" :class="{ listo: login.listo }" novalidate>
+        {{-- arriba de la tarjeta: a qué parte se entra, el saludo grande y qué hacer (el logo ya está en la barra de arriba) --}}
+        <span class="marca-sub"><i aria-hidden="true"></i>Oficina · Administración y Compras</span>
+        <h2 class="bienvenida">Bienvenido <span class="mano" aria-hidden="true">👋</span></h2>
+        <p class="indica">Ingresa con tu DNI y tu contraseña.</p>
+
+        <label class="campo" :class="{ lleno: login.dni }">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="11" r="2.2"/><path d="M5.8 16c.6-1.6 1.8-2.4 3.2-2.4s2.6.8 3.2 2.4M14 10h4M14 13.5h3"/></svg>
+            <input x-model="login.dni" inputmode="numeric" maxlength="8" autocomplete="username" autofocus placeholder=" "
+                   @input="login.dni = login.dni.replace(/\D/g, ''); login.error = null">
+            <span class="etiqueta">DNI</span>
+            <span class="digitos" aria-hidden="true"><template x-for="n in 8" :key="n"><i :class="{ si: login.dni.length >= n }"></i></template></span>
+        </label>
+
+        <label class="campo" :class="{ lleno: login.clave }">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/><circle cx="12" cy="15.5" r="1.4"/></svg>
+            <input :type="login.ver ? 'text' : 'password'" x-model="login.clave" autocomplete="current-password" placeholder=" "
+                   @input="login.error = null" @keyup="login.mayus = $event.getModifierState?.('CapsLock')" @keydown="login.mayus = $event.getModifierState?.('CapsLock')">
+            <span class="etiqueta">Contraseña</span>
+            <button type="button" class="ojo" @click="login.ver = !login.ver" :aria-label="login.ver ? 'Ocultar contraseña' : 'Ver contraseña'" :title="login.ver ? 'Ocultar' : 'Ver'">
+                <svg x-show="!login.ver" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg x-show="login.ver" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 6.1A9.6 9.6 0 0 1 12 6c6 0 9.5 6 9.5 6a16 16 0 0 1-3 3.6M6.4 7.6A16 16 0 0 0 2.5 12S6 18.5 12 18.5a9 9 0 0 0 4.1-1M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
+            </button>
+        </label>
+        <div class="mayus" x-show="login.mayus" x-transition>⇪ Las mayúsculas están activadas</div>
+
+        <div class="aviso error" x-show="login.error" x-transition x-text="login.error" role="alert"></div>
+        <button class="btn-entrar" :disabled="login.enviando || login.listo">
+            <span x-show="!login.enviando && !login.listo">Ingresar <span class="flecha" aria-hidden="true">→</span></span>
+            <span x-show="login.enviando" class="girando" aria-hidden="true"></span><span x-show="login.enviando">Ingresando…</span>
+            <span x-show="login.listo">✓ ¡Listo!</span>
+        </button>
+        <p class="ayuda">¿Olvidaste tu contraseña? Pídela a la administración de la planta.</p>
     </form>
+
+    <footer class="login-pie">
+        <div class="leyenda">
+            <strong>Brown Swiss en el pasto, la raza lechera de Puno</strong>
+            <a href="https://commons.wikimedia.org/wiki/File:Braunvieh_am_Simplonpass,_Wallis_(Schweiz).jpg" target="_blank" rel="noopener">Foto: Olga Ernst · CC BY-SA 4.0</a>
+        </div>
+    </footer>
 </div>
 
 {{-- ============================================================ APP --}}
@@ -98,7 +133,7 @@
                                  porVencer.filter((x) => !x.vencido).length ? porVencer.filter((x) => !x.vencido).length + ' por vencer esta semana' : ''].filter(Boolean).join(' · ')"></strong>
                 <small x-text="porVencer.slice(0, 3).map((x) => x.producto + ' ' + x.codigo + ' (' + textoVence(x) + ')').join(' · ') + (porVencer.length > 3 ? ' · y ' + (porVencer.length - 3) + ' más' : '')"></small>
             </div>
-            <button class="btn chico" @click="ir('inventario')">Ver lotes</button>
+            <button class="btn chico" @click="filtroLotes = ''; ir('lotes-almacen')">Ver lotes</button>
             <button class="cerrar-panel" @click="avisoVenceCerrado = true" aria-label="Cerrar aviso">✕</button>
         </div>
         {{-- mientras llegan los datos: la silueta de una pantalla (título, cifras y filas) que brilla --}}
@@ -270,23 +305,17 @@
                         x-text="mapaEditar ? '✓ Listo' : '📍 Corregir ubicaciones'"></button>
             </div>
 
-            {{-- un botón por carro: ver solo su ruta --}}
-            <div class="carros-mapa" x-show="dDe === 'mapa'">
-                <button :class="{ activo: !mapaVehiculo }" @click="mapaVehiculo && filtrarMapa(mapaVehiculo)">Todos</button>
-                <template x-for="v in dDe === 'mapa' ? (d.vehiculos || []) : []" :key="v.id">
-                    <button :class="{ activo: mapaVehiculo === v.codigo }" :style="'--c:' + colorRuta(v.codigo)" @click="filtrarMapa(v.codigo)" :title="rutaTexto(v)">
-                        <i></i><b x-text="v.codigo"></b><small x-text="v.acopiador || 'sin acopiador'"></small></button>
-                </template>
-            </div>
-
             <div class="mapa-zona">
                 <div class="mapa-caja">
                     <div id="mapa-huata" :class="{ moviendo: !!mapaMover }"></div>
-                    <div class="mapa-pie">
-                        <span><b x-text="num(resumenMapa().litros, 0) + ' L'"></b> <span x-text="mapaFecha ? 'el ' + fechaCorta(mapaFecha) : 'hoy'"></span></span>
-                        <span><b x-text="resumenMapa().registrados + ' de ' + resumenMapa().proveedores"></b> entregaron</span>
-                        <span class="gris">El anillo de cada comunidad se llena con los que ya entregaron.</span>
-                        <span class="ojo" x-show="resumenMapa().aproximadas" x-text="'Borde punteado = ubicación aproximada (' + resumenMapa().aproximadas + ')'"></span>
+                    {{-- encima del mapa: el carro que se está mirando, volver a ver todo y cómo leer los pines --}}
+                    <div class="mapa-flota arriba" x-show="dDe === 'mapa'">
+                        <span class="mf-carro" x-show="mapaVehiculo" :style="'--c:' + colorRuta(mapaVehiculo)"><i></i><span x-text="'Ruta de ' + mapaVehiculo"></span></span>
+                        <button class="mf-btn" @click="mapaVehiculo ? filtrarMapa(mapaVehiculo) : encuadrarMapa()" x-text="mapaVehiculo ? '✕ Ver todos los carros' : '⤢ Ver toda Huata'"></button>
+                    </div>
+                    <div class="mapa-flota abajo" x-show="dDe === 'mapa'">
+                        <span><i class="mf-anillo" aria-hidden="true"></i>El anillo se llena con los que ya entregaron</span>
+                        <span class="ojo" x-show="resumenMapa().aproximadas"><i class="mf-punteado" aria-hidden="true"></i><span x-text="'Ubicación aproximada (' + resumenMapa().aproximadas + ')'"></span></span>
                     </div>
                 </div>
 
@@ -300,11 +329,43 @@
                             <button class="btn gris" @click="cancelarMover()">Cancelar</button>
                         </div>
                     </template>
-                    <template x-if="!mapaMover && !comunidadMapa()">
-                        <div class="panel-vacio">
-                            <div class="mover-ico">👆</div>
-                            <strong>Toca una comunidad</strong>
-                            <p>Verás quiénes viven ahí, si ya entregaron su leche y podrás cambiarlos a otra comunidad.</p>
+                    <template x-if="!mapaMover && !comunidadMapa() && dDe === 'mapa'">
+                        <div class="resumen-mapa">
+                            {{-- el día: cuánta leche y cuántos entregaron, con un anillo de avance --}}
+                            <div class="rm-cabeza">
+                                <div class="rm-anillo" :style="'--p:' + (resumenMapa().proveedores ? Math.round(resumenMapa().registrados / resumenMapa().proveedores * 100) : 0) + '%'">
+                                    <b x-text="(resumenMapa().proveedores ? Math.round(resumenMapa().registrados / resumenMapa().proveedores * 100) : 0) + '%'"></b></div>
+                                <div class="rm-dia">
+                                    <span x-text="mapaFecha ? 'El ' + fechaCorta(mapaFecha) + ' en Huata' : 'Hoy en Huata'"></span>
+                                    <strong x-text="num(resumenMapa().litros, 0) + ' L'"></strong>
+                                    <small x-text="resumenMapa().registrados + ' de ' + resumenMapa().proveedores + ' proveedores entregaron'"></small>
+                                </div>
+                            </div>
+
+                            <div class="rm-titulo"><span>Por carro</span><small>tócalo para ver su ruta</small></div>
+                            <div class="rm-carros">
+                                <template x-for="v in carrosMapa()" :key="v.codigo">
+                                    <button class="rm-carro" :class="{ activo: mapaVehiculo === v.codigo, tenue: mapaVehiculo && mapaVehiculo !== v.codigo }"
+                                            :style="'--c:' + v.color" @click="filtrarMapa(v.codigo)" :aria-pressed="mapaVehiculo === v.codigo">
+                                        <i class="rm-punto" aria-hidden="true"></i>
+                                        <span class="rm-que" :title="(v.acopiador || 'sin acopiador') + ' · ' + v.comunidades + (v.comunidades === 1 ? ' comunidad' : ' comunidades')"><b x-text="v.codigo"></b><small x-text="v.acopiador || 'sin acopiador'"></small></span>
+                                        <span class="rm-cifra"><b x-text="num(v.litros, 0) + ' L'"></b><small x-text="v.registrados + ' de ' + v.proveedores"></small></span>
+                                        <span class="rm-barra" aria-hidden="true"><em :style="'width: ' + v.pct + '%'"></em></span>
+                                    </button>
+                                </template>
+                            </div>
+
+                            <div class="rm-titulo"><span>Comunidades</span><small>toca una para ver su gente</small></div>
+                            <div class="rm-lista">
+                                <template x-for="c in comunidadesMapa()" :key="c.id">
+                                    <button class="rm-comunidad" :class="{ tenue: c.tenue, completa: c.proveedores && c.pct === 100 }" :style="'--c:' + c.color + '; --p:' + c.pct + '%'" @click="verComunidadMapa(c)">
+                                        <i class="rm-mini" aria-hidden="true"></i>
+                                        <span class="rm-nombre"><b x-text="c.nombre"></b><small x-text="(c.carro || 'sin carro') + (c.aproximada ? ' · ubicación aproximada' : '')"></small></span>
+                                        <span class="rm-cuenta" x-text="c.proveedores ? c.registrados + '/' + c.proveedores : '—'"></span>
+                                        <span class="rm-litros" x-text="c.litros ? num(c.litros, 0) + ' L' : ''"></span>
+                                    </button>
+                                </template>
+                            </div>
                         </div>
                     </template>
                     <template x-if="!mapaMover && comunidadMapa()">
@@ -1256,6 +1317,87 @@
         </template>
 
         {{-- ---------------------------------------------------- INVENTARIO --}}
+        {{-- ---------------------------------------------------- LOTES EN ALMACÉN --}}
+        {{-- todos los lotes con stock, por producto, en el orden en que salen al vender (el que vence primero arriba) --}}
+        <template x-if="dDe === 'lotes-almacen'">
+        <section x-show="seccion === 'lotes-almacen' && !cargando && !error">
+            <div class="cabecera">
+                <div><h1>Lotes en almacén</h1>
+                    <p class="sub" style="margin: 0">Todo lo que hay hecho, lote por lote, en el orden en que sale al vender: <strong>primero el que vence antes</strong>.</p></div>
+                <div class="espacio"></div>
+                <button class="btn rojo" @click="abrirMerma('PRODUCTO')">+ Registrar pérdida</button>
+            </div>
+
+            {{-- cuatro estados: tocar uno muestra solo esos lotes --}}
+            <div class="lotes-estados">
+                <template x-for="e in ['NUEVO', 'BIEN', 'POR_VENCER', 'VENCIDO']" :key="e">
+                    <button class="le-tile" :class="'e-' + e.toLowerCase() + (filtroLotes === e ? ' activo' : '') + (filtroLotes && filtroLotes !== e ? ' apagado' : '') + (d.cuenta?.[e] ? '' : ' cero')"
+                            @click="filtroLotes = filtroLotes === e ? '' : e" :aria-pressed="filtroLotes === e">
+                        <span class="le-ico" aria-hidden="true" x-text="ESTADO_LOTE[e].icono"></span>
+                        <b x-text="d.cuenta?.[e] || 0"></b>
+                        <span class="le-txt"><strong x-text="ESTADO_LOTE[e].texto"></strong><small x-text="ESTADO_LOTE[e].ayuda"></small></span>
+                    </button>
+                </template>
+            </div>
+            <div class="lotes-filtro" x-show="filtroLotes" x-transition>
+                <span x-text="'Mostrando solo: ' + (ESTADO_LOTE[filtroLotes]?.texto || '').toLowerCase()"></span>
+                <button class="btn chico gris" @click="filtroLotes = ''">Ver todos</button>
+            </div>
+
+            <div class="lotes-grilla">
+                <template x-for="p in productosLotes()" :key="p.producto_id">
+                    <article class="lote-producto" :style="'--tono: ' + colorReceta({ nombre: p.nombre, tipo: p.tipo, variante: p.variante })">
+                        <header>
+                            <div class="mini-dibujo" x-html="dibujoReceta({ nombre: p.nombre, tipo: p.tipo, variante: p.variante, base_id: p.base_id })"></div>
+                            <div class="lp-que"><strong x-text="p.nombre"></strong>
+                                <small x-text="p.lotes.length + (p.lotes.length === 1 ? ' lote' : ' lotes') + ' · quedan ' + num(p.queda, 2) + ' ' + p.unidad"></small></div>
+                        </header>
+                        {{-- de qué lotes está hecho el stock: una barra partida, del color de su estado --}}
+                        <div class="lp-barra" aria-hidden="true">
+                            <template x-for="l in p.lotes" :key="l.lote_id">
+                                <i :class="'e-' + l.estado.toLowerCase()" :style="'flex-grow: ' + l.queda" :title="l.codigo + ': ' + num(l.queda, 2)"></i>
+                            </template>
+                        </div>
+
+                        <ol class="lp-lotes">
+                            <template x-for="l in p.visibles" :key="l.lote_id">
+                                <li class="lote-fila" :class="'e-' + l.estado.toLowerCase() + (saleAhora(p, l) ? ' ahora' : '')">
+                                    <span class="lf-orden" :title="'Sale en el lugar ' + l.orden" x-text="l.orden + 'º'"></span>
+                                    <div class="lf-cuerpo">
+                                        <div class="lf-arriba">
+                                            <strong class="lf-codigo" x-text="'Lote ' + l.codigo"></strong>
+                                            <span class="lf-estado" x-text="ESTADO_LOTE[l.estado].icono + ' ' + estadoLote(l)"></span>
+                                            <span class="lf-ahora" x-show="saleAhora(p, l)">➜ sale en la próxima venta</span>
+                                        </div>
+                                        {{-- la vida del lote: del día que se hizo al día que vence; el punto es hoy --}}
+                                        <div class="lf-vida" :title="'Lleva ' + l.hecho_hace + ' de ' + l.vida_dias + ' días'">
+                                            <div class="lf-riel"><i class="lf-falta" :style="'width: calc(' + (100 - vidaLote(l)) + '% + 1px)'"></i><i class="lf-hoy" :style="'left: ' + vidaLote(l) + '%'"></i></div>
+                                            <div class="lf-fechas">
+                                                <span x-text="'Hecho el ' + fechaCorta(l.elaborado) + ' · ' + textoHecho(l)"></span>
+                                                <span class="lf-vence" x-text="textoVence(l) + ' (' + fechaCorta(l.vence_el) + ')'"></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="lf-queda">
+                                        <b x-text="num(l.queda, 2)"></b><small x-text="'de ' + num(l.obtenido, 2)"></small>
+                                        <span class="lf-mini" aria-hidden="true"><i :style="'width: ' + Math.min(100, l.queda / (l.obtenido || 1) * 100) + '%'"></i></span>
+                                    </div>
+                                    <div class="lf-accion">
+                                        <button class="btn chico rojo" x-show="l.vencido" @click="registrarVencido({ ...l, producto_id: p.producto_id })">Registrar pérdida</button>
+                                        <button class="btn chico" x-show="saleAhora(p, l)" @click="ir('vender')">Vender</button>
+                                    </div>
+                                </li>
+                            </template>
+                        </ol>
+                    </article>
+                </template>
+            </div>
+
+            <div class="vacio-lista" x-show="!productosLotes().length"><span aria-hidden="true">🧀</span>
+                <p x-text="filtroLotes ? 'Ahora no hay lotes en «' + ESTADO_LOTE[filtroLotes].texto + '».' : 'No hay lotes en el almacén. Cuando se termine un lote en planta, aparece aquí.'"></p></div>
+        </section>
+        </template>
+
         <template x-if="dDe === 'inventario'">
         <section x-show="seccion === 'inventario' && !cargando && !error">
             <div class="cabecera">

@@ -136,6 +136,7 @@ Route::prefix('v1')->group(function () {
         Route::post('compras/equipos',            [Api\GastosController::class, 'equipo']);
         Route::post('compras/equipos/{id}',       [Api\GastosController::class, 'equipo'])->whereNumber('id');
         Route::get('compras/fotos/{tipo}/{id}',   [Api\GastosController::class, 'enlaceFoto'])->whereIn('tipo', ['gasto', 'perdida'])->whereNumber('id');
+        Route::get('compras/lotes-almacen',       [Api\ComprasAppController::class, 'lotesAlmacen']);
         Route::get('compras/mermas',              [Api\MermasController::class, 'index']);
         Route::post('compras/mermas',             [Api\MermasController::class, 'guardar']);
         // el operario también registra la leche que se corta y lo que se malogra en planta

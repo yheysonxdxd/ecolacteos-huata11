@@ -153,6 +153,28 @@ class VentaPorVencerTest extends TestCase
             ->assertStatus(422)->assertJsonFragment(['message' => 'La fecha "hasta" no puede ser antes de la fecha "desde".']);
     }
 
+    public function test_lotes_en_almacen_en_el_orden_en_que_salen_y_con_su_estado(): void
+    {
+        $this->lote('L-VIEJO', 10, 20, 10);  // hecho hace 10 días, vence en 20: bien
+        $this->lote('L-NUEVO', 8, 29, 1);    // recién hecho: nuevo
+        $this->lote('L-PRONTO', 5, 3, 27);   // vence en 3 días: por vencer
+        $this->lote('L-MALO', 2, -1, 31);    // ya venció
+        $this->lote('L-VACIO', 4, 25, 5);
+        $this->vender(4)->assertCreated();
+        // esa venta se pasa a L-VACIO: se queda sin nada y no sale en la lista (L-PRONTO vuelve a tener sus 5)
+        DB::table('ventas')->update(['lote_id' => DB::table('lotes')->where('codigo', 'L-VACIO')->value('id')]);
+
+        $r = $this->getJson('/api/v1/compras/lotes-almacen')->assertOk();
+        $lotes = collect($r->json('productos.0.lotes'));
+        $this->assertSame(['L-MALO', 'L-PRONTO', 'L-VIEJO', 'L-NUEVO'], $lotes->pluck('codigo')->all());
+        $this->assertSame(['VENCIDO', 'POR_VENCER', 'BIEN', 'NUEVO'], $lotes->pluck('estado')->all());
+        $this->assertSame([1, 2, 3, 4], $lotes->pluck('orden')->all());
+        $this->assertEquals(30, $lotes->firstWhere('codigo', 'L-VIEJO')['vida_dias']);
+        $this->assertEquals(25, $r->json('productos.0.queda')); // 2 + 5 + 10 + 8
+        $this->assertSame(1, $r->json('cuenta.NUEVO'));
+        $this->assertSame(4, $r->json('cuenta.lotes'));
+    }
+
     public function test_inventario_dice_en_que_productos_se_usa_cada_insumo(): void
     {
         DB::table('productos')->where('id', $this->queso)->update(['tipo' => 'QUESO', 'activo' => true]);

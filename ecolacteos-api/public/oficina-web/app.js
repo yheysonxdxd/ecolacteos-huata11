@@ -52,7 +52,9 @@ function oficina() {
     // --------------------------------------------------------------- sesión
     token: sessionStorage.getItem('token'),
     usuario: JSON.parse(sessionStorage.getItem('usuario') || 'null'),
-    login: { dni: '', clave: '', ver: false, error: null, enviando: false },
+    login: { dni: '', clave: '', ver: false, error: null, enviando: false, mayus: false, listo: false },
+    // la pantalla de entrada: la hora (para el saludo y el reloj)
+    entrada: { ahora: new Date() },
 
     // ------------------------------------------------------------- navegación
     seccion: null,
@@ -81,6 +83,7 @@ function oficina() {
     porVencer: [], // lotes con stock vencidos o que vencen en 7 días (de /compras/inventario): el aviso de arriba y Almacén
     porVencerEn: 0, // cuándo se trajo (para no pedirlo en cada pantalla)
     avisoVenceCerrado: false, // se cerró el aviso de arriba (vuelve a salir al recargar la página)
+    filtroLotes: '', // Lotes en almacén: '' (todos) · NUEVO · BIEN · POR_VENCER · VENCIDO
     mesGastos: '', // Gastos: el mes que se mira (vacío = el actual)
     panelEquipos: false, // Gastos: el panel de equipos al costado
     compraFiltro: { estado: 'todas', vendedor: '', insumo: '' }, // Compras de insumos: todas · llegar · foto, y vendedor / insumo
@@ -125,6 +128,21 @@ function oficina() {
       // una sesión guardada de un rol que no usa la web (operario, acopiador, productor) se cierra con el mismo aviso del login
       if (this.usuario && !ROLES_WEB.includes(this.usuario.rol)) return this.salir(avisoRolWeb(this.usuario.rol));
       if (this.usuario) this.ir(this.menu()[0].pestanas[0].id);
+      // entrada: el reloj se actualiza cada 20 s (solo mientras no se ha entrado)
+      setInterval(() => { if (!this.usuario) this.entrada.ahora = new Date(); }, 20000);
+    },
+    saludoEntrada() {
+      const h = this.entrada.ahora.getHours();
+      return h < 5 ? { icono: '🌙', texto: 'Buenas noches' } : h < 12 ? { icono: '🌅', texto: 'Buenos días' }
+        : h < 19 ? { icono: '☀️', texto: 'Buenas tardes' } : { icono: '🌙', texto: 'Buenas noches' };
+    },
+    fechaEntrada() { return this.entrada.ahora.toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long' }); },
+    horaEntrada() { return this.entrada.ahora.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }); },
+    /** El formulario se sacude cuando algo está mal (DNI, clave o el servidor dijo que no). */
+    sacudirEntrada() {
+      const f = this.$refs.formEntrada;
+      if (!f) return;
+      f.classList.remove('sacude'); void f.offsetWidth; f.classList.add('sacude');
     },
 
     /** Para dibujar un producto del que solo se tiene el nombre (lotes, pérdidas): adivina si es queso o yogurt. */
@@ -339,7 +357,8 @@ function oficina() {
       // Las compras van dentro de Almacén: ver qué falta, comprarlo y que suba el stock es un solo trabajo
       const compras = [
         { id: 'almacen', nombre: 'Almacén y compras', grupo: 'Compras y almacén',
-          pestanas: [{ id: 'inventario', nombre: 'Stock y avisos' }, { id: 'ordenes', nombre: '🛒 Compras' }, { id: 'gastos', nombre: '🔧 Gastos' },
+          pestanas: [{ id: 'inventario', nombre: 'Stock y avisos' }, { id: 'lotes-almacen', nombre: '🧀 Lotes' },
+            { id: 'ordenes', nombre: '🛒 Compras' }, { id: 'gastos', nombre: '🔧 Gastos' },
             { id: 'mermas', nombre: 'Pérdidas' }] },
         { id: 'formulas-grupo', nombre: 'Fórmulas y producción', grupo: 'Compras y almacén',
           // los lotes son de planta: los ve e inicia/cierra el administrador (Compras solo ve las fórmulas)
@@ -389,8 +408,8 @@ function oficina() {
 
     async entrar() {
       const l = this.login;
-      if (!/^\d{8}$/.test(l.dni)) { l.error = 'El DNI debe tener 8 dígitos'; return; }
-      if (!l.clave) { l.error = 'Escribe tu contraseña'; return; }
+      if (!/^\d{8}$/.test(l.dni)) { l.error = 'El DNI debe tener 8 dígitos'; return this.sacudirEntrada(); }
+      if (!l.clave) { l.error = 'Escribe tu contraseña'; return this.sacudirEntrada(); }
       l.enviando = true; l.error = null;
       try {
         const r = await fetch(API + '/login', {
@@ -400,6 +419,9 @@ function oficina() {
         const j = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(j.message || 'No se pudo ingresar');
         if (!ROLES_WEB.includes(j.rol)) throw new Error(avisoRolWeb(j.rol));
+        // un momento con el ✓ antes de pasar adentro
+        l.enviando = false; l.listo = true;
+        await new Promise((r) => setTimeout(r, 650));
         this.token = j.token;
         this.usuario = { nombre: j.usuario?.nombre, rol: j.rol };
         sessionStorage.setItem('token', this.token);
@@ -408,8 +430,9 @@ function oficina() {
         this.ir(this.menu()[0].pestanas[0].id);
       } catch (e) {
         l.error = e.message;
+        this.sacudirEntrada();
       } finally {
-        l.enviando = false;
+        l.enviando = false; l.listo = false;
       }
     },
 
@@ -467,6 +490,7 @@ function oficina() {
           case 'historial-calidad': this.d = await this.api('/calidad/historial'); break;
           case 'vender': this.d = await this.api('/compras/ventas-datos'); this.nuevaVenta(); break;
           case 'inventario': this.d = await this.api('/compras/inventario'); break;
+          case 'lotes-almacen': this.d = await this.api('/compras/lotes-almacen'); break;
           case 'ordenes': {
             // d.vendedores: los activos, para elegir en la orden · todosVendedores: la lista de abajo, con sus compras
             const [ordenes, inv, vend] = await Promise.all([
@@ -581,7 +605,7 @@ function oficina() {
       const el = document.getElementById('mapa-huata');
       if (!el || !window.L || !this.d.comunidades) return;
       if (!MAPA.m) {
-        MAPA.m = L.map(el, { zoomControl: true });
+        MAPA.m = L.map(el, { zoomControl: true, zoomSnap: 0.25, zoomDelta: 0.5 }); // zoom de a cuartos: Huata encaja justo en el mapa
         const satelite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
           { maxZoom: 18, attribution: 'Imágenes © Esri' });
         const calles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' });
@@ -589,6 +613,12 @@ function oficina() {
         L.control.layers({ 'Satélite': satelite, 'Calles': calles }, null, { position: 'topright' }).addTo(MAPA.m);
         L.control.scale({ imperial: false }).addTo(MAPA.m);
         MAPA.capa = L.layerGroup().addTo(MAPA.m);
+        // el mapa se crea a veces con la sección todavía escondida (mide 0): cuando ya tiene tamaño, se vuelve a medir y se encuadra
+        new ResizeObserver(() => {
+          if (!el.clientWidth) return;
+          MAPA.m.invalidateSize();
+          if (!MAPA.encuadrado && this.d.comunidades) { this.encuadrarMapa(false); MAPA.encuadrado = true; }
+        }).observe(el);
       }
       MAPA.capa.clearLayers();
       const porId = Object.fromEntries(this.d.comunidades.map((c) => [c.id, c]));
@@ -629,28 +659,57 @@ function oficina() {
         m.on('click', () => {
           if (this.mapaEditar) return;
           if (this.mapaMover) return this.moverA(c);
-          this.mapaComunidad = c.id;
-          this.dibujarMapa();
-          MAPA.m.panTo([c.latitud, c.longitud], { animate: true });
-          // en pantallas chicas el panel queda debajo del mapa: se baja hasta él
-          if (window.innerWidth < 1100) this.$nextTick(() => document.querySelector('.panel-mapa')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+          this.verComunidadMapa(c);
         });
         m.on('dragend', () => this.ubicarComunidad(c, m.getLatLng()));
       });
 
-      if (!MAPA.encuadrado) {
-        MAPA.m.fitBounds(this.d.comunidades.map((c) => [c.latitud, c.longitud]), { padding: [40, 40] });
-        MAPA.encuadrado = true;
-      }
-      setTimeout(() => MAPA.m.invalidateSize(), 60);
+      // Leaflet necesita una vista antes de mostrar los nombres; si el mapa está escondido (mide 0), ese encuadre
+      // se acerca de más y no cuenta: el ResizeObserver de arriba lo vuelve a encuadrar cuando ya se ve
+      if (!MAPA.encuadrado) this.encuadrarMapa(false);
+      if (!MAPA.encuadrado && el.clientWidth) { MAPA.m.invalidateSize(); this.encuadrarMapa(false); MAPA.encuadrado = true; }
+    },
+    /** Que se vean todas las comunidades (o solo la ruta del carro elegido), sin acercarse de más. */
+    encuadrarMapa(animar = true) {
+      const v = this.mapaVehiculo && this.d.vehiculos.find((x) => x.codigo === this.mapaVehiculo);
+      const pts = (v ? this.d.comunidades.filter((c) => v.ruta.includes(c.id)) : this.d.comunidades).map((c) => [c.latitud, c.longitud]);
+      if (!pts.length) return MAPA.m.setView([-15.613, -69.973], 13); // Huata, si todavía no hay comunidades
+      const op = { paddingTopLeft: [80, 60], paddingBottomRight: [80, 92], maxZoom: 15 }; // abajo va la leyenda
+      animar ? MAPA.m.flyToBounds(pts, { ...op, duration: 0.6 }) : MAPA.m.fitBounds(pts, op);
+    },
+    /** Tocar una comunidad (en el mapa o en la lista del panel): se ve su gente y el mapa va hacia ella. */
+    verComunidadMapa(c) {
+      this.mapaComunidad = c.id;
+      this.dibujarMapa();
+      MAPA.m.panTo([c.latitud, c.longitud], { animate: true });
+      // en pantallas chicas el panel queda debajo del mapa: se baja hasta él
+      if (window.innerWidth < 1100) this.$nextTick(() => document.querySelector('.panel-mapa')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    },
+    /** Cada carro con lo de ese día: litros, cuántos entregaron de cuántos y cuántas comunidades recorre. */
+    carrosMapa() {
+      const cs = this.d.comunidades || [];
+      return (this.d.vehiculos || []).map((v) => {
+        const suyas = cs.filter((c) => v.ruta.includes(c.id));
+        const registrados = suyas.reduce((t, c) => t + c.registrados, 0), proveedores = suyas.reduce((t, c) => t + c.proveedores, 0);
+        return { codigo: v.codigo, acopiador: v.acopiador, color: colorRuta(v.codigo), comunidades: suyas.length,
+          litros: suyas.reduce((t, c) => t + c.litros, 0), registrados, proveedores, pct: proveedores ? Math.round(registrados / proveedores * 100) : 0 };
+      });
+    },
+    /** Las comunidades en el orden de las rutas (las de cada carro juntas) y al final las que ningún carro recoge. */
+    comunidadesMapa() {
+      const orden = (this.d.vehiculos || []).flatMap((v) => v.ruta);
+      const pos = (c) => { const i = orden.indexOf(c.id); return i < 0 ? 1e6 : i; };
+      return [...(this.d.comunidades || [])].sort((a, b) => pos(a) - pos(b) || a.nombre.localeCompare(b.nombre)).map((c) => {
+        const v = this.vehiculoDeComunidad(c.id);
+        return { ...c, color: v ? colorRuta(v.codigo) : '#8394a4', carro: v?.codigo || null,
+          tenue: !!this.mapaVehiculo && v?.codigo !== this.mapaVehiculo, pct: c.proveedores ? Math.round(c.registrados / c.proveedores * 100) : 0 };
+      });
     },
     /** Ver solo la ruta de un carro (o todas): las demás quedan tenues y el mapa se acerca a esa ruta. */
     filtrarMapa(codigo) {
       this.mapaVehiculo = this.mapaVehiculo === codigo ? null : codigo;
       this.dibujarMapa();
-      const v = this.mapaVehiculo && this.d.vehiculos.find((x) => x.codigo === this.mapaVehiculo);
-      const pts = (v ? this.d.comunidades.filter((c) => v.ruta.includes(c.id)) : this.d.comunidades).map((c) => [c.latitud, c.longitud]);
-      if (pts.length) MAPA.m.flyToBounds(pts, { padding: [60, 60], duration: 0.6 });
+      this.encuadrarMapa();
     },
     /** "Cambiar de lugar": se elige la comunidad nueva tocándola en el mapa. */
     empezarMover(p) {
@@ -1698,6 +1757,26 @@ function oficina() {
       Object.assign(this.f, { lote_id: x.lote_id, cantidad: String(x.queda), motivo: 'VENCIDO' });
       this.porVencerEn = 0; // al volver se vuelve a pedir
     },
+    // ------------------------------------------------------------ lotes en almacén
+    ESTADO_LOTE: {
+      NUEVO: { icono: '✨', texto: 'Nuevos', ayuda: 'hechos en los últimos 2 días' },
+      BIEN: { icono: '✓', texto: 'Bien', ayuda: 'con tiempo para venderse' },
+      POR_VENCER: { icono: '⏳', texto: 'Por vencer', ayuda: 'vencen en 7 días o menos' },
+      VENCIDO: { icono: '⛔', texto: 'Vencidos', ayuda: 'ya no se venden' },
+    },
+    /** Nombre del estado para un solo lote ("Nuevo", no "Nuevos"). */
+    estadoLote(l) { return { NUEVO: 'Nuevo', BIEN: 'Bien', POR_VENCER: 'Por vencer', VENCIDO: 'Vencido' }[l.estado]; },
+    /** Los productos con sus lotes, solo los del estado elegido arriba (si se eligió uno). */
+    productosLotes() {
+      return (this.d.productos || []).map((p) => ({ ...p, visibles: p.lotes.filter((l) => !this.filtroLotes || l.estado === this.filtroLotes) }))
+        .filter((p) => p.visibles.length);
+    },
+    /** Qué parte de su vida ya pasó (0 a 100): del día que se hizo al día que vence. */
+    vidaLote(l) { return Math.max(0, Math.min(100, (l.hecho_hace / l.vida_dias) * 100)); },
+    textoHecho(l) { return l.hecho_hace <= 0 ? 'hoy' : l.hecho_hace === 1 ? 'ayer' : 'hace ' + l.hecho_hace + ' días'; },
+    /** El primero que no venció es el que sale en la próxima venta. */
+    saleAhora(p, l) { return l.lote_id === p.lotes.find((x) => !x.vencido)?.lote_id; },
+
     /** El lote que vence primero de un producto, si vence en 7 días o menos (para "vence en 3 días" al vender). */
     loteQueVence(p) { const l = (p?.lotes || [])[0]; return l && l.dias <= 7 ? l : null; },
     /**

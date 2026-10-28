@@ -105,6 +105,41 @@ class ComprasAppController extends Controller
             ]))->sortBy('dias')->values()->all();
     }
 
+    /** Un lote se muestra como "nuevo" los primeros DIAS_NUEVO días desde que se hizo. */
+    public const DIAS_NUEVO = 2;
+
+    /**
+     * GET /api/v1/compras/lotes-almacen — todos los lotes con stock, por producto y en el orden en que
+     * salen al vender (el que vence primero arriba): cuándo se hizo, cuándo vence, cuánto queda y su estado.
+     * estado: VENCIDO | POR_VENCER (vence en DIAS_AVISO_VENCE días o menos) | NUEVO (hecho hace DIAS_NUEVO días o menos) | BIEN.
+     */
+    public function lotesAlmacen()
+    {
+        $hoy = now('America/Lima')->startOfDay();
+        $dias = fn ($fecha) => (int) round($hoy->diffInDays(\Illuminate\Support\Carbon::parse($fecha, 'America/Lima')->startOfDay(), false));
+        $productos = DB::table('productos')->orderBy('tipo')->orderBy('nombre')->get(['id', 'nombre', 'tipo', 'variante', 'base_id', 'unidad'])
+            ->map(function ($p) use ($dias) {
+                $lotes = Mermas::lotesConStock($p->id)->values()->map(function ($l, $i) use ($dias) {
+                    $vence = $dias($l->vence_el);
+                    $hecho = -$dias($l->iniciado_en); // hace cuántos días se hizo
+                    return [
+                        'lote_id' => $l->id, 'codigo' => $l->codigo, 'orden' => $i + 1,
+                        'elaborado' => substr((string) $l->iniciado_en, 0, 10), 'vence_el' => substr((string) $l->vence_el, 0, 10),
+                        'dias' => $vence, 'hecho_hace' => $hecho, 'vida_dias' => max(1, $hecho + $vence),
+                        'obtenido' => $l->obtenido, 'queda' => $l->queda, 'vencido' => $l->vencido,
+                        'estado' => $l->vencido ? 'VENCIDO' : ($vence <= self::DIAS_AVISO_VENCE ? 'POR_VENCER' : ($hecho <= self::DIAS_NUEVO ? 'NUEVO' : 'BIEN')),
+                    ];
+                });
+                return ['id' => $p->id, 'producto_id' => $p->id, 'nombre' => $p->nombre, 'tipo' => $p->tipo, 'variante' => $p->variante, 'base_id' => $p->base_id,
+                    'unidad' => $p->unidad, 'queda' => round((float) $lotes->sum('queda'), 2), 'lotes' => $lotes->all()];
+            })->filter(fn ($p) => count($p['lotes']))->values();
+
+        $todos = $productos->flatMap(fn ($p) => $p['lotes']);
+        return response()->json(['productos' => $productos, 'dias_aviso' => self::DIAS_AVISO_VENCE, 'dias_nuevo' => self::DIAS_NUEVO,
+            'cuenta' => ['lotes' => $todos->count()] + collect(['NUEVO', 'BIEN', 'POR_VENCER', 'VENCIDO'])
+                ->mapWithKeys(fn ($e) => [$e => $todos->where('estado', $e)->count()])->all()]);
+    }
+
     /** GET /api/v1/compras/ventas-datos — productos con stock y precios, y clientes. */
     public function datosVenta()
     {
