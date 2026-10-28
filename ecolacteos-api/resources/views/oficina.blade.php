@@ -997,7 +997,7 @@
                         <td x-text="TIPOS_PRODUCTO[p.tipo]"></td><td x-text="p.unidad"></td>
                         <td class="num" x-text="(p.rinde_min === p.rinde_max ? num(p.rinde_min, 2) : num(p.rinde_min, 2) + '–' + num(p.rinde_max, 2))"></td>
                         <td class="num" x-text="p.vida_util_dias + ' días'"></td>
-                        <td><span class="chip" :class="p.insumos_en_formula ? 'ok' : 'ojo'" x-text="p.insumos_en_formula ? p.insumos_en_formula + ' insumo(s)' : 'Sin fórmula'"></span></td>
+                        <td><span class="chip" :class="p.insumos_en_formula ? 'ok' : 'ojo'" x-text="p.insumos_en_formula ? p.insumos_en_formula + (p.insumos_en_formula == 1 ? ' insumo' : ' insumos') : 'Sin fórmula'"></span></td>
                         <td><span class="chip" :class="p.activo ? 'ok' : ''" x-text="p.activo ? 'Se produce' : 'Ya no se produce'"></span></td>
                         <td class="num"><button class="btn chico gris" @click="abrirProducto(p)">Editar</button></td></tr></template>
                 </table>
@@ -2361,7 +2361,7 @@
                         <div class="que"><strong x-text="n.cliente"></strong><small x-text="fechaCorta(n.fecha) + ' · ' + hora(n.fecha) + ' · ' + n.numero"></small>
                             <div class="etiquetas-rechazo">
                                 <template x-for="(p, k) in n.productos" :key="k"><span class="chip" :style="'--tono: ' + colorReceta(productoVisual(p.que))">
-                                    <i class="punto-chip"></i><span x-text="num(p.cantidad) + ' ' + p.unidad + ' · ' + p.que"></span></span></template>
+                                    <i class="punto-chip"></i><span x-text="num(p.cantidad) + ' ' + (p.cantidad == 1 ? p.unidad.replace(/^(\S+?)s\b/, '$1') : p.unidad) + ' · ' + p.que"></span></span></template>
                             </div></div>
                         <div class="monto-nota"><b class="monto" x-text="soles(n.total)"></b>
                             <span class="pago-chip" :class="n.metodo.toLowerCase()" :title="n.operacion ? 'N.° de operación ' + n.operacion : ''"

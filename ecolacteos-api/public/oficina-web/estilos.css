@@ -1229,6 +1229,8 @@ input.buscador { padding-left: 38px; background-image: url("data:image/svg+xml,%
 .nota .que strong { display: block; font-size: 15px; }
 .nota .que small { display: block; font-size: 12.5px; color: var(--texto-3); }
 .nota .chip { --tono: var(--exito); display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+/* en el celular el producto baja de línea en vez de taparse con el monto */
+.nota .que .chip { max-width: 100%; white-space: normal; }
 .punto-chip { width: 8px; height: 8px; border-radius: 50%; background: var(--tono); }
 /* --- Costos --- */
 .barra-partes { display: flex; height: 14px; border-radius: 99px; overflow: hidden; margin: 14px 0 8px; background: var(--fondo); border: 1px solid var(--borde); }
@@ -1264,7 +1266,9 @@ input.buscador { padding-left: 38px; background-image: url("data:image/svg+xml,%
 .ruta-cambio { display: inline-flex; align-items: center; gap: 8px; margin: 6px 0 2px; padding: 4px 10px; border-radius: 99px; background: var(--fondo); border: 1px solid var(--borde); font-size: 13.5px; color: var(--texto-2); }
 .ruta-cambio i { font-style: normal; color: var(--exito); font-weight: 800; }
 .ruta-cambio b { color: var(--texto); }
-.cuenta-sesiones { font: 800 22px var(--letra-titulo); }
+.cuenta-sesiones { font: 800 22px/1.1 var(--letra-titulo); }
+/* el número arriba y "sesiones abiertas" abajo, en una línea: así todas las tarjetas quedan iguales */
+.pie-trabajador > span:first-child { display: grid; white-space: nowrap; }
 .vez { text-align: center; }
 .vez b { display: block; font: 800 22px var(--letra-titulo); }
 .vez.mal b { color: var(--alerta); }
@@ -1317,7 +1321,7 @@ input.buscador { padding-left: 38px; background-image: url("data:image/svg+xml,%
 .insumo-tarjeta small { font-size: 12px; color: var(--texto-3); }
 .insumo-tarjeta .chip { margin-top: 4px; }
 .insumo-tarjeta .botones { display: flex; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--borde); width: 100%; justify-content: center; }
-@media (max-width: 460px) { .insumos-tarjetas { grid-template-columns: 1fr 1fr; } .insumo-tarjeta .anillo, .insumo-tarjeta .anillo svg { width: 70px; height: 70px; } }
+@media (max-width: 460px) { .insumos-tarjetas { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; } .insumo-tarjeta { padding: 14px 8px 10px; min-width: 0; } .insumo-tarjeta .botones { flex-wrap: wrap; } .insumo-tarjeta .anillo, .insumo-tarjeta .anillo svg { width: 70px; height: 70px; } }
 @media (prefers-reduced-motion: reduce) { .insumo-tarjeta { transition: none; } }
 
 /* --- Almacén: insumos en grupos que se abren como combos --- */
@@ -1336,7 +1340,13 @@ input.buscador { padding-left: 38px; background-image: url("data:image/svg+xml,%
 .grupo-insumos .desplegable > .dentro { padding: 0 14px; }
 .grupo-insumos .desplegable.abierto > .dentro { padding: 2px 14px 14px; }
 .grupo-insumos .insumo-tarjeta { background: radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--tono) 13%, transparent), transparent 62%), var(--superficie-2); }
-@media (max-width: 640px) { .cabeza-grupo .iconitos { display: none; } .cabeza-grupo { flex-wrap: wrap; } .cabeza-grupo .chip { order: 5; margin-left: 56px; } }
+/* en el celular: arriba el nombre y la flecha; abajo, el total o si falta algo (antes todo en una fila apretaba el nombre) */
+@media (max-width: 640px) {
+  .cabeza-grupo { display: grid; grid-template-columns: 44px minmax(0, 1fr) 30px; column-gap: 12px; row-gap: 8px; }
+  .cabeza-grupo .flecha { grid-column: 3; grid-row: 1; }
+  .cabeza-grupo .iconitos, .cabeza-grupo .puntos-productos { display: none; }
+  .cabeza-grupo .total-grupo, .cabeza-grupo .chip { grid-column: 2 / -1; justify-self: start; justify-content: flex-start; }
+}
 @media (prefers-reduced-motion: reduce) { .cabeza-grupo .flecha { transition: none; } }
 
 /* --- Almacén: productos terminados en grupos --- */
