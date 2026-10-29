@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\Croquis;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -59,10 +60,13 @@ class MapaController extends Controller
         $comunidades = DB::table('comunidades')->orderBy('nombre')->get()->map(function ($c) use ($proveedores, $entregas, $gente) {
             $gps = $c->latitud !== null && $c->longitud !== null;
             [$lat, $lng] = $gps ? [(float) $c->latitud, (float) $c->longitud] : self::aproximar($c->croquis_x, $c->croquis_y);
+            // el punto en el croquis de la app (igual que en sync/bootstrap)
+            [$x, $y] = Croquis::deComunidad($c);
 
             return [
                 'id' => $c->id, 'nombre' => $c->nombre, 'vias' => $c->vias,
                 'latitud' => $lat, 'longitud' => $lng, 'aproximada' => ! $gps,
+                'croquis_x' => $x, 'croquis_y' => $y,
                 'proveedores' => (int) ($proveedores[$c->id] ?? 0),
                 'registrados' => (int) ($entregas[$c->id]->registrados ?? 0),
                 'litros' => round((float) ($entregas[$c->id]->litros ?? 0), 2),

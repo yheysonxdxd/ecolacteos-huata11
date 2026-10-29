@@ -2,7 +2,7 @@
 <html lang="es">
 <body style="font-family: Arial, sans-serif; color: #1b2430; line-height: 1.5;">
     <p>Hola, <strong>{{ $datos['cliente'] }}</strong>:</p>
-    <p>Gracias por su compra. Le enviamos su nota de venta <strong>{{ $datos['numero'] }}</strong>
+    <p>Gracias por su compra. Le enviamos su {{ mb_strtolower($datos['titulo'] ?? 'nota de venta') }} <strong>{{ $datos['numero'] }}</strong>
        del {{ $datos['fecha'] }} en el archivo adjunto (PDF).</p>
     <table style="border-collapse: collapse; margin: 12px 0;">
         @foreach($datos['lineas'] as $k => $l)

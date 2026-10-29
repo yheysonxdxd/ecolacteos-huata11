@@ -24,6 +24,7 @@ object Atras {
             ruta == "admin/mas" && a.mas >= 0 -> { { a.mas = -1 } }
             ruta == "admin/dinero" && a.dinero >= 0 -> { { a.dinero = -1 } }
             ruta == "admin/acopio" && AcopioCalendario.conciliar -> { { AcopioCalendario.conciliar = false } }
+            ruta == "admin/acopio" && AcopioCalendario.mapa != null -> { { AcopioCalendario.mapa = null } }
             ruta == "admin/acopio" && AcopioCalendario.activo -> { { AcopioCalendario.activo = false } }
             ruta == "compras/ventas" && v.pestanaVentas >= 0 -> { { v.pestanaVentas = -1 } }
             ruta == "compras/almacen" && v.pestanaAlmacen >= 0 -> { { v.pestanaAlmacen = -1 } }

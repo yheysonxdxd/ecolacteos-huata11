@@ -143,6 +143,7 @@ private fun PreciosConfig(d: JsonObject) {
 
     Seccion("Precios de venta")
     Text("Desde hoy, para las ventas nuevas. Las notas de venta ya hechas conservan su precio.", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+    TiposPrecioConfig(d.lista("tipos_precio"))
     val tipos = d.obj("tipos_cliente") ?: JsonObject(emptyMap())
     d.lista("precios_venta").forEach { p ->
         Tarjeta {
@@ -153,6 +154,54 @@ private fun PreciosConfig(d: JsonObject) {
                 Spacer(Modifier.height(8.dp))
                 PrecioVenta(p, tipo, (nombre as? JsonPrimitive)?.content ?: tipo, precios.txt(tipo))
             }
+        }
+    }
+}
+
+/** Los tipos de precio (Mayorista, Cliente directo… y los que se agreguen): agregar uno nuevo o dejar de usarlo. */
+@Composable
+private fun TiposPrecioConfig(tipos: List<JsonObject>) {
+    val scope = rememberCoroutineScope()
+    var nombre by remember { mutableStateOf("") }
+    var enviando by remember { mutableStateOf(false) }
+    Tarjeta {
+        Text("TIPOS DE PRECIO", style = Texto.Eyebrow, color = Altiplano.TextoTerciario)
+        Text("Cada cliente paga el precio de su tipo. Agrega los que necesites (Bodega, Feria…) y ponle su precio a cada producto abajo.",
+            style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+        tipos.forEach { t ->
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(t.txt("icono").ifEmpty { "🏷️" }, style = Texto.Fila)
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(t.txt("nombre"), style = Texto.Fila, color = if (t.txt("activo") == "true") Altiplano.Texto else Altiplano.TextoTerciario)
+                    val n = t.num("clientes").toInt()
+                    Text(if (t.txt("activo") == "true") "$n ${if (n == 1) "cliente" else "clientes"}" else "no se usa", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+                }
+                // los tres de siempre los usa el sistema: no se quitan
+                if (t.txt("fijo") != "true") TextButton(onClick = {
+                    val activo = t.txt("activo") != "true"
+                    scope.launch {
+                        guardar("/api/v1/admin/configuracion/tipos-precio/${t.txt("codigo")}", buildJsonObject { put("activo", activo) }) {
+                            if (activo) "✓ «${t.txt("nombre")}» se usa de nuevo." else "✓ «${t.txt("nombre")}» ya no se usa."
+                        }
+                    }
+                }) { Text(if (t.txt("activo") == "true") "Quitar" else "Usar de nuevo", color = Altiplano.CelesteAcento) }
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Campo(nombre, { nombre = it.take(60) }, "Precio nuevo (ej. Bodega)", palabras = true, modifier = Modifier.weight(1f))
+            TextButton(enabled = !enviando && nombre.trim().length >= 3, onClick = {
+                scope.launch {
+                    enviando = true
+                    guardar("/api/v1/admin/configuracion/tipos-precio", buildJsonObject { put("nombre", nombre.trim()) }) { r ->
+                        nombre = ""
+                        "✓ Precio «${r.txt("nombre")}» agregado: ponle su precio a cada producto abajo."
+                    }
+                    enviando = false
+                }
+            }) { Text(if (enviando) "…" else "+ Agregar", color = Altiplano.Exito) }
         }
     }
 }

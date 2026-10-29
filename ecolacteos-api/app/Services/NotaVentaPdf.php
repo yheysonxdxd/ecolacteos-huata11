@@ -9,14 +9,16 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Arma la nota de venta en PDF (comprobante interno, NO boleta SUNAT).
+ * Arma el PDF de la venta: nota de venta (comprobante interno), boleta o factura
+ * (ver Comprobantes; todavía no se envían a SUNAT y el PDF lo dice).
  * La usan el enlace para imprimir y el envío por correo.
  */
 class NotaVentaPdf
 {
+    /** Número de la venta: NV-000123, o el de su boleta o factura (B001-00000012). */
     public static function numero(int $ventaId): string
     {
-        return 'NV-' . str_pad((string) $ventaId, 6, '0', STR_PAD_LEFT);
+        return Comprobantes::deNota(self::notaDe($ventaId) ?? $ventaId);
     }
 
     /** Id de la nota a la que pertenece una fila de venta (la primera fila de la venta). */
@@ -49,9 +51,20 @@ class NotaVentaPdf
         $v = $filas->first();
         $total = round((float) $filas->sum('total'), 2);
         $unidad = fn ($u) => str_starts_with($u, 'quesos') ? 'Unidad (1 kg)' : ucfirst(strtok($u, ' '));
+        $tipo = $v->comprobante_tipo ?? 'NOTA';
+        [$gravada, $igv, $igvPct] = Comprobantes::desglose($total);
 
         return [
-            'numero'   => self::numero($nota),
+            // boleta o factura: título, a quién va y el IGV separado (los precios ya lo incluyen)
+            'comprobante' => $tipo,
+            'titulo'      => Comprobantes::titulo($tipo),
+            'adquirente'  => $tipo === 'NOTA' ? null : [
+                'documento' => $v->adquirente_documento,
+                'tipo_doc'  => $v->adquirente_documento ? (strlen($v->adquirente_documento) === 11 ? 'RUC' : 'DNI') : null,
+                'nombre'    => $v->adquirente_nombre, 'direccion' => $v->adquirente_direccion,
+            ],
+            'gravada' => $gravada, 'igv' => $igv, 'igv_pct' => $igvPct,
+            'numero'   => Comprobantes::numero($v->comprobante_serie, $v->comprobante_numero, $nota),
             // una línea por producto (la plantilla y el correo las recorren)
             'lineas'   => $filas->map(fn ($f) => [
                 'producto' => $f->producto, 'unidad' => $unidad($f->unidad), 'cantidad' => (float) $f->cantidad,
@@ -68,7 +81,7 @@ class NotaVentaPdf
             'cliente'  => $v->comprador_nombre ?: $v->cliente, // "Solo vender": quien compró sin registrarse
             // quien compró sin registrarse sale solo con su nombre (salvo que sea proveedor de leche: eso sí se sabe)
             'tipo'     => $v->comprador_nombre && $v->tipo_cliente !== 'PLANTA' ? null
-                : (['MAYORISTA' => 'Mayorista', 'DIRECTO' => 'Cliente directo', 'PLANTA' => 'Proveedor de leche'][$v->tipo_cliente] ?? $v->tipo_cliente),
+                : TiposPrecio::nombre($v->tipo_cliente),
             'ruc'      => $v->comprador_nombre ? $v->comprador_documento : $v->ruc,
             // los del primer producto (lo que ya usaban el correo y las pruebas)
             'producto' => $v->producto,

@@ -37,17 +37,39 @@ object ComprasReal {
     var operacion by mutableStateOf("")           // N.° de operación del Yape o del voucher (opcional)
     // "Solo vender": quien compra sin registrarlo como cliente (nombre, DNI/RUC); la nota sale a su nombre
     var comprador by mutableStateOf<Pair<String, String>?>(null)
+    // NOTA (interna) · BOLETA · FACTURA, y a quién va la boleta o factura (DNI/RUC, nombre, dirección)
+    var comprobante by mutableStateOf("NOTA")
+    // tipos de precio activos (GET ventas-datos): para elegir el de un cliente y mostrar su nombre
+    var tiposPrecio by mutableStateOf<List<JsonObject>>(emptyList())
+    var adqDoc by mutableStateOf("")
+    var adqNombre by mutableStateOf("")
+    var adqDireccion by mutableStateOf("")
 
     /** A quién va la nota: la persona de "Solo vender" o el cliente elegido. */
     fun nombreVenta(c: JsonObject?) = comprador?.first ?: c?.txt("nombre").orEmpty()
 
+    /** Boleta o factura: toma el DNI/RUC y el nombre del cliente (se pueden cambiar). */
+    fun elegirComprobante(tipo: String, c: JsonObject) {
+        comprobante = tipo
+        if (tipo == "NOTA") return
+        val doc = comprador?.second ?: c.txt("ruc")
+        val general = c.txt("ruc").isEmpty() && Regex("sin registrar|vecino de huata|^proveedor de leche$", RegexOption.IGNORE_CASE).containsMatchIn(c.txt("nombre"))
+        val nombre = comprador?.first ?: if (general) "" else c.txt("nombre")
+        val sirve = tipo != "FACTURA" || doc.length == 11
+        adqDoc = if (sirve) doc else ""; adqNombre = if (sirve) nombre else ""
+    }
+
     fun limpiarVenta() {
         cantidades.clear(); pasoVenta = 1; familia = null; producto = null
         metodoPago = "EFECTIVO"; operacion = ""; comprador = null
+        comprobante = "NOTA"; adqDoc = ""; adqNombre = ""; adqDireccion = ""
     }
 }
 
-private val NOMBRE_CANAL = mapOf("MAYORISTA" to "Mayorista", "DIRECTO" to "Cliente directo", "PLANTA" to "Proveedor de leche")
+/** Nombre de cada tipo de precio: los tres de siempre y los que llegan del servidor (Bodega, Feria…). */
+private val NOMBRE_CANAL get() = mapOf("MAYORISTA" to "Mayorista", "DIRECTO" to "Cliente directo", "PLANTA" to "Proveedor de leche") +
+    ComprasReal.tiposPrecio.associate { it.txt("codigo") to it.txt("nombre") }
+private val COMPROBANTE = listOf("NOTA" to "🧾 Nota", "BOLETA" to "🧾 Boleta", "FACTURA" to "🏢 Factura")
 private val METODO_PAGO = listOf("EFECTIVO" to "💵 Efectivo", "YAPE" to "📱 Yape", "TARJETA" to "💳 Tarjeta")
 /** De dónde salió el nombre de un DNI/RUC (ConsultaDocumento en el servidor). */
 private val FUENTE_DOC = mapOf("cliente" to "Ya es cliente", "proveedor" to "Es proveedor de leche", "trabajador" to "Trabaja en la planta",
@@ -150,6 +172,7 @@ private fun VentaReal(irA: (Int) -> Unit) {
         val prods = d.lista("productos")
         val clientes = d.lista("clientes")
         val inactivos = d.lista("inactivos")
+        d.lista("tipos_precio").takeIf { it.isNotEmpty() }?.let { if (it != v.tiposPrecio) v.tiposPrecio = it }
         if (prods.isEmpty()) return@CargaServidor
         val c = clientes.find { it.num("id").toLong() == v.clienteId }
         // lo que lleva: (producto, cantidad, precio según el tipo de cliente)
@@ -177,7 +200,7 @@ private fun VentaReal(irA: (Int) -> Unit) {
                 1 -> PasoCliente(clientes, inactivos, c)
                 2 -> PasoProductos(prods, c!!, lineas, total, v.nombreVenta(c))
                 else -> {
-                    Seccion("Revisa la nota")
+                    Seccion(if (v.comprobante == "NOTA") "Revisa la nota" else "Revisa la ${if (v.comprobante == "FACTURA") "factura" else "boleta"}")
                     TarjetaDato("TOTAL", soles(total), apoyo = v.nombreVenta(c) + (v.comprador?.let { (_, doc) ->
                         (if (doc.isNotEmpty()) " · ${if (doc.length == 8) "DNI" else "RUC"} $doc" else "") + " · sin registrar como cliente" } ?: ""), destacada = true) {
                         lineas.forEach { (p, cant, precio) ->
@@ -185,6 +208,30 @@ private fun VentaReal(irA: (Int) -> Unit) {
                             FilaValor("${formatear(cant, 0)} × ${p.txt("nombre")} a ${soles(precio)}", soles(cant * precio))
                             Text(textoLotes(p, cant), style = Texto.Apoyo, color = Altiplano.TextoTerciario)
                         }
+                    }
+                    // boleta o factura (SUNAT): el IGV va dentro del precio; aquí se ve separado
+                    Seccion("¿Qué comprobante le das?")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        COMPROBANTE.forEach { (clave, nombre) -> Chip(nombre, v.comprobante == clave) { v.elegirComprobante(clave, c!!) } }
+                    }
+                    Text(
+                        when (v.comprobante) { "BOLETA" -> "A personas · con DNI desde S/ 700"; "FACTURA" -> "A empresas con RUC"; else -> "Control interno de la planta" },
+                        style = Texto.Apoyo, color = Altiplano.TextoTerciario,
+                    )
+                    if (v.comprobante != "NOTA") {
+                        val gravada = kotlin.math.round(total / 1.18 * 100) / 100
+                        FilaValor("Op. gravada", soles(gravada))
+                        FilaValor("IGV (18 %)", soles(total - gravada))
+                        Campo(v.adqDoc, { v.adqDoc = it.filter(Char::isDigit).take(11) },
+                            if (v.comprobante == "FACTURA") "RUC de quien compra" else "DNI o RUC" + if (total > 700) "" else " (opcional hasta S/ 700)",
+                            teclado = KeyboardType.Number)
+                        // escribió un DNI o RUC completo y falta el nombre: se busca (RENIEC/SUNAT)
+                        LaunchedEffect(v.adqDoc) {
+                            if (DNI_O_RUC.matches(v.adqDoc) && v.adqNombre.isBlank()) consultarDocumento(v.adqDoc)?.txt("nombre")?.takeIf { it.isNotBlank() }?.let { v.adqNombre = it }
+                        }
+                        Campo(v.adqNombre, { v.adqNombre = it.take(150) }, if (v.comprobante == "FACTURA") "Razón social" else "Nombre", palabras = true)
+                        Campo(v.adqDireccion, { v.adqDireccion = it.take(200) }, "Dirección (opcional)", palabras = true)
+                        Text("Todavía no se envía a SUNAT: el PDF lo dice hasta que se conecte el envío.", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
                     }
                     sinStock.forEach { (p, cant, _) ->
                         AvisoCampo("${p.txt("nombre")}: hay ${formatear(p.num("stock").coerceAtLeast(0.0), 0)}, faltan ${formatear(faltaStock(p, cant), 0)}. Se puede vender igual: sale del próximo lote.")
@@ -218,11 +265,17 @@ private fun VentaReal(irA: (Int) -> Unit) {
                             v.comprador?.let { (nombre, doc) ->
                                 putJsonObject("comprador") { put("nombre", nombre); if (doc.isNotEmpty()) put("documento", doc) }
                             }
+                            put("comprobante", v.comprobante)
+                            if (v.comprobante != "NOTA") putJsonObject("adquirente") {
+                                if (v.adqDoc.isNotEmpty()) put("documento", v.adqDoc)
+                                if (v.adqNombre.isNotBlank()) put("nombre", v.adqNombre.trim())
+                                if (v.adqDireccion.isNotBlank()) put("direccion", v.adqDireccion.trim())
+                            }
                         })
-                        val quien = v.nombreVenta(cli)
+                        val quien = if (v.comprobante != "NOTA" && v.adqNombre.isNotBlank()) v.adqNombre.trim() else v.nombreVenta(cli)
                         val pago = METODO_PAGO.first { it.first == v.metodoPago }.second.substringAfter(' ')
                         v.limpiarVenta()
-                        v.mensaje = "✓ Venta registrada: ${soles(r.num("total"))} a $quien · $pago" + textoCorreo(r)
+                        v.mensaje = "✓ Venta registrada: ${soles(r.num("total"))} a $quien · $pago · ${r.txt("numero")}" + textoCorreo(r)
                         NotaVenta.ultima = UltimaNota(r.num("id").toLong(), r.txt("numero"), r.num("total"), quien, r.txt("correo"))
                         v.mesVentas = null // la venta recién hecha está en este mes
                         v.version++
@@ -493,8 +546,10 @@ private fun HojaCliente(x: JsonObject) {
         estadoDoc?.let { Text(it, style = Texto.Apoyo, color = if (it.startsWith("✓")) Altiplano.Exito else Altiplano.TextoTerciario) }
         Campo(nombre, { nombre = it.take(120) }, "Nombre del cliente o de su negocio", palabras = true)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Chip("Mayorista", tipo == "MAYORISTA") { tipo = "MAYORISTA" }
-            Chip("Cliente directo", tipo == "DIRECTO") { tipo = "DIRECTO" }
+            // el de proveedor de leche lo pone el sistema; los agregados en Ajustes → Precios salen aquí
+            (ComprasReal.tiposPrecio.map { it.txt("codigo") }.ifEmpty { listOf("MAYORISTA", "DIRECTO") } - "PLANTA").forEach { t ->
+                Chip(NOMBRE_CANAL[t] ?: t, tipo == t) { tipo = t }
+            }
         }
         Campo(telefono, { telefono = it.filter { ch -> ch.isDigit() || ch == ' ' || ch == '+' }.take(20) }, "Teléfono (opcional)", teclado = KeyboardType.Phone)
         Campo(email, { email = it.trim().take(120) }, "Correo para la nota (opcional)", teclado = KeyboardType.Email)

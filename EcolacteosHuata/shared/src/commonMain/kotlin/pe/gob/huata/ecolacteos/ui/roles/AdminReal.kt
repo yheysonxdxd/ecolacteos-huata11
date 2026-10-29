@@ -34,7 +34,7 @@ object AdminPestanas {
             "admin/planta" -> planta = -1
             "admin/mas" -> mas = -1
             "admin/dinero" -> dinero = -1
-            "admin/acopio" -> AcopioCalendario.conciliar = false
+            "admin/acopio" -> { AcopioCalendario.conciliar = false; AcopioCalendario.mapa = null }
             "compras/ventas" -> ComprasReal.pestanaVentas = -1
             "compras/almacen" -> ComprasReal.pestanaAlmacen = -1
             "compras/orden" -> CompraInsumos.pestana = -1
@@ -46,6 +46,7 @@ object AdminPestanas {
 /** Acopio → Totales → Calendario: el mes a la vista y el día tocado (vacíos = el último con entregas). */
 object AcopioCalendario {
     var conciliar by mutableStateOf(false) // la tarjeta "Campo vs. planta" abierta
+    var mapa by mutableStateOf<String?>(null) // el mapa de Huata abierto, con el día que muestra
     var activo by mutableStateOf(false)
     var mes by mutableStateOf<String?>(null)
     var fecha by mutableStateOf<String?>(null)

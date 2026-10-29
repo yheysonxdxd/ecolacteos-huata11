@@ -19,9 +19,12 @@ class Configuracion
      */
     public const CAMPOS = [
         'empresa.nombre'    => ['empresa', 'Nombre de la planta', 'Sale arriba en las notas de venta.', 'texto', null, 3, 120, 'Planta de Lácteos Ecolácteos Huata'],
-        'empresa.ruc'       => ['empresa', 'RUC', '11 dígitos. Déjalo vacío si todavía no tienen.', 'ruc', null, null, null, ''],
+        'empresa.ruc'       => ['empresa', 'RUC', '11 dígitos. Sin RUC solo se dan notas de venta (no boletas ni facturas).', 'ruc', null, null, null, ''],
         'empresa.direccion' => ['empresa', 'Dirección', null, 'texto', null, 0, 160, 'Huata, Puno'],
         'empresa.telefono'  => ['empresa', 'Teléfono', null, 'texto', null, 0, 30, ''],
+        // SUNAT: 4 caracteres, la boleta empieza con B y la factura con F (ver Comprobantes)
+        'comprobante.serie_boleta'  => ['empresa', 'Serie de las boletas', '4 caracteres que empiezan con B, la que te dio SUNAT. Ej. B001.', 'texto', null, 4, 4, 'B001'],
+        'comprobante.serie_factura' => ['empresa', 'Serie de las facturas', '4 caracteres que empiezan con F. Ej. F001.', 'texto', null, 4, 4, 'F001'],
 
         'precio.factor_adulteracion' => ['precios', 'Cuánto se paga por la leche adulterada', 'La 1.ª vez que a un productor se le detecta agua, esa entrega se paga a este porcentaje del precio.', 'porcentaje', '%', 0, 100, 0.667],
 
@@ -84,10 +87,16 @@ class Configuracion
                 $largo = mb_strlen((string) $valor);
                 abort_if($largo < $min, 422, "Escribe {$etiqueta}.");
                 abort_if($largo > $max, 422, "{$etiqueta}: máximo {$max} letras.");
+                if (str_starts_with($clave, 'comprobante.serie_')) {
+                    $valor = strtoupper((string) $valor);
+                    $letra = $clave === 'comprobante.serie_boleta' ? 'B' : 'F';
+                    abort_unless(preg_match("/^{$letra}[A-Z0-9]{3}$/", $valor), 422, "{$etiqueta}: 4 caracteres que empiezan con {$letra} (ej. {$letra}001).");
+                }
                 $guardar[$clave] = (string) $valor;
             } elseif ($tipo === 'ruc') {
                 $doc = preg_replace('/\D/', '', (string) $valor);
                 abort_if($doc !== '' && ! Compras::documentoValido('RUC', $doc), 422, 'El RUC lleva 11 dígitos y empieza en 10, 15, 16, 17 o 20.');
+                abort_if($doc !== '' && ! Comprobantes::rucValido($doc), 422, 'Ese RUC no es válido: revisa los 11 dígitos.');
                 $guardar[$clave] = $doc;
             } else {
                 $n = is_numeric(str_replace(',', '.', (string) $valor)) ? (float) str_replace(',', '.', (string) $valor) : null;

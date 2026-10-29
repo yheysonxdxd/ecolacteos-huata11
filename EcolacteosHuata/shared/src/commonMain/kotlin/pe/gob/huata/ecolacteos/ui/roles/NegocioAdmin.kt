@@ -139,7 +139,7 @@ private fun tipoCliente(t: String) = when (t) {
     "MAYORISTA" -> "Mayorista"
     "DIRECTO" -> "Cliente directo"
     "PLANTA" -> "Proveedor de leche"
-    else -> t
+    else -> ComprasReal.tiposPrecio.firstOrNull { it.txt("codigo") == t }?.txt("nombre") ?: t.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }
 }
 
 /** En modo demo no hay ventas reales que mostrar. */

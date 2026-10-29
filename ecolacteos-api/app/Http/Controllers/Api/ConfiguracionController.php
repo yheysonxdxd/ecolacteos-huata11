@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\Configuracion;
+use App\Services\TiposPrecio;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -15,7 +16,6 @@ use Illuminate\Support\Facades\DB;
  */
 class ConfiguracionController extends Controller
 {
-    private const TIPOS_CLIENTE = ['MAYORISTA' => 'Mayorista', 'DIRECTO' => 'Cliente directo', 'PLANTA' => 'Proveedor de leche'];
 
     private function hoy(): Carbon
     {
@@ -40,10 +40,12 @@ class ConfiguracionController extends Controller
                     ->orderByDesc('vigente_desde')->limit(6)->get(['precio', 'vigente_desde'])
                     ->map(fn ($p) => ['precio' => (float) $p->precio, 'desde' => $p->vigente_desde]),
             ],
-            'tipos_cliente' => self::TIPOS_CLIENTE,
+            // los tres de siempre y los que se agregaron (Bodega, Feria…), con cuántos clientes tiene cada uno
+            'tipos_cliente' => $tipos = TiposPrecio::nombres(),
+            'tipos_precio' => TiposPrecio::todos(false),
             'precios_venta' => DB::table('productos')->where('activo', true)->orderBy('id')->get(['id', 'nombre', 'unidad'])->map(fn ($p) => [
                 'producto_id' => $p->id, 'producto' => $p->nombre, 'unidad' => $p->unidad,
-                'precios' => collect(self::TIPOS_CLIENTE)->mapWithKeys(fn ($_, $tipo) => [
+                'precios' => collect($tipos)->mapWithKeys(fn ($_, $tipo) => [
                     $tipo => ($x = ($precios[$p->id] ?? collect())->firstWhere('tipo_cliente', $tipo)) ? (float) $x->precio : null,
                 ]),
             ]),
@@ -114,7 +116,7 @@ class ConfiguracionController extends Controller
     {
         $d = $r->validate([
             'producto_id'  => ['required', 'exists:productos,id'],
-            'tipo_cliente' => ['required', 'in:' . implode(',', array_keys(self::TIPOS_CLIENTE))],
+            'tipo_cliente' => ['required', 'in:' . implode(',', array_keys(TiposPrecio::nombres()))],
             'precio'       => ['required', 'numeric', 'min:0.1', 'max:10000'],
         ], ['precio.required' => 'Escribe el precio.', 'precio.min' => 'El precio tiene que ser mayor a 0.']);
         $hoy = $this->hoy()->toDateString();
@@ -143,15 +145,68 @@ class ConfiguracionController extends Controller
         return response()->json(['cambio' => $antes !== false, 'antes' => $antes ?: null, 'precio' => (float) $d['precio']]);
     }
 
+    /** POST /api/v1/admin/configuracion/tipos-precio { nombre, icono?, ayuda? } — un precio más (Bodega, Feria…). */
+    public function crearTipoPrecio(Request $r)
+    {
+        $d = $r->validate([
+            'nombre' => ['required', 'string', 'max:60'], 'icono' => ['nullable', 'string', 'max:8'], 'ayuda' => ['nullable', 'string', 'max:120'],
+        ], ['nombre.required' => 'Escribe el nombre del precio (ej. Bodega, Feria, Restaurante).']);
+        $t = TiposPrecio::crear($d['nombre'], $d['icono'] ?? null, $d['ayuda'] ?? null);
+        $this->anotar("tipo_precio.{$t['codigo']}", null, $t['nombre'], $r);
+
+        return response()->json($t, 201);
+    }
+
+    /**
+     * POST /api/v1/admin/configuracion/tipos-precio/{codigo} { nombre?, icono?, ayuda?, activo? }
+     * Cambiarle el nombre o dejar de usarlo. Los tres de siempre no se quitan, y uno que
+     * todavía tiene clientes tampoco (se les cambia el tipo primero).
+     */
+    public function cambiarTipoPrecio(Request $r, string $codigo)
+    {
+        $t = DB::table('tipos_precio')->where('codigo', $codigo)->first();
+        abort_unless($t, 404, 'Ese precio no existe.');
+        $d = $r->validate([
+            'nombre' => ['sometimes', 'string', 'min:3', 'max:60'], 'icono' => ['nullable', 'string', 'max:8'],
+            'ayuda' => ['nullable', 'string', 'max:120'], 'activo' => ['sometimes', 'boolean'],
+        ], ['nombre.min' => 'El nombre es muy corto.']);
+        if (array_key_exists('activo', $d) && ! $d['activo']) {
+            abort_if($t->fijo, 422, "«{$t->nombre}» lo usa el sistema y no se puede quitar.");
+            $n = DB::table('clientes')->where('tipo', $codigo)->where('activo', true)->count();
+            abort_if($n > 0, 422, "{$n} " . ($n === 1 ? 'cliente tiene' : 'clientes tienen') . " el precio «{$t->nombre}»: cámbiales el tipo primero.");
+        }
+        if (isset($d['nombre'])) {
+            $d['nombre'] = trim($d['nombre']);
+            abort_if(DB::table('tipos_precio')->where('codigo', '!=', $codigo)->whereRaw('LOWER(nombre) = ?', [mb_strtolower($d['nombre'])])->exists(),
+                422, "Ya hay un precio «{$d['nombre']}».");
+        }
+        DB::table('tipos_precio')->where('codigo', $codigo)->update($d + ['updated_at' => now()]);
+        if (isset($d['nombre']) && $d['nombre'] !== $t->nombre) $this->anotar("tipo_precio.{$codigo}", $t->nombre, $d['nombre'], $r);
+        if (array_key_exists('activo', $d) && (bool) $d['activo'] !== (bool) $t->activo) {
+            $this->anotar("tipo_precio.{$codigo}", $t->nombre, $d['activo'] ? $t->nombre : null, $r);
+        }
+
+        return response()->json(['codigo' => $codigo]);
+    }
+
+    private function anotar(string $clave, ?string $antes, ?string $nuevo, Request $r): void
+    {
+        DB::table('configuracion_historial')->insert([
+            'clave' => $clave, 'valor_antes' => $antes, 'valor_nuevo' => $nuevo,
+            'vigente_desde' => $this->hoy()->toDateString(), 'usuario_id' => $r->user()->id, 'created_at' => now(),
+        ]);
+    }
+
     /** Los últimos 40 cambios, en palabras: "Grasa mínima: 3 → 3,2 %". */
     private function historial()
     {
         $productos = DB::table('productos')->pluck('nombre', 'id');
+        $tipos = DB::table('tipos_precio')->pluck('nombre', 'codigo'); // también los que ya no se usan
 
         return DB::table('configuracion_historial as h')->leftJoin('users as u', 'u.id', '=', 'h.usuario_id')
             ->orderByDesc('h.created_at')->orderByDesc('h.id')->limit(40)
             ->get(['h.*', 'u.name as usuario'])
-            ->map(function ($h) use ($productos) {
+            ->map(function ($h) use ($productos, $tipos) {
                 $que = Configuracion::etiqueta($h->clave);
                 $tipo = Configuracion::CAMPOS[$h->clave][3] ?? null;
                 $unidad = Configuracion::CAMPOS[$h->clave][4] ?? null;
@@ -162,9 +217,10 @@ class ConfiguracionController extends Controller
                     if ($tipo === 'numero') return rtrim(rtrim(number_format((float) $v, 3, ',', ''), '0'), ',') . ($unidad ? " {$unidad}" : '');
                     return $v;
                 };
+                if (str_starts_with($h->clave, 'tipo_precio.')) $que = 'Tipo de precio';
                 if (str_starts_with($h->clave, 'venta.')) {
                     [, $prod, $tipoCli] = explode('.', $h->clave);
-                    $que = 'Precio de ' . ($productos[$prod] ?? 'producto') . ' · ' . (self::TIPOS_CLIENTE[$tipoCli] ?? $tipoCli);
+                    $que = 'Precio de ' . ($productos[$prod] ?? 'producto') . ' · ' . ($tipos[$tipoCli] ?? $tipoCli);
                 }
                 return [
                     'que' => $que, 'antes' => $f($h->valor_antes), 'despues' => $h->valor_nuevo === null ? 'quitado' : $f($h->valor_nuevo),

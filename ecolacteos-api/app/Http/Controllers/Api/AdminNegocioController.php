@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\TiposPrecio;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -87,6 +88,8 @@ class AdminNegocioController extends Controller
                 'MAYORISTA' => (float) ($porTipo['MAYORISTA'] ?? 0),
                 'DIRECTO'   => (float) ($porTipo['DIRECTO'] ?? 0),
                 'PLANTA'    => (float) ($porTipo['PLANTA'] ?? 0),
+                // los tipos de precio agregados (Bodega, Feria…), juntos
+                'OTROS'     => round((float) collect($porTipo)->except(TiposPrecio::FIJOS)->sum(), 2),
             ],
             'clientes'     => $clientes,
             'barras'       => $barras,

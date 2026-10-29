@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\TiposPrecio;
 use App\Services\Configuracion;
 use App\Services\Formulas;
 use Illuminate\Http\Request;
@@ -84,7 +85,7 @@ class SaboresController extends Controller
             // Después los precios se cambian en Configuración > Precios.
             $hoy = now('America/Lima')->toDateString();
             foreach ($creando ? array_filter($d['precios'] ?? [], fn ($p) => $p !== null && $p !== '') : [] as $tipo => $precio) {
-                if (! in_array($tipo, ['MAYORISTA', 'DIRECTO', 'PLANTA'], true)) continue;
+                if (! array_key_exists($tipo, TiposPrecio::nombres())) continue;
                 DB::table('precios_venta')->where('producto_id', $id)->where('tipo_cliente', $tipo)->whereNull('vigente_hasta')
                     ->update(['vigente_hasta' => $hoy, 'updated_at' => now()]);
                 DB::table('precios_venta')->insert([

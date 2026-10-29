@@ -23,6 +23,7 @@
     .total td { border: none; font-size: 12pt; font-weight: bold; padding-top: 10px; }
     .letras { margin-top: 8px; font-size: 9.5pt; }
     .traza { margin-top: 12px; font-size: 9pt; color: #55606c; }
+    .sunat { margin-top: 10px; border: 1.5px solid #b3541e; color: #b3541e; border-radius: 6px; padding: 6px 8px; font-size: 9pt; text-align: center; }
     .pie { position: fixed; bottom: 0; left: 0; right: 0; font-size: 8pt; color: #7a8591; text-align: center;
            border-top: 1px solid #d6dde3; padding-top: 5px; }
 </style>
@@ -35,23 +36,37 @@
             <div class="empresa">{{ $empresa['nombre'] }}</div>
             <div class="datos-empresa">
                 {{ $empresa['direccion'] }}
-                @if($empresa['ruc'])<br>RUC {{ $empresa['ruc'] }}@endif
+                @if($empresa['ruc'] && ($comprobante ?? 'NOTA') === 'NOTA')<br>RUC {{ $empresa['ruc'] }}@endif
                 @if($empresa['telefono'])<br>Tel. {{ $empresa['telefono'] }}@endif
             </div>
         </td>
         <td style="width: 175px;">
             <div class="caja">
-                <div class="titulo">NOTA DE VENTA</div>
+                @if(($comprobante ?? 'NOTA') !== 'NOTA')<div class="titulo">RUC {{ $empresa['ruc'] }}</div>@endif
+                <div class="titulo">{{ $titulo ?? 'NOTA DE VENTA' }}</div>
                 <div class="numero">{{ $numero }}</div>
             </div>
         </td>
     </tr>
 </table>
 
+@if(($comprobante ?? 'NOTA') !== 'NOTA')
+{{-- todavía no se manda a SUNAT (falta certificado digital y OSE o SEE-SOL): que nadie lo tome por válido --}}
+<div class="sunat">Aún no enviada a SUNAT. Este comprobante no tiene validez tributaria hasta que se envíe.</div>
+@endif
+
 <table class="cliente">
     <tr><td class="etiqueta">Fecha</td><td>{{ $fecha }}</td></tr>
+    @if(!empty($adquirente))
+    {{-- boleta o factura: los datos de quien compra (la boleta de menos de S/ 700 puede ir sin ellos) --}}
+    <tr><td class="etiqueta">{{ $comprobante === 'FACTURA' ? 'Señor(es)' : 'Cliente' }}</td><td><strong>{{ $adquirente['nombre'] ?: 'Cliente varios' }}</strong></td></tr>
+    @if($adquirente['documento'])<tr><td class="etiqueta">{{ $adquirente['tipo_doc'] }}</td><td>{{ $adquirente['documento'] }}</td></tr>@endif
+    @if($adquirente['direccion'])<tr><td class="etiqueta">Dirección</td><td>{{ $adquirente['direccion'] }}</td></tr>@endif
+    <tr><td class="etiqueta">Moneda</td><td>Soles (PEN)</td></tr>
+    @else
     <tr><td class="etiqueta">Cliente</td><td><strong>{{ $cliente }}</strong>@if ($tipo) · {{ $tipo }}@endif</td></tr>
     @if($ruc)<tr><td class="etiqueta">RUC</td><td>{{ $ruc }}</td></tr>@endif
+    @endif
 </table>
 
 <table class="detalle">
@@ -67,8 +82,13 @@
             <td class="num">S/ {{ number_format($l['total'], 2, ',', '.') }}</td>
         </tr>
         @endforeach
+        @if(($comprobante ?? 'NOTA') !== 'NOTA')
+        {{-- los precios ya incluyen el IGV: aquí se separa --}}
+        <tr><td colspan="3" class="num" style="border: none">Op. gravada</td><td class="num" style="border: none">S/ {{ number_format($gravada, 2, ',', '.') }}</td></tr>
+        <tr><td colspan="3" class="num" style="border: none">IGV ({{ rtrim(rtrim(number_format($igv_pct, 2, ',', ''), '0'), ',') }} %)</td><td class="num" style="border: none">S/ {{ number_format($igv, 2, ',', '.') }}</td></tr>
+        @endif
         <tr class="total">
-            <td colspan="3" class="num">TOTAL</td>
+            <td colspan="3" class="num">{{ ($comprobante ?? 'NOTA') !== 'NOTA' ? 'IMPORTE TOTAL' : 'TOTAL' }}</td>
             <td class="num">S/ {{ number_format($total, 2, ',', '.') }}</td>
         </tr>
     </tbody>
@@ -85,7 +105,11 @@
 </div>
 
 <div class="pie">
+    @if(($comprobante ?? 'NOTA') === 'NOTA')
     Documento interno de control. No es comprobante de pago electrónico SUNAT.
+    @else
+    Representación impresa de la {{ $comprobante === 'FACTURA' ? 'factura electrónica' : 'boleta de venta electrónica' }}.
+    @endif
 </div>
 
 </body>

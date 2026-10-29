@@ -17,7 +17,7 @@ class NotaVentaMail extends Mailable
 
     public function envelope(): Envelope
     {
-        return new Envelope(subject: "Nota de venta {$this->datos['numero']} · {$this->datos['empresa']['nombre']}");
+        return new Envelope(subject: ucfirst(mb_strtolower($this->datos['titulo'] ?? 'Nota de venta')) . " {$this->datos['numero']} · {$this->datos['empresa']['nombre']}");
     }
 
     public function content(): Content

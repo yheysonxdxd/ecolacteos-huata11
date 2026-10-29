@@ -2549,3 +2549,15 @@ input[type="file"]::file-selector-button:hover { background: #245a3f; }
 .rm-carro { grid-template-columns: 12px minmax(0, 1fr) auto; padding: 9px 10px; gap: 3px 8px; }
 .rm-carro .rm-que small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rm-carro .rm-cifra b { font-size: 14px; }
+
+/* Configuración → Precios: tipos de precio (Mayorista, Cliente directo… y los que se agreguen) */
+.tipos-precio { margin: 4px 0 16px; }
+.chips-tipos { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip-tipo { display: flex; align-items: center; gap: 8px; padding: 7px 8px 7px 12px; border-radius: 12px; border: 1px solid var(--borde); background: var(--superficie); min-width: 0; }
+.chip-tipo .ico { font-size: 18px; }
+.chip-tipo .txt { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
+.chip-tipo .txt small { color: var(--texto-3, var(--texto-2)); font-size: 12px; }
+.chip-tipo input { width: 150px; padding: 5px 8px; }
+.chip-tipo.apagado { opacity: .6; border-style: dashed; }
+.nuevo-tipo { display: grid; grid-template-columns: 64px minmax(0, 2fr) minmax(0, 1.4fr) auto; gap: 8px; margin-top: 12px; align-items: center; }
+@media (max-width: 720px) { .nuevo-tipo { grid-template-columns: 64px minmax(0, 1fr); } .nuevo-tipo input[aria-label="Para quién es"], .nuevo-tipo .btn { grid-column: 1 / -1; } }

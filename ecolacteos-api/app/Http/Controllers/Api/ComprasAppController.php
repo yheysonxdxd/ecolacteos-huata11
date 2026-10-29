@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\TiposPrecio;
 use App\Services\Compras;
+use App\Services\Comprobantes;
 use App\Services\ConsultaDocumento;
 use App\Services\Formulas;
 use App\Services\Mermas;
@@ -153,11 +155,12 @@ class ComprasAppController extends Controller
             'productos' => $this->productos(true),
             'clientes' => $clientes->where('activo', true)->values(),
             'inactivos' => $clientes->where('activo', false)->values(), // la web los muestra si se piden
+            'tipos_precio' => TiposPrecio::todos(), // para elegir el tipo de un cliente y mostrar su nombre
         ]);
     }
 
     /**
-     * POST /api/v1/compras/clientes[/{id}] { nombre, tipo: MAYORISTA|DIRECTO, documento?, telefono?, email?, activo? }
+     * POST /api/v1/compras/clientes[/{id}] { nombre, tipo (un tipo de precio, menos PLANTA), documento?, telefono?, email?, activo? }
      * A quién le vendemos. El documento (DNI u RUC) es opcional y se guarda en "ruc".
      */
     public function guardarCliente(Request $r, ?int $id = null)
@@ -170,14 +173,15 @@ class ComprasAppController extends Controller
         $r->merge(['documento' => preg_replace('/\D/', '', (string) $r->input('documento')) ?: null]);
         $d = $r->validate([
             'nombre'    => ['required', 'string', 'min:3', 'max:255'],
-            'tipo'      => ['required', 'in:MAYORISTA,DIRECTO'],
+            'tipo'      => ['required', 'in:' . implode(',', TiposPrecio::paraClientes())],
             'documento' => ['nullable', 'string'],
             'telefono'  => ['nullable', 'regex:/^[0-9 +]{6,20}$/'],
             'email'     => ['nullable', 'email', 'max:120'],
         ], [
             'nombre.required' => 'Escribe el nombre del cliente o de su negocio.',
             'nombre.min'      => 'El nombre es muy corto.',
-            'tipo.required'   => 'Elige si es mayorista o cliente directo.',
+            'tipo.required'   => 'Elige qué precio paga (mayorista, cliente directo…).',
+            'tipo.in'         => 'Ese tipo de precio no existe o ya no se usa.',
             'telefono.regex'  => 'El teléfono solo lleva números.',
             'email.email'     => 'Ese correo no es válido.',
         ]);
@@ -225,7 +229,15 @@ class ComprasAppController extends Controller
             'comprador' => ['nullable', 'array'],
             'comprador.nombre' => ['required_with:comprador', 'string', 'min:3', 'max:150'],
             'comprador.documento' => ['nullable', 'regex:/^(\d{8}|\d{11})$/'],
+            // nota de venta (lo de antes), boleta o factura; las apps de antes no lo mandan: nota
+            'comprobante' => ['nullable', 'in:NOTA,BOLETA,FACTURA'],
+            'adquirente' => ['nullable', 'array'], // a quién va la boleta o factura (si no, el del cliente)
+            'adquirente.documento' => ['nullable', 'regex:/^(\d{8}|\d{11})$/'],
+            'adquirente.nombre' => ['nullable', 'string', 'max:150'],
+            'adquirente.direccion' => ['nullable', 'string', 'max:200'],
         ], [
+            'adquirente.documento.regex' => 'El DNI lleva 8 dígitos y el RUC 11.',
+            'comprobante.in' => 'Elige nota de venta, boleta o factura.',
             'comprador.nombre.required_with' => 'Escribe el nombre de quien compra.',
             'comprador.documento.regex' => 'El DNI lleva 8 dígitos y el RUC 11.',
             'metodo_pago.in' => 'Elige efectivo, Yape o tarjeta.',
@@ -253,7 +265,20 @@ class ComprasAppController extends Controller
             'pago_operacion' => ($data['metodo_pago'] ?? 'EFECTIVO') !== 'EFECTIVO' ? (trim($data['pago_operacion'] ?? '') ?: null) : null,
             'comprador_nombre' => isset($data['comprador']) ? trim($data['comprador']['nombre']) : null,
             'comprador_documento' => $data['comprador']['documento'] ?? null];
-        $ids = DB::transaction(function () use ($lineas, $cliente, $r, $sinStock, $pago) {
+
+        // boleta o factura: a quién va (lo escrito, o lo del comprador o del cliente) y lo que pide SUNAT
+        $tipo = $data['comprobante'] ?? 'NOTA';
+        $ad = $data['adquirente'] ?? [];
+        $adquirente = $tipo === 'NOTA' ? null : [
+            'documento' => $ad['documento'] ?? $pago['comprador_documento'] ?? ($pago['comprador_nombre'] ? null : $cliente->ruc),
+            'nombre' => trim($ad['nombre'] ?? '') ?: ($pago['comprador_nombre'] ?? (Comprobantes::esGeneral($cliente) ? null : $cliente->nombre)),
+            'direccion' => trim($ad['direccion'] ?? '') ?: null,
+        ];
+        $error = Comprobantes::error($tipo, round($lineas->sum(fn ($l) => round($l['precio'] * $l['cantidad'], 2)), 2),
+            $adquirente['documento'] ?? null, $adquirente['nombre'] ?? null);
+        abort_if($error, 422, $error);
+
+        $ids = DB::transaction(function () use ($lineas, $cliente, $r, $sinStock, $pago, $tipo, $adquirente) {
             $ids = [];
             foreach ($lineas as $l) {
                 // sale primero lo que vence primero; si un lote no alcanza, sigue con el siguiente (una fila por lote)
@@ -269,6 +294,15 @@ class ComprasAppController extends Controller
             }
             // con varios productos, la primera fila también lleva la nota (así se encuentran todas)
             if (count($ids) > 1) DB::table('ventas')->where('id', $ids[0])->update(['nota_id' => $ids[0]]);
+            // boleta o factura: su serie y el número que sigue, en la fila de la nota
+            if ($adquirente) {
+                $serie = Comprobantes::serie($tipo);
+                DB::table('ventas')->where('id', $ids[0])->update([
+                    'comprobante_tipo' => $tipo, 'comprobante_serie' => $serie, 'comprobante_numero' => Comprobantes::siguiente($serie),
+                    'adquirente_documento' => $adquirente['documento'], 'adquirente_nombre' => $adquirente['nombre'],
+                    'adquirente_direccion' => $adquirente['direccion'],
+                ]);
+            }
             return $ids;
         });
         $id = $ids[0];
@@ -282,7 +316,7 @@ class ComprasAppController extends Controller
 
         // id y número de la nota de venta, para imprimirla (NotaVentaController)
         return response()->json(['total' => $total, 'precio_unitario' => (float) $precio, 'metodo_pago' => $pago['metodo_pago'],
-            'id' => $id, 'numero' => NotaVentaController::numero($id),
+            'id' => $id, 'numero' => NotaVentaController::numero($id), 'comprobante' => $tipo,
             'correo' => $data['correo'] ?? null,
             'correo_enviado' => ! empty($data['correo']) && ! $errorCorreo,
             'correo_error' => $errorCorreo], 201);
@@ -340,13 +374,17 @@ class ComprasAppController extends Controller
     {
         return DB::table('ventas as v')->join('productos as p', 'p.id', '=', 'v.producto_id')
             ->join('clientes as c', 'c.id', '=', 'v.cliente_id')->orderByDesc('v.vendida_en')
-            ->select(['v.id', DB::raw('COALESCE(v.nota_id, v.id) as nota'), 'p.nombre as que', 'p.unidad', DB::raw('COALESCE(v.comprador_nombre, c.nombre) as cliente'), 'v.total', 'v.cantidad', 'v.vendida_en as fecha', 'v.metodo_pago', 'v.pago_operacion']);
+            // la fila de la nota lleva el comprobante (boleta o factura) de toda la venta
+            ->join('ventas as n', 'n.id', '=', DB::raw('COALESCE(v.nota_id, v.id)'))
+            ->select(['v.id', DB::raw('COALESCE(v.nota_id, v.id) as nota'), 'p.nombre as que', 'p.unidad', DB::raw('COALESCE(n.adquirente_nombre, v.comprador_nombre, c.nombre) as cliente'), 'v.total', 'v.cantidad', 'v.vendida_en as fecha', 'v.metodo_pago', 'v.pago_operacion',
+                'n.comprobante_tipo', 'n.comprobante_serie', 'n.comprobante_numero']);
     }
 
     private function filaVenta(object $v): array
     {
         return [
-            'venta_id' => $v->id, 'numero' => NotaVentaController::numero((int) $v->nota),
+            'venta_id' => $v->id, 'numero' => Comprobantes::numero($v->comprobante_serie, $v->comprobante_numero, (int) $v->nota),
+            'comprobante' => $v->comprobante_tipo,
             'que' => $v->que, 'ref' => "Venta · {$v->cliente} · S/ ".number_format($v->total, 2),
             'fecha' => $v->fecha, 'entrada' => false,
             'delta' => '−'.rtrim(rtrim(number_format($v->cantidad, 2, '.', ''), '0'), '.'),

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\TiposPrecio;
 use App\Services\Configuracion;
 use App\Services\Formulas;
 use Illuminate\Http\Request;
@@ -136,7 +137,7 @@ class ConfigMaestrosController extends Controller
             // precios que vengan escritos: rigen desde hoy (los demás se ponen luego en Precios)
             $hoy = now('America/Lima')->toDateString();
             foreach (array_filter($d['precios'] ?? [], fn ($p) => $p !== null) as $tipo => $precio) {
-                if (! in_array($tipo, ['MAYORISTA', 'DIRECTO', 'PLANTA'], true)) continue;
+                if (! array_key_exists($tipo, TiposPrecio::nombres())) continue;
                 $actual = DB::table('precios_venta')->where('producto_id', $id)->where('tipo_cliente', $tipo)->whereNull('vigente_hasta')->first();
                 if ($actual && (float) $actual->precio === (float) $precio) continue;
                 if ($actual && $actual->vigente_desde === $hoy) {

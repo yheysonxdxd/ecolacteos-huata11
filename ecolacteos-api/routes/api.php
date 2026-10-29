@@ -90,6 +90,8 @@ Route::prefix('v1')->group(function () {
         Route::post('admin/configuracion/precio-leche',         [Api\ConfiguracionController::class, 'precioLeche']);
         Route::post('admin/configuracion/precio-leche/{id}/quitar', [Api\ConfiguracionController::class, 'quitarPrecioLeche'])->whereNumber('id');
         Route::post('admin/configuracion/precio-venta',         [Api\ConfiguracionController::class, 'precioVenta']);
+        Route::post('admin/configuracion/tipos-precio',         [Api\ConfiguracionController::class, 'crearTipoPrecio']);
+        Route::post('admin/configuracion/tipos-precio/{codigo}', [Api\ConfiguracionController::class, 'cambiarTipoPrecio'])->where('codigo', '[A-Z0-9_]+');
         Route::get('admin/configuracion/maestros',              [Api\ConfigMaestrosController::class, 'index']);
         Route::post('admin/configuracion/productos',            [Api\ConfigMaestrosController::class, 'producto']);
         Route::post('admin/sabores',                            [Api\SaboresController::class, 'guardar']);

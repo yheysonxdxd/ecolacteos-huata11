@@ -20,6 +20,12 @@ const METODO_PAGO = {
   YAPE: { nombre: 'Yape', icono: '📱' },
   TARJETA: { nombre: 'Tarjeta', icono: '💳' },
 };
+/** Comprobante de la venta: nota de venta (interna), boleta o factura (SUNAT). */
+const COMPROBANTE = {
+  NOTA: { nombre: 'Nota de venta', icono: '🧾', ayuda: 'Control interno de la planta' },
+  BOLETA: { nombre: 'Boleta', icono: '🧾', ayuda: 'A personas · con DNI desde S/ 700' },
+  FACTURA: { nombre: 'Factura', icono: '🏢', ayuda: 'A empresas con RUC' },
+};
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'set', 'oct', 'nov', 'dic'];
 const fechaCorta = (iso) => {
   if (!iso) return '';
@@ -27,7 +33,14 @@ const fechaCorta = (iso) => {
   return `${Number(d)} ${MESES[Number(m) - 1]}`;
 };
 const hora = (iso) => String(iso || '').slice(11, 16);
+/** Tipos de precio (cliente): los tres de siempre; los que agrega el admin llegan del servidor (tipos_precio) y se suman aquí. */
 const TIPO_CLIENTE = { MAYORISTA: 'Mayorista', DIRECTO: 'Cliente directo', PLANTA: 'Proveedor de leche' };
+const TIPO_ICONO = { MAYORISTA: '🏪', DIRECTO: '🏠', PLANTA: '🥛' };
+const TIPO_AYUDA = { MAYORISTA: 'compra para revender', DIRECTO: 'para su casa' };
+const recordarTipos = (tipos) => (tipos || []).forEach((t) => {
+  if (t.activo === false) { delete TIPO_CLIENTE[t.codigo]; return; } // ya no se usa: no se elige
+  TIPO_CLIENTE[t.codigo] = t.nombre; if (t.icono) TIPO_ICONO[t.codigo] = t.icono; if (t.ayuda) TIPO_AYUDA[t.codigo] = t.ayuda.toLowerCase();
+});
 const ROLES = { ACOPIADOR: 'Acopiador', CALIDAD: 'Calidad', OPERARIO: 'Operario', COMPRAS: 'Compras', ADMIN: 'Administrador', PRODUCTOR: 'Productor' };
 /** Los roles que usan la web de oficina; los demás (operario, acopiador, productor) trabajan en la app del celular. */
 const ROLES_WEB = ['ADMIN', 'COMPRAS', 'CALIDAD'];
@@ -139,6 +152,7 @@ function oficina() {
     panelEquipos: false, // Gastos: el panel de equipos al costado
     compraFiltro: { estado: 'todas', vendedor: '', insumo: '' }, // Compras de insumos: todas · llegar · foto, y vendedor / insumo
     semanasAbiertas: {}, // Compras de insumos: título de la semana => abierta o cerrada (si no se tocó: las dos primeras abiertas)
+    nuevoTipo: { nombre: '', icono: '🏷️', ayuda: '' }, // Configuración → Precios: el precio que se va a agregar
     precioAbierto: {}, // Configuración → Precios de venta: QUESO / YOGURT / OTRO => true si su grupo está desplegado
     kardex: { tipo: 'insumo', id: null, desde: '', hasta: '', solo: false }, // tipo: insumo | producto | leche · solo: un producto y no toda su familia
     recetaAbierta: null, // receta abierta en el recetario (Producir > Recetario)
@@ -171,7 +185,7 @@ function oficina() {
     cfgInsumos: {}, nuevoInsumo: { nombre: '', unidad: 'kg', minimo: '' },
     cfgVeh: {}, cfgCom: {}, nuevaCom: {}, nuevoVeh: { codigo: '', tipo: 'CARRO', acopiador_id: null },
 
-    soles, num, fechaCorta, hora, TIPO_CLIENTE, ROLES, METODO_PAGO, FUENTE_DOC, esCorreo,
+    soles, num, fechaCorta, hora, TIPO_CLIENTE, TIPO_ICONO, TIPO_AYUDA, ROLES, METODO_PAGO, COMPROBANTE, FUENTE_DOC, esCorreo,
 
     iniciar() {
       // si la ventana del cliente se cierra con Esc o clic afuera, se vuelve a la venta a medias
@@ -483,6 +497,7 @@ function oficina() {
       if (r.status === 401) { this.salir('Tu sesión venció o tu usuario fue desactivado. Vuelve a ingresar.'); throw new Error('sesión vencida'); }
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.message || 'El servidor respondió ' + r.status);
+      if (Array.isArray(j.tipos_precio)) recordarTipos(j.tipos_precio); // Bodega, Feria…: sus nombres en toda la web
       return j;
     },
 
@@ -1124,6 +1139,37 @@ function oficina() {
       const s = (x) => num(x, x % 1 ? 2 : 0);
       return a === b ? `S/ ${s(a)}` : `S/ ${s(a)} – ${s(b)}`;
     },
+    /** Los tipos de precio que se eligen para un cliente (todos los activos menos el de proveedor de leche). */
+    tiposParaCliente() { return Object.keys(TIPO_CLIENTE).filter((t) => t !== 'PLANTA'); },
+    /** Configuración → Precios: agrega un precio nuevo (Bodega, Feria…), que sale como una fila más en cada producto. */
+    async crearTipoPrecio() {
+      const n = this.nuevoTipo;
+      if ((n.nombre || '').trim().length < 3) return (n.error = 'Escribe el nombre del precio (ej. Bodega, Feria, Restaurante)');
+      n.enviando = true; n.error = null;
+      try {
+        const r = await this.api('/admin/configuracion/tipos-precio', { nombre: n.nombre.trim(), icono: n.icono || null, ayuda: (n.ayuda || '').trim() || null });
+        this.nuevoTipo = { nombre: '', icono: '🏷️', ayuda: '' };
+        this.aviso = { texto: `✓ Precio «${r.nombre}» agregado: ponle su precio a cada producto abajo.` };
+        Object.keys(this.precioAbierto).forEach((k) => (this.precioAbierto[k] = true));
+        await this.cargar();
+      } catch (e) { n.error = e.message; } finally { n.enviando = false; }
+    },
+    async renombrarTipoPrecio(t) {
+      const nombre = (t.editando || '').trim();
+      if (nombre === t.nombre) return (t.editando = null);
+      try {
+        await this.api('/admin/configuracion/tipos-precio/' + t.codigo, { nombre });
+        this.aviso = { texto: `✓ Ahora se llama «${nombre}».` }; await this.cargar();
+      } catch (e) { this.aviso = { error: true, texto: e.message }; }
+    },
+    async activarTipoPrecio(t, activo) {
+      if (!activo && !(await this.preguntar({ titulo: `¿Dejar de usar «${t.nombre}»?`, icono: '🏷️', si: 'Sí, quitarlo', no: 'No',
+        texto: 'Ya no se podrá elegir para clientes ni saldrá en Precios. Las ventas hechas con ese precio no cambian. Se puede volver a activar.' }))) return;
+      try {
+        await this.api('/admin/configuracion/tipos-precio/' + t.codigo, { activo });
+        this.aviso = { texto: activo ? `✓ «${t.nombre}» se usa de nuevo.` : `✓ «${t.nombre}» ya no se usa.` }; await this.cargar();
+      } catch (e) { this.aviso = { error: true, texto: e.message }; }
+    },
     async guardarPrecioVenta(p, tipo) {
       const v = this.cfgVenta[p.producto_id + '.' + tipo];
       if (!(Number(v) > 0)) { this.aviso = { error: true, texto: 'Escribe el precio' }; return; }
@@ -1378,8 +1424,27 @@ function oficina() {
     nuevaVenta() {
       this.f = { cantidades: {}, cliente: null, correo: '', error: null, enviando: false, paso: 1,
         familia: null, producto: null, cuantos: '1', metodo: 'EFECTIVO', operacion: '',
-        sinRegistro: null }; // { nombre, dni }: venderle a alguien sin registrarlo (la nota sale solo a su nombre)
+        sinRegistro: null, // { nombre, dni }: venderle a alguien sin registrarlo (la nota sale solo a su nombre)
+        comprobante: 'NOTA', adq: { documento: '', nombre: '', direccion: '' } }; // a quién va la boleta o factura
     },
+    /** Boleta o factura: toma el DNI/RUC y el nombre del cliente elegido (se pueden cambiar). */
+    elegirComprobante(tipo) {
+      const f = this.f; const c = this.clienteVenta();
+      f.comprobante = tipo; f.error = null;
+      if (tipo === 'NOTA') return;
+      const doc = f.comprador?.documento || (f.comprador ? '' : c?.ruc || '');
+      const nombre = f.comprador?.nombre || (c && !this.esClienteGeneral(c) ? c.nombre : '');
+      f.adq = { documento: tipo === 'FACTURA' && doc.length !== 11 ? '' : doc, nombre: tipo === 'FACTURA' && doc.length !== 11 ? '' : nombre, direccion: f.adq.direccion || '' };
+    },
+    /** Escribió un DNI o RUC en la boleta o factura: busca el nombre (RENIEC/SUNAT) si falta. */
+    async alDocumentoComprobante() {
+      const a = this.f.adq; a.documento = a.documento.replace(/\D/g, '');
+      if (a.nombre.trim() || !/^(\d{8}|\d{11})$/.test(a.documento)) return;
+      const r = await this.consultarDocumento(a.documento);
+      if (r?.nombre && !a.nombre.trim()) a.nombre = r.nombre;
+    },
+    /** IGV incluido en el total: { gravada, igv } (18 %: 16 % IGV + 2 % IPM). */
+    desgloseIgv(total) { const gravada = Math.round(total / 1.18 * 100) / 100; return { gravada, igv: Math.round((total - gravada) * 100) / 100 }; },
     /** Paso a paso: 1 cliente, 2 productos, 3 confirmar. No deja avanzar sin lo necesario. */
     pasoVenta(n) {
       const f = this.f; f.error = null;
@@ -1585,6 +1650,13 @@ function oficina() {
       const sinPrecio = lineas.find((l) => !l.precio);
       if (sinPrecio) return (f.error = `${sinPrecio.p.nombre} no tiene precio para ${TIPO_CLIENTE[c.tipo] || c.tipo}: ponlo en Configuración → Precios`);
       if (f.correo && !esCorreo(f.correo)) return (f.error = 'Ese correo no es válido (déjalo vacío si no quieres enviarlo)');
+      // lo que pide SUNAT (el servidor lo vuelve a revisar, con el dígito del RUC)
+      const doc = f.adq.documento.replace(/\D/g, '');
+      if (f.comprobante === 'FACTURA' && doc.length !== 11) return (f.error = 'La factura va a un RUC: escribe el RUC de quien compra (11 dígitos).');
+      if (f.comprobante === 'FACTURA' && f.adq.nombre.trim().length < 3) return (f.error = 'Escribe la razón social de quien compra.');
+      if (f.comprobante === 'BOLETA' && this.totalVenta() > 700 && (!doc || f.adq.nombre.trim().length < 3))
+        return (f.error = 'La boleta pasa de S/ 700: SUNAT pide el DNI (o RUC) y el nombre de quien compra.');
+      if (doc && !/^(\d{8}|\d{11})$/.test(doc)) return (f.error = 'El DNI lleva 8 dígitos y el RUC 11.');
       // el cliente lo pide y no hay: se puede vender igual, pero se pregunta primero
       const faltan = lineas.filter((l) => this.faltaStock(l.p, l.cantidad) > 0);
       if (faltan.length && !(await this.preguntar({
@@ -1597,9 +1669,11 @@ function oficina() {
         const r = await this.api('/compras/ventas', {
           cliente_id: c.id, items: lineas.map((l) => ({ producto_id: l.p.id, cantidad: l.cantidad })), correo: f.correo ? f.correo.trim() : null,
           sin_stock: faltan.length > 0, comprador: f.comprador || null, metodo_pago: f.metodo, pago_operacion: f.metodo !== 'EFECTIVO' && f.operacion.trim() ? f.operacion.trim() : null,
+          comprobante: f.comprobante,
+          adquirente: f.comprobante === 'NOTA' ? null : { documento: doc || null, nombre: f.adq.nombre.trim() || null, direccion: f.adq.direccion.trim() || null },
         });
         this.aviso = {
-          texto: `✓ Venta registrada: ${soles(r.total)} a ${this.nombreComprador()} · ${METODO_PAGO[f.metodo].nombre} · ${r.numero}` +
+          texto: `✓ Venta registrada: ${soles(r.total)} a ${f.comprobante !== 'NOTA' && f.adq.nombre.trim() ? f.adq.nombre.trim() : this.nombreComprador()} · ${METODO_PAGO[f.metodo].nombre} · ${COMPROBANTE[f.comprobante].nombre} ${r.numero}` +
             (r.correo_enviado ? ` · nota enviada a ${r.correo}` : '') + (r.correo_error ? ` · ${r.correo_error}` : ''),
           nota: { id: r.id, numero: r.numero },
         };

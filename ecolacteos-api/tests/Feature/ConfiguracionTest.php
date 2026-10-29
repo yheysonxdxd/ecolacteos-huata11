@@ -40,12 +40,12 @@ class ConfiguracionTest extends TestCase
         $this->assertEquals(66.7, $campos['precio.factor_adulteracion']['valor']); // se muestra en %
 
         $this->postJson('/api/v1/admin/configuracion', ['valores' => [
-            'calidad.grasa_min' => '3,2', 'precio.factor_adulteracion' => 50, 'empresa.ruc' => '20601234567', 'empresa.nombre' => 'Planta de Lácteos Ecolácteos Huata',
+            'calidad.grasa_min' => '3,2', 'precio.factor_adulteracion' => 50, 'empresa.ruc' => '20601234565', 'empresa.nombre' => 'Planta de Lácteos Ecolácteos Huata',
         ]])->assertOk()->assertJsonPath('cambios', 3);
 
         $this->assertEquals(3.2, Parametro::valor('calidad.grasa_min'));
         $this->assertEquals(0.5, Parametro::valor('precio.factor_adulteracion'));
-        $this->assertSame('20601234567', Parametro::valor('empresa.ruc'));
+        $this->assertSame('20601234565', Parametro::valor('empresa.ruc'));
         // Calidad ya evalúa con el valor nuevo
         $this->assertEquals(3.2, $this->getJson('/api/v1/calidad/parametros')->json('grasa_min'));
 

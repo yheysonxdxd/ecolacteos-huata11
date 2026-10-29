@@ -24,7 +24,7 @@
 <link rel="stylesheet" href="/oficina-web/estilos.css?v={{ filemtime(public_path('oficina-web/estilos.css')) }}">
 <link rel="stylesheet" href="/oficina-web/tema-dia.css">
 <link rel="stylesheet" href="/oficina-web/tema-dia-base.css">
-<script src="/oficina-web/app.js"></script>
+<script src="/oficina-web/app.js?v={{ filemtime(public_path('oficina-web/app.js')) }}"></script>
 <script defer src="/oficina-web/vendor/alpine.min.js"></script>
 </head>
 <body x-data="oficina()" x-init="iniciar()">
@@ -450,12 +450,14 @@
                                     <div class="dona" x-html="svgDona([
                                         { valor: d.ventas.por_tipo?.MAYORISTA || 0, color: 'var(--exito)', nombre: 'Mayoristas' },
                                         { valor: d.ventas.por_tipo?.DIRECTO || 0, color: '#8fd3ff', nombre: 'Clientes directos' },
-                                        { valor: d.ventas.por_tipo?.PLANTA || 0, color: 'var(--aviso)', nombre: 'Proveedores' }],
+                                        { valor: d.ventas.por_tipo?.PLANTA || 0, color: 'var(--aviso)', nombre: 'Proveedores' },
+                                        { valor: d.ventas.por_tipo?.OTROS || 0, color: '#c9a6ff', nombre: 'Otros precios' }],
                                         d.ventas.cantidad, d.ventas.cantidad === 1 ? 'venta' : 'ventas')"></div>
                                     <ul class="leyenda-dona">
                                         <li><i style="background: var(--exito)"></i>Mayoristas<b x-text="soles(d.ventas.por_tipo?.MAYORISTA)"></b></li>
                                         <li><i style="background: #8fd3ff"></i>Clientes directos<b x-text="soles(d.ventas.por_tipo?.DIRECTO)"></b></li>
                                         <li><i style="background: var(--aviso)"></i>Proveedores<b x-text="soles(d.ventas.por_tipo?.PLANTA)"></b></li>
+                                        <li x-show="d.ventas.por_tipo?.OTROS"><i style="background: #c9a6ff"></i>Otros precios<b x-text="soles(d.ventas.por_tipo?.OTROS)"></b></li>
                                     </ul>
                                 </div>
                             </div>
@@ -907,6 +909,35 @@
                 <h2>Precios de venta</h2>
                 <p class="sub" style="margin-bottom: 8px">Desde hoy, para las ventas nuevas. Las notas de venta ya hechas conservan su precio.
                     Cambia el número y toca <strong>Guardar</strong> (o Enter).</p>
+                {{-- tipos de precio: los tres de siempre y los que se agreguen (Bodega, Feria…); cada cliente paga el de su tipo --}}
+                <div class="tarjeta tipos-precio">
+                    <div class="eti">Tipos de precio</div>
+                    <p class="sub" style="margin: 2px 0 10px">Cada cliente paga el precio de su tipo. Agrega los que necesites y ponle su precio a cada producto abajo.</p>
+                    <div class="chips-tipos">
+                        <template x-for="t in d.tipos_precio || []" :key="t.codigo">
+                            <div class="chip-tipo" :class="{ apagado: !t.activo }">
+                                <span class="ico" aria-hidden="true" x-text="t.icono || '🏷️'"></span>
+                                <template x-if="t.editando == null"><span class="txt">
+                                    <strong x-text="t.nombre"></strong>
+                                    <small x-text="t.activo ? (t.clientes + (t.clientes === 1 ? ' cliente' : ' clientes')) : 'no se usa'"></small></span></template>
+                                <template x-if="t.editando != null"><input x-model="t.editando" maxlength="60" @keydown.enter="renombrarTipoPrecio(t)" @keydown.escape="t.editando = null" aria-label="Nuevo nombre"></template>
+                                <button class="btn chico gris" x-show="t.editando == null && t.activo" @click="t.editando = t.nombre" title="Cambiar el nombre" aria-label="Cambiar el nombre">✎</button>
+                                <button class="btn chico" x-show="t.editando != null" @click="renombrarTipoPrecio(t)">Guardar</button>
+                                <button class="btn chico gris" x-show="t.editando == null && !t.fijo && t.activo" @click="activarTipoPrecio(t, false)" title="Dejar de usarlo">Quitar</button>
+                                <button class="btn chico" x-show="!t.activo" @click="activarTipoPrecio(t, true)">Usar de nuevo</button>
+                            </div>
+                        </template>
+                    </div>
+                    <div class="nuevo-tipo">
+                        <select x-model="nuevoTipo.icono" aria-label="Ícono">
+                            <template x-for="i in ['🏷️', '🛒', '🏬', '🍽️', '🎪', '🏫', '🏥', '🚚', '⭐']" :key="i"><option :value="i" x-text="i"></option></template>
+                        </select>
+                        <input x-model="nuevoTipo.nombre" maxlength="60" placeholder="Nombre del precio (ej. Bodega, Feria, Restaurante)" @keydown.enter="crearTipoPrecio()" aria-label="Nombre del precio nuevo">
+                        <input x-model="nuevoTipo.ayuda" maxlength="120" placeholder="Para quién (opcional)" aria-label="Para quién es">
+                        <button class="btn" @click="crearTipoPrecio()" :disabled="!!nuevoTipo.enviando" x-text="nuevoTipo.enviando ? 'Agregando…' : '+ Agregar precio'"></button>
+                    </div>
+                    <p class="sub" style="margin: 8px 0 0; color: var(--alerta)" x-show="nuevoTipo.error" x-text="nuevoTipo.error"></p>
+                </div>
                 {{-- Quesos y Yogures como botones grandes: al tocar uno se despliegan sus tipos, cada uno con sus tres precios --}}
                 <template x-for="fam in familiasPrecioVenta()" :key="fam.nombre">
                     <div class="familia-precios" :class="{ abierta: precioAbierto[fam.tipo] }">
@@ -925,7 +956,7 @@
                                     <header><span class="punto"></span><div><strong x-text="p.producto"></strong><small x-text="'precio por ' + p.unidad.replace(/s de /, ' de ').replace(/litros/, 'litro')"></small></div></header>
                                     <template x-for="(nombre, tipo) in d.tipos_cliente" :key="tipo">
                                         <label class="precio-fila" :class="{ cambiado: String(cfgVenta[p.producto_id + '.' + tipo] ?? '') !== String(p.precios[tipo] ?? '') }">
-                                            <span class="quien" :title="nombre"><i aria-hidden="true" x-text="{ MAYORISTA: '🏪', DIRECTO: '🏠', PLANTA: '🥛' }[tipo] || '👤'"></i><span x-text="{ MAYORISTA: 'Mayorista', DIRECTO: 'Directo', PLANTA: 'Proveedor' }[tipo] || nombre"></span></span>
+                                            <span class="quien" :title="nombre"><i aria-hidden="true" x-text="TIPO_ICONO[tipo] || '🏷️'"></i><span x-text="{ MAYORISTA: 'Mayorista', DIRECTO: 'Directo', PLANTA: 'Proveedor' }[tipo] || nombre"></span></span>
                                             <span class="soles-caja"><em>S/</em>
                                                 <input type="number" min="0.1" step="0.01" x-model="cfgVenta[p.producto_id + '.' + tipo]" placeholder="—"
                                                        @keydown.enter="guardarPrecioVenta(p, tipo)" :aria-label="p.producto + ' · ' + nombre"></span>
@@ -1129,13 +1160,12 @@
             </div>
             <h2>Precios de venta vigentes</h2>
             {{-- un producto por fila y un tipo de cliente por columna --}}
-            <table class="lista precios-tabla"><tr><th>Producto</th><th class="num">Mayorista</th><th class="num">Cliente directo</th><th class="num">Proveedor de leche</th></tr>
+            <div style="overflow-x: auto"><table class="lista precios-tabla"><tr><th>Producto</th>
+                    <template x-for="(nombre, tipo) in TIPO_CLIENTE" :key="tipo"><th class="num" x-text="nombre"></th></template></tr>
                 <template x-for="fila in preciosPorProducto(d.precios || [])" :key="fila.producto"><tr>
                     <td><span class="punto-tabla" :style="'background: ' + colorReceta(productoVisual(fila.producto))"></span><span x-text="fila.producto"></span></td>
-                    <td class="num" x-text="fila.MAYORISTA != null ? soles(fila.MAYORISTA) : '—'"></td>
-                    <td class="num" x-text="fila.DIRECTO != null ? soles(fila.DIRECTO) : '—'"></td>
-                    <td class="num" x-text="fila.PLANTA != null ? soles(fila.PLANTA) : '—'"></td></tr></template>
-            </table>
+                    <template x-for="(nombre, tipo) in TIPO_CLIENTE" :key="tipo"><td class="num" x-text="fila[tipo] != null ? soles(fila[tipo]) : '—'"></td></template></tr></template>
+            </table></div>
         </section>
         </template>
 
@@ -1298,14 +1328,39 @@
 
             {{-- 3 · confirmar --}}
             <div class="tarjeta paso-venta resumen-venta" x-show="f.paso === 3">
-                <div class="eti">Nota de venta</div>
+                <div class="eti" x-text="COMPROBANTE[f.comprobante].nombre"></div>
                 <div class="cliente" x-text="nombreComprador()"></div>
                 <small class="apoyo" x-show="f.comprador" x-text="(f.comprador?.documento ? (f.comprador.documento.length === 8 ? 'DNI ' : 'RUC ') + f.comprador.documento + ' · ' : '') + 'sin registrar como cliente'"></small>
                 <template x-for="l in lineasVenta()" :key="l.p.id"><div class="renglon">
                     <span><span x-text="num(l.cantidad, 2) + ' × ' + l.p.nombre + ' (' + soles(l.precio) + ')'"></span>
                         <small class="apoyo" style="display: block" x-text="textoLotes(l.p, l.cantidad)"></small></span>
                     <span x-text="soles(l.importe)"></span></div></template>
+                {{-- boleta y factura: el IGV ya va en los precios; aquí se ve separado, como en el comprobante --}}
+                <template x-if="f.comprobante !== 'NOTA'"><div>
+                    <div class="renglon apoyo"><span>Op. gravada</span><span x-text="soles(desgloseIgv(totalVenta()).gravada)"></span></div>
+                    <div class="renglon apoyo"><span>IGV (18 %)</span><span x-text="soles(desgloseIgv(totalVenta()).igv)"></span></div>
+                </div></template>
                 <div class="total"><span>Total</span><strong x-text="soles(totalVenta())"></strong></div>
+                {{-- qué comprobante: nota de venta (interna), boleta o factura (SUNAT) --}}
+                <label>¿Qué comprobante le das?</label>
+                <div class="metodos-pago" role="radiogroup" aria-label="Comprobante">
+                    <template x-for="[clave, m] in Object.entries(COMPROBANTE)" :key="clave">
+                        <button type="button" role="radio" :aria-checked="f.comprobante === clave" :class="{ activo: f.comprobante === clave }"
+                                @click="elegirComprobante(clave)" :title="m.ayuda">
+                            <span aria-hidden="true" x-text="m.icono"></span><span x-text="m.nombre"></span></button>
+                    </template>
+                </div>
+                <p class="sub" style="margin: 6px 0 0" x-text="COMPROBANTE[f.comprobante].ayuda"></p>
+                <div x-show="f.comprobante !== 'NOTA'">
+                    <label x-text="f.comprobante === 'FACTURA' ? 'RUC de quien compra' : 'DNI o RUC' + (totalVenta() > 700 ? '' : ' (opcional: hasta S/ 700 puede ir sin datos)')"></label>
+                    <input x-model="f.adq.documento" @change="alDocumentoComprobante()" @blur="alDocumentoComprobante()" inputmode="numeric"
+                           :maxlength="f.comprobante === 'FACTURA' ? 11 : 11" :placeholder="f.comprobante === 'FACTURA' ? 'Ej. 20100047218' : 'Ej. 45678912'">
+                    <label x-text="f.comprobante === 'FACTURA' ? 'Razón social' : 'Nombre'"></label>
+                    <input x-model="f.adq.nombre" maxlength="150" :placeholder="f.comprobante === 'FACTURA' ? 'Ej. Comercial Altiplano SAC' : 'Ej. Juan Quispe Mamani'">
+                    <label>Dirección (opcional)</label>
+                    <input x-model="f.adq.direccion" maxlength="200" placeholder="Ej. Jr. Lima 123, Puno">
+                    <p class="sub" style="margin: 6px 0 0">Todavía no se envía a SUNAT: el PDF lo dice hasta que se conecte el envío.</p>
+                </div>
                 {{-- cómo paga: efectivo, Yape o tarjeta (con Yape o tarjeta se puede anotar el N.° de operación) --}}
                 <label>¿Cómo paga?</label>
                 <div class="metodos-pago" role="radiogroup" aria-label="Cómo paga">
@@ -1318,7 +1373,7 @@
                     <label x-text="'N.° de operación ' + (f.metodo === 'YAPE' ? 'del Yape' : 'del voucher') + ' (opcional)'"></label>
                     <input x-model="f.operacion" maxlength="30" inputmode="numeric" placeholder="Ej. 123456">
                 </div>
-                <label>Enviar la nota al correo (opcional)</label>
+                <label x-text="'Enviar ' + (f.comprobante === 'NOTA' ? 'la nota' : 'el comprobante') + ' al correo (opcional)'"></label>
                 <input type="email" x-model="f.correo" placeholder="cliente@gmail.com">
                 <div class="fila" style="margin-top: 18px">
                     <button class="btn gris" @click="pasoVenta(2)">← Productos</button>
@@ -3373,9 +3428,10 @@
         <h3 x-text="f.id ? 'Editar cliente' : 'Nuevo cliente'"></h3>
         <label>¿Qué tipo de cliente es?</label>
         <div class="opciones">
-            <button :class="{ activo: f.tipo === 'MAYORISTA' }" @click="f.tipo = 'MAYORISTA'">Mayorista (compra para revender)</button>
-            <button :class="{ activo: f.tipo === 'DIRECTO' }" @click="f.tipo = 'DIRECTO'">Cliente directo (para su casa)</button></div>
-        <p class="sub" style="margin: 6px 0 0">El precio de cada venta sale solo según este tipo.</p>
+            <template x-for="t in tiposParaCliente()" :key="t">
+                <button :class="{ activo: f.tipo === t }" @click="f.tipo = t" x-text="(TIPO_ICONO[t] ? TIPO_ICONO[t] + ' ' : '') + TIPO_CLIENTE[t] + (TIPO_AYUDA[t] ? ' (' + TIPO_AYUDA[t] + ')' : '')"></button>
+            </template></div>
+        <p class="sub" style="margin: 6px 0 0">El precio de cada venta sale solo según este tipo. Se agregan más en Configuración → Precios.</p>
         {{-- primero el DNI/RUC: al completarlo, el nombre se pone solo (RENIEC/SUNAT) --}}
         <label>DNI o RUC (opcional)</label>
         <input x-model="f.documento" maxlength="11" inputmode="numeric" @input="f.documento = f.documento.replace(/\D/g, ''); alEscribirDocumento()" placeholder="8 dígitos (DNI) u 11 (RUC): el nombre sale solo">

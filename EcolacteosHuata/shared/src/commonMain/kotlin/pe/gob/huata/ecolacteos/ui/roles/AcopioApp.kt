@@ -35,9 +35,13 @@ import pe.gob.huata.ecolacteos.ui.componentes.*
 @Composable
 internal fun AcopioAdmin() {
     val cal = AcopioCalendario
-    AnimatedContent(cal.conciliar, transitionSpec = { transicionMenu(targetState) }, label = "acopio") { conciliar ->
-        if (conciliar) DentroDe("Acopio", "Campo vs. planta", { cal.conciliar = false }) { ConciliacionReal() }
-        else AcopioDelDia()
+    val abierta = when { cal.conciliar -> 1; cal.mapa != null -> 2; else -> 0 }
+    AnimatedContent(abierta, transitionSpec = { transicionMenu(targetState > 0) }, label = "acopio") { vista ->
+        when (vista) {
+            1 -> DentroDe("Acopio", "Campo vs. planta", { cal.conciliar = false }) { ConciliacionReal() }
+            2 -> DentroDe("Acopio", "Mapa de Huata", { cal.mapa = null }) { cal.mapa?.let { MapaAdmin(it) } }
+            else -> AcopioDelDia()
+        }
     }
 }
 
@@ -73,6 +77,20 @@ private fun AcopioDelDia() {
                 }
             }
             AnimatedVisibility(cal.activo, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) { MesCompleto(dia) }
+
+            Aparece(3) {
+                Tocable(VERDE, Modifier.fillMaxWidth(), { cal.mapa = dia }) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("🗺️", fontSize = 26.sp)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Mapa de Huata", style = Texto.Fila, color = Altiplano.Texto)
+                            Text("Comunidades, rutas de cada carro y lo acopiado ese día", style = Texto.Apoyo, color = Altiplano.TextoTerciario)
+                        }
+                        Text("›", fontSize = 26.sp, color = VERDE)
+                    }
+                }
+            }
 
             val vehiculos = d.lista("vehiculos")
             Aparece(3) { Text("🚚  CADA CARRO", style = Texto.Eyebrow, color = Altiplano.TextoTerciario, modifier = Modifier.padding(top = 6.dp)) }

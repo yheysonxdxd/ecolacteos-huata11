@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\Compras;
+use App\Services\Comprobantes;
 use App\Services\Excel;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -114,20 +115,23 @@ class ExcelController extends Controller
             ->join('clientes as c', 'c.id', '=', 's.cliente_id')
             ->join('productos as p', 'p.id', '=', 's.producto_id')
             ->leftJoin('users as u', 'u.id', '=', 's.registrada_por')
+            ->join('ventas as n', 'n.id', '=', DB::raw('COALESCE(s.nota_id, s.id)')) // la fila con la boleta o factura
             ->when($desde, fn ($q) => $q->whereBetween('s.vendida_en', [$desde . ' 00:00:00', $hasta . ' 23:59:59']))
             ->orderBy('s.vendida_en')->orderBy('s.id')
-            ->get(['s.id', 's.nota_id', 's.vendida_en', DB::raw('COALESCE(s.comprador_nombre, c.nombre) as cliente'),
-                DB::raw('CASE WHEN s.comprador_nombre IS NULL THEN c.ruc ELSE s.comprador_documento END as ruc'), 'p.nombre as producto',
+            ->get(['s.id', 's.nota_id', 's.vendida_en', DB::raw('COALESCE(n.adquirente_nombre, s.comprador_nombre, c.nombre) as cliente'),
+                DB::raw('COALESCE(n.adquirente_documento, CASE WHEN s.comprador_nombre IS NULL THEN c.ruc ELSE s.comprador_documento END) as ruc'),
+                'n.comprobante_tipo', 'n.comprobante_serie', 'n.comprobante_numero', 'p.nombre as producto',
                 's.cantidad', 'p.unidad', 's.precio_unitario', 's.total', 's.metodo_pago', 's.pago_operacion', 'u.name as vendedor']);
 
         return Excel::descargar(
             'ventas_' . $mes['mes'] . '.xlsx',
             'Ventas · ' . self::nombreMes($mes['mes']),
-            ['Fecha' => 'fecha', 'Hora' => 'texto', 'Nota de venta' => 'texto', 'Cliente' => 'texto', 'DNI / RUC' => 'texto',
+            ['Fecha' => 'fecha', 'Hora' => 'texto', 'Comprobante' => 'texto', 'Número' => 'texto', 'Cliente' => 'texto', 'DNI / RUC' => 'texto',
                 'Producto' => 'texto', 'Cantidad' => 'numero', 'Unidad' => 'texto', 'Precio unitario' => 'soles',
                 'Total' => 'soles', 'Pagó con' => 'texto', 'N.° operación' => 'texto', 'Registrada por' => 'texto'],
             $filas->map(fn ($s) => [$s->vendida_en, Carbon::parse($s->vendida_en)->format('H:i'),
-                'NV-' . str_pad((string) ($s->nota_id ?? $s->id), 6, '0', STR_PAD_LEFT), $s->cliente, $s->ruc,
+                ['BOLETA' => 'Boleta', 'FACTURA' => 'Factura'][$s->comprobante_tipo] ?? 'Nota de venta',
+                Comprobantes::numero($s->comprobante_serie, $s->comprobante_numero, (int) ($s->nota_id ?? $s->id)), $s->cliente, $s->ruc,
                 $s->producto, $s->cantidad, $s->unidad, $s->precio_unitario, $s->total,
                 ['EFECTIVO' => 'Efectivo', 'YAPE' => 'Yape', 'TARJETA' => 'Tarjeta'][$s->metodo_pago] ?? $s->metodo_pago, $s->pago_operacion, $s->vendedor]),
             ['Total' => (float) $filas->sum('total')],

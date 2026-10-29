@@ -28,8 +28,8 @@ android {
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         // subir los dos en cada APK nuevo, y VERSION_APP en shared (datos/Sesion.kt) igual que versionName
-        versionCode = 32
-        versionName = "3.11"
+        versionCode = 36
+        versionName = "3.15"
     }
     packaging {
         resources {

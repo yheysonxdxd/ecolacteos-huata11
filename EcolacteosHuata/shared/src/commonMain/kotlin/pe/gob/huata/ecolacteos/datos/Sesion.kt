@@ -22,7 +22,7 @@ object ConfigServidor {
 }
 
 /** Se ve en la pantalla de ingreso. Igual que versionName en androidApp/build.gradle.kts. */
-const val VERSION_APP = "3.11"
+const val VERSION_APP = "3.15"
 
 /** Sesión del usuario contra el servidor: token, rol y datos reales. */
 object Sesion {
